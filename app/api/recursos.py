@@ -82,6 +82,35 @@ def listar_camas(ctx: ContextoAcceso = Depends(RequierePermiso("cama", "read")),
     } for c in camas]
 
 
+@router.get("/camas/ocupacion", summary="Qué paciente ocupa cada cama, desde cuándo")
+def ocupacion_camas(ctx: ContextoAcceso = Depends(RequierePermiso("cama", "read")),
+                    db: Session = Depends(get_db),
+                    solo_ocupadas: bool = Query(True)):
+    """
+    Responde directamente "¿quién está en la cama X, desde cuándo, y en qué
+    va su cirugía?" -- cruzando camas + encuentros + pacientes en una sola
+    consulta, en vez de tener que hacerlo a mano.
+    """
+    from app.core.crypto import descifrar
+
+    filas = db.execute(text("SELECT * FROM v_camas_ocupacion_detalle")).mappings().all()
+    resultado = []
+    for f in filas:
+        if solo_ocupadas and f["estado_cama"] != "ocupada":
+            continue
+        item = dict(f)
+        if item["paciente_id"]:
+            p = db.query(Paciente).filter(
+                Paciente.documento_bidx == item["paciente_id"]).first()
+            item["paciente_documento"] = (
+                descifrar(p.documento_cifrado, "pacientes.documento") if p else None
+            )
+        else:
+            item["paciente_documento"] = None
+        resultado.append(item)
+    return resultado
+
+
 @router.patch("/camas/{cama_id}/estado", summary="Cambiar estado de una cama")
 def cambiar_estado_cama(cama_id: int, datos: CambioEstado, request: Request,
                         ctx: ContextoAcceso = Depends(RequierePermiso("cama", "update")),
@@ -150,10 +179,10 @@ fhir_router = APIRouter(prefix="/fhir", tags=["Interoperabilidad FHIR"])
 
 @fhir_router.get("/preview/paciente/{paciente_id}",
                  summary="Previsualizar recurso Patient (sin enviar a HAPI)")
-def preview_paciente(paciente_id: int,
+def preview_paciente(paciente_id: str,
                      ctx: ContextoAcceso = Depends(RequierePermiso("fhir", "read")),
                      db: Session = Depends(get_db)):
-    p = db.query(Paciente).filter(Paciente.id == paciente_id,
+    p = db.query(Paciente).filter(Paciente.documento_bidx == paciente_id,
                                   Paciente.activo.is_(True)).first()
     if p is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
@@ -173,10 +202,10 @@ def preview_cama(cama_id: int,
 
 @fhir_router.post("/sync/paciente/{paciente_id}",
                   summary="Sincronizar Patient hacia HAPI FHIR")
-def sync_paciente(paciente_id: int, request: Request,
+def sync_paciente(paciente_id: str, request: Request,
                   ctx: ContextoAcceso = Depends(RequierePermiso("fhir", "sync")),
                   db: Session = Depends(get_db)):
-    p = db.query(Paciente).filter(Paciente.id == paciente_id,
+    p = db.query(Paciente).filter(Paciente.documento_bidx == paciente_id,
                                   Paciente.activo.is_(True)).first()
     if p is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
@@ -290,11 +319,11 @@ def sync_cama(cama_id: int,
 
 @fhir_router.post("/sync/bundle/paciente/{paciente_id}",
                   summary="Sincronización atómica con Bundle transaccional")
-def sync_bundle(paciente_id: int,
+def sync_bundle(paciente_id: str,
                 ctx: ContextoAcceso = Depends(RequierePermiso("fhir", "sync")),
                 db: Session = Depends(get_db)):
     """Envía Patient + sus Encounters + Observations en una sola transacción FHIR."""
-    p = db.query(Paciente).filter(Paciente.id == paciente_id,
+    p = db.query(Paciente).filter(Paciente.documento_bidx == paciente_id,
                                   Paciente.activo.is_(True)).first()
     if p is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
@@ -426,6 +455,37 @@ def costo_ociosidad(ctx: ContextoAcceso = Depends(RequierePermiso("analitica", "
     datos = [dict(f) for f in filas]
     total = sum(float(d.get("costo_oportunidad_cop") or 0) for d in datos)
     return {"detalle": datos, "costo_total_cop": round(total, 2)}
+
+
+@analitica_router.get("/gastos", summary="Gasto acumulado por paciente")
+def gastos_paciente(ctx: ContextoAcceso = Depends(RequierePermiso("analitica", "read")),
+                    db: Session = Depends(get_db),
+                    paciente_id: str | None = Query(
+                        None, description="documento_bidx de un paciente específico"),
+                    limite: int = Query(20, le=200)):
+    """
+    Gasto = tarifa de los procedimientos ya realizados + costo estimado de
+    las horas de cama ocupadas. NO incluye el costo de cancelaciones (eso es
+    pérdida de la institución, no un cargo al paciente -- ver /analitica/costo-ociosidad).
+
+    Sin paciente_id: devuelve el ranking de los que más han gastado.
+    Con paciente_id: el desglose de ese paciente en particular.
+    """
+    if paciente_id:
+        fila = db.execute(
+            text("SELECT * FROM v_gastos_paciente WHERE paciente_id = :pid"),
+            {"pid": paciente_id},
+        ).mappings().first()
+        if fila is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND,
+                                "Paciente no encontrado o sin gasto registrado")
+        return dict(fila)
+
+    filas = db.execute(
+        text("SELECT * FROM v_gastos_paciente ORDER BY gasto_total_cop DESC LIMIT :lim"),
+        {"lim": limite},
+    ).mappings().all()
+    return [dict(f) for f in filas]
 
 
 @analitica_router.get("/desviacion-quirurgica",

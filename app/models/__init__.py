@@ -56,7 +56,7 @@ class Usuario(Base):
     password_hash = Column(Text, nullable=False)
     rol_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
     personal_id = Column(Integer, ForeignKey("personal.id"))
-    paciente_id = Column(Integer, ForeignKey("pacientes.id"))
+    paciente_id = Column(String(64), ForeignKey("pacientes.documento_bidx"))
     intentos_fallidos = Column(SmallInteger, default=0)
     bloqueado_hasta = Column(DateTime(timezone=True))
     ultimo_acceso = Column(DateTime(timezone=True))
@@ -230,11 +230,12 @@ class Eps(Base):
 # ---------------------------------------------------------------- clínico
 class Paciente(Base):
     __tablename__ = "pacientes"
-    id = Column(Integer, primary_key=True)
+    # documento_bidx es la llave primaria real (el índice ciego de la cédula),
+    # no un id autoincremental -- ver la nota en db/01_schema.sql.
+    documento_bidx = Column(String(64), primary_key=True)
     uuid = Column(UUID(as_uuid=True), server_default=func.gen_random_uuid())
     tipo_documento = Column(String(5), nullable=False)
     documento_cifrado = Column(LargeBinary, nullable=False)
-    documento_bidx = Column(String(64), unique=True, nullable=False)
     nombre_cifrado = Column(LargeBinary, nullable=False)
     apellido_cifrado = Column(LargeBinary, nullable=False)
     telefono_cifrado = Column(LargeBinary)
@@ -255,12 +256,26 @@ class Paciente(Base):
     created_by = Column(Integer)
     updated_at = Column(DateTime(timezone=True))
 
+    @property
+    def id(self):
+        """
+        Alias de compatibilidad. El código genérico de auditoría
+        (app/services/auditoria.py: soft_delete, soft_edit, restaurar)
+        está escrito para cualquier entidad con `.id`, sin saber de cuál
+        tabla se trata. Para Paciente esa identidad ya no es un entero
+        autoincremental, sino documento_bidx (el índice ciego de la
+        cédula) -- ver la nota en db/01_schema.sql.
+        Funciona solo a nivel de INSTANCIA (p.id tras un fetch); las
+        consultas deben seguir filtrando por Paciente.documento_bidx.
+        """
+        return self.documento_bidx
+
 
 class Encuentro(Base):
     __tablename__ = "encuentros"
     id = Column(Integer, primary_key=True)
     uuid = Column(UUID(as_uuid=True), server_default=func.gen_random_uuid())
-    paciente_id = Column(Integer, ForeignKey("pacientes.id"), nullable=False)
+    paciente_id = Column(String(64), ForeignKey("pacientes.documento_bidx"), nullable=False)
     tipo = Column(String(25), nullable=False)
     estado = Column(String(20), default="planned")
     origen = Column(String(15), default="electiva")
@@ -296,7 +311,7 @@ class Observacion(Base):
     id = Column(Integer, primary_key=True)
     uuid = Column(UUID(as_uuid=True), server_default=func.gen_random_uuid())
     encuentro_id = Column(Integer, ForeignKey("encuentros.id"), nullable=False)
-    paciente_id = Column(Integer, ForeignKey("pacientes.id"), nullable=False)
+    paciente_id = Column(String(64), ForeignKey("pacientes.documento_bidx"), nullable=False)
     categoria = Column(String(25), default="vital-signs")
     codigo_loinc = Column(String(20), nullable=False)
     display_loinc = Column(String(150))
@@ -322,7 +337,8 @@ class LogAuditoria(Base):
     usuario_id = Column(Integer, ForeignKey("usuarios.id"))
     rol_codigo = Column(String(40))
     entidad_tipo = Column(String(40), nullable=False)
-    entidad_id = Column(Integer)
+    # String y no Integer a propósito: para 'paciente' aquí va documento_bidx.
+    entidad_id = Column(String(64))
     operacion = Column(String(20), nullable=False)
     resultado = Column(String(15), default="exito")
     valor_anterior = Column(JSONB)
@@ -337,7 +353,8 @@ class HistorialCambio(Base):
     __tablename__ = "historial_cambios"
     id = Column(BigInteger, primary_key=True)
     entidad_tipo = Column(String(40), nullable=False)
-    entidad_id = Column(Integer, nullable=False)
+    # Igual que en LogAuditoria: para 'paciente' aquí va documento_bidx.
+    entidad_id = Column(String(64), nullable=False)
     version = Column(Integer, nullable=False)
     campo = Column(String(60), nullable=False)
     valor_anterior = Column(Text)

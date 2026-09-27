@@ -151,7 +151,14 @@ class ContextoAcceso:
             return query.filter(modelo.created_by == self.usuario.id)
         if self.alcance == "self":
             pid = self.payload.get("paciente_id")
-            campo = getattr(modelo, "paciente_id", None) or modelo.id
+            if hasattr(modelo, "paciente_id"):
+                campo = modelo.paciente_id
+            else:
+                # Paciente se referencia a sí mismo: no tiene columna
+                # paciente_id, su llave real es documento_bidx. (modelo.id
+                # a nivel de CLASE no sirve aquí: es un property de Python,
+                # no una columna consultable -- solo funciona en instancias.)
+                campo = modelo.documento_bidx
             return query.filter(campo == pid)
         if self.alcance == "assigned":
             personal_id = self.payload.get("personal_id")

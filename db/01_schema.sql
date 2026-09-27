@@ -99,7 +99,7 @@ CREATE TABLE usuarios (
     password_hash           TEXT NOT NULL,              -- Argon2id
     rol_id                  INT NOT NULL REFERENCES roles(id),
     personal_id             INT REFERENCES personal(id),-- NULL en cuentas técnicas
-    paciente_id             INT,                        -- FK diferida (rol paciente)
+    paciente_id             CHAR(64),                   -- FK diferida (rol paciente) -- = pacientes.documento_bidx
     mfa_habilitado          BOOLEAN NOT NULL DEFAULT FALSE,
     mfa_secret_cifrado      BYTEA,
     intentos_fallidos       SMALLINT NOT NULL DEFAULT 0,
@@ -246,13 +246,18 @@ CREATE TABLE eps (
     activo      BOOLEAN NOT NULL DEFAULT TRUE
 );
 
+-- La llave primaria de esta tabla es documento_bidx (el índice ciego derivado
+-- de la cédula), NO un id numérico autoincremental. Así, la identidad real de
+-- la persona -- no un contador arbitrario -- es lo que conecta a un paciente
+-- con TODO lo demás (encuentros, observaciones, agenda, usuarios).
+-- Sigue sin exponer la cédula en texto plano: documento_bidx es un HMAC-SHA256
+-- irreversible, no el número real (ver docs/SEGURIDAD.md sección 3).
 CREATE TABLE pacientes (
-    id                      SERIAL PRIMARY KEY,
+    documento_bidx          CHAR(64) PRIMARY KEY,       -- = HMAC-SHA256(cédula normalizada)
     uuid                    UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,
     -- Identificadores directos: CIFRADOS
     tipo_documento          VARCHAR(5) NOT NULL,        -- CC, TI, CE, RC, PA
     documento_cifrado       BYTEA NOT NULL,
-    documento_bidx          CHAR(64) NOT NULL UNIQUE,   -- blind index para búsqueda
     nombre_cifrado          BYTEA NOT NULL,
     apellido_cifrado        BYTEA NOT NULL,
     telefono_cifrado        BYTEA,
@@ -276,13 +281,14 @@ CREATE TABLE pacientes (
     updated_at              TIMESTAMPTZ,
     CONSTRAINT ck_pacientes_sexo CHECK (sexo IN ('M','F','O'))
 );
-CREATE INDEX idx_pacientes_bidx ON pacientes(documento_bidx);
 CREATE INDEX idx_pacientes_eps  ON pacientes(eps_id) WHERE activo;
+-- (ya no hace falta un índice aparte para documento_bidx: al ser PRIMARY KEY,
+-- Postgres crea ese índice automáticamente)
 
 -- FK diferida de usuarios -> pacientes (rol 'paciente')
 ALTER TABLE usuarios
     ADD CONSTRAINT fk_usuarios_paciente
-    FOREIGN KEY (paciente_id) REFERENCES pacientes(id);
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(documento_bidx);
 
 -- ============================================================================
 -- SECCIÓN 6 : ENCUENTROS CLÍNICOS  (núcleo operativo)
@@ -294,7 +300,7 @@ ALTER TABLE usuarios
 CREATE TABLE encuentros (
     id                      SERIAL PRIMARY KEY,
     uuid                    UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,
-    paciente_id             INT NOT NULL REFERENCES pacientes(id),
+    paciente_id             CHAR(64) NOT NULL REFERENCES pacientes(documento_bidx),
     tipo                    VARCHAR(25) NOT NULL,   -- urgencias|cirugia|hospitalizacion|consulta_externa
     estado                  VARCHAR(20) NOT NULL DEFAULT 'planned',
     origen                  VARCHAR(15) NOT NULL DEFAULT 'electiva', -- electiva|urgencia
@@ -344,7 +350,7 @@ CREATE TABLE observaciones (
     id                  SERIAL PRIMARY KEY,
     uuid                UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,
     encuentro_id        INT NOT NULL REFERENCES encuentros(id),
-    paciente_id         INT NOT NULL REFERENCES pacientes(id),
+    paciente_id         CHAR(64) NOT NULL REFERENCES pacientes(documento_bidx),
     categoria           VARCHAR(25) NOT NULL DEFAULT 'vital-signs', -- vital-signs|laboratory
     codigo_loinc        VARCHAR(20) NOT NULL,
     display_loinc       VARCHAR(150),
@@ -413,7 +419,11 @@ CREATE TABLE log_auditoria (
     usuario_id      INT REFERENCES usuarios(id),
     rol_codigo      VARCHAR(40),
     entidad_tipo    VARCHAR(40) NOT NULL,
-    entidad_id      INT,
+    -- VARCHAR y no INT a propósito: para 'paciente' este campo guarda
+    -- documento_bidx (64 caracteres), no un id numérico. Para las demás
+    -- entidades (encuentro, observacion, cama...) sigue guardando su id
+    -- normal, solo que como texto.
+    entidad_id      VARCHAR(64),
     operacion       VARCHAR(20) NOT NULL,   -- create|read|update|soft_delete|restore|login
     resultado       VARCHAR(15) NOT NULL DEFAULT 'exito', -- exito|denegado|error
     valor_anterior  JSONB,
@@ -431,7 +441,9 @@ CREATE INDEX idx_audit_op      ON log_auditoria(operacion, timestamp DESC);
 CREATE TABLE historial_cambios (
     id              BIGSERIAL PRIMARY KEY,
     entidad_tipo    VARCHAR(40) NOT NULL,
-    entidad_id      INT NOT NULL,
+    -- Mismo motivo que en log_auditoria: 'paciente' guarda aquí su
+    -- documento_bidx (64 caracteres), no un id numérico.
+    entidad_id      VARCHAR(64) NOT NULL,
     version         INT NOT NULL,
     campo           VARCHAR(60) NOT NULL,
     valor_anterior  TEXT,
@@ -461,7 +473,7 @@ CREATE TRIGGER trg_auditoria_no_update
 -- (hallazgo de campo: si se atrasa una cirugía, se atrasan las consultas).
 CREATE TABLE agenda_consulta_externa (
     id                      SERIAL PRIMARY KEY,
-    paciente_id             INT NOT NULL REFERENCES pacientes(id),
+    paciente_id             CHAR(64) NOT NULL REFERENCES pacientes(documento_bidx),
     medico_general_id       INT REFERENCES personal(id),
     especialista_id         INT REFERENCES personal(id),
     modulo                  VARCHAR(20),
@@ -571,6 +583,77 @@ GROUP BY 1
 ORDER BY 1 DESC;
 
 -- Desviación programado vs real (insumo del modelo de predicción)
+-- Ocupación de camas con el paciente actual y el estado de su cirugía/encuentro.
+-- Responde exactamente: "la cama UCI tal está ocupada por el paciente tal,
+-- desde tal fecha, y su cirugía está en tal estado".
+-- DISTINCT ON toma, por cada cama, el encuentro más reciente que la usa
+-- (no existe hoy una tabla de "asignación de cama" con inicio/fin explícito,
+-- así que esto es la mejor aproximación disponible sin crear una tabla nueva).
+CREATE OR REPLACE VIEW v_camas_ocupacion_detalle AS
+SELECT DISTINCT ON (c.id)
+    c.id                        AS cama_id,
+    c.codigo                    AS cama_codigo,
+    tc.codigo                   AS tipo_cama,
+    c.estado                    AS estado_cama,
+    c.estado_desde              AS estado_cama_desde,
+    e.id                        AS encuentro_id,
+    e.paciente_id,
+    e.estado                    AS estado_encuentro,
+    e.hora_real_inicio,
+    e.hora_real_fin,
+    p.tipo_documento            AS paciente_tipo_documento,
+    p.fecha_nacimiento          AS paciente_fecha_nacimiento,
+    p.sexo                      AS paciente_sexo
+FROM camas c
+JOIN tipos_cama tc  ON tc.id = c.tipo_cama_id
+LEFT JOIN encuentros e ON e.cama_id = c.id AND e.activo
+LEFT JOIN pacientes p  ON p.documento_bidx = e.paciente_id
+WHERE c.activo
+ORDER BY c.id, e.hora_real_inicio DESC NULLS LAST, e.id DESC;
+
+-- Gasto acumulado por paciente: tarifa de los procedimientos ya realizados
+-- + costo estimado de las horas de cama ocupadas (costo_dia_cop / 24 x horas).
+-- NO incluye el costo de cancelaciones -- eso es pérdida de la institución,
+-- no un cargo al paciente; se mantiene aparte en v_horas_ociosas_camas.
+CREATE OR REPLACE VIEW v_gastos_paciente AS
+WITH gasto_procedimientos AS (
+    SELECT
+        e.paciente_id,
+        COUNT(*)                       AS procedimientos_realizados,
+        SUM(cp.tarifa_referencia_cop)  AS gasto_procedimientos_cop
+    FROM encuentros e
+    JOIN catalogo_procedimientos cp ON cp.id = e.procedimiento_id
+    WHERE e.estado = 'finished' AND e.activo
+    GROUP BY e.paciente_id
+),
+gasto_camas AS (
+    SELECT
+        e.paciente_id,
+        SUM(EXTRACT(EPOCH FROM (COALESCE(e.hora_real_fin, NOW()) - e.hora_real_inicio)) / 3600.0)
+            AS horas_cama_total,
+        SUM(EXTRACT(EPOCH FROM (COALESCE(e.hora_real_fin, NOW()) - e.hora_real_inicio)) / 3600.0
+            * (tc.costo_dia_cop / 24))
+            AS gasto_estancia_cop
+    FROM encuentros e
+    JOIN camas c       ON c.id = e.cama_id
+    JOIN tipos_cama tc ON tc.id = c.tipo_cama_id
+    WHERE e.hora_real_inicio IS NOT NULL AND e.activo
+    GROUP BY e.paciente_id
+)
+SELECT
+    p.documento_bidx                                                        AS paciente_id,
+    p.tipo_documento,
+    COALESCE(gp.procedimientos_realizados, 0)                               AS procedimientos_realizados,
+    ROUND(COALESCE(gp.gasto_procedimientos_cop, 0), 0)                      AS gasto_procedimientos_cop,
+    ROUND(COALESCE(gc.horas_cama_total, 0), 1)                              AS horas_cama_total,
+    ROUND(COALESCE(gc.gasto_estancia_cop, 0), 0)                            AS gasto_estancia_cop,
+    ROUND(COALESCE(gp.gasto_procedimientos_cop,0) + COALESCE(gc.gasto_estancia_cop,0), 0)
+                                                                             AS gasto_total_cop
+FROM pacientes p
+LEFT JOIN gasto_procedimientos gp ON gp.paciente_id = p.documento_bidx
+LEFT JOIN gasto_camas gc          ON gc.paciente_id = p.documento_bidx
+WHERE p.activo;
+
 CREATE OR REPLACE VIEW v_desviacion_quirurgica AS
 SELECT
     cp.nombre                                            AS procedimiento,

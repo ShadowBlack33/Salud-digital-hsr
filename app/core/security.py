@@ -84,7 +84,7 @@ def _secreto_jwt() -> str:
 
 def crear_access_token(usuario_id: int, username: str, rol_codigo: str,
                        permisos: list[str], personal_id: int | None = None,
-                       paciente_id: int | None = None) -> str:
+                       paciente_id: str | None = None) -> str:
     ahora = datetime.now(timezone.utc)
     payload = {
         "sub": str(usuario_id),

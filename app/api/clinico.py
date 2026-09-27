@@ -16,7 +16,7 @@ router = APIRouter(tags=["Clínico"])
 
 # ============================================================== ENCUENTROS
 class EncuentroCrear(BaseModel):
-    paciente_id: int
+    paciente_id: str
     tipo: str = Field(..., pattern="^(urgencias|cirugia|hospitalizacion|consulta_externa)$")
     origen: str = Field("electiva", pattern="^(electiva|urgencia)$")
     prioridad_clinica: int = Field(3, ge=1, le=5)
@@ -43,7 +43,7 @@ class EncuentroActualizar(BaseModel):
 
 class EncuentroRespuesta(BaseModel):
     id: int
-    paciente_id: int
+    paciente_id: str
     tipo: str
     estado: str
     origen: str
@@ -179,7 +179,7 @@ def restaurar_encuentro(encuentro_id: int, request: Request,
 # ============================================================ OBSERVACIONES
 class ObservacionCrear(BaseModel):
     encuentro_id: int
-    paciente_id: int
+    paciente_id: str
     categoria: str = Field("vital-signs", pattern="^(vital-signs|laboratory|imaging|survey)$")
     codigo_loinc: str = Field(..., examples=["8867-4"])
     display_loinc: str | None = Field(None, examples=["Heart rate"])
@@ -200,7 +200,7 @@ class ObservacionActualizar(BaseModel):
 class ObservacionRespuesta(BaseModel):
     id: int
     encuentro_id: int
-    paciente_id: int
+    paciente_id: str
     categoria: str
     codigo_loinc: str
     display_loinc: str | None = None

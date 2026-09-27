@@ -257,17 +257,35 @@ def gen_recursos():
 
 
 # ---------------------------------------------------------------------------
-def gen_pacientes(n: int):
+def gen_pacientes(n: int) -> list[str]:
+    """
+    Genera n pacientes. La llave primaria de `pacientes` ya no es un id
+    autoincremental -- es documento_bidx, el índice ciego de la cédula
+    (ver la nota en db/01_schema.sql). Por eso esta función YA NO recibe
+    ni asigna un id secuencial: cada fila se identifica por su propio
+    documento_bidx, calculado aquí mismo.
+
+    Devuelve la lista de esos documento_bidx generados, para que
+    gen_encuentros() pueda elegir pacientes reales al azar en vez de
+    un rango de enteros que ya no existe.
+    """
     filas = []
-    for i in range(1, n + 1):
+    bidx_generados = []
+    documentos_usados = set()
+
+    while len(filas) < n:
         doc = str(random.randint(1_000_000_00, 1_299_999_999))
+        if doc in documentos_usados:
+            continue  # evita colisión de documento_bidx (poco probable, pero posible)
+        documentos_usados.add(doc)
+
+        bidx = blind_index(doc, "pacientes.documento")
         nombre, apellido = fake.first_name(), fake.last_name()
         edad = int(np.clip(np.random.gamma(7, 7), 0, 98))
         filas.append((
-            i,
+            bidx,
             random.choices(["CC", "TI", "CE", "RC"], weights=[80, 10, 6, 4])[0],
             cifrar(doc, "pacientes.documento"),
-            blind_index(doc, "pacientes.documento"),
             cifrar(nombre, "pacientes.nombre"),
             cifrar(apellido, "pacientes.apellido"),
             cifrar(fake.phone_number()[:20], "pacientes.telefono"),
@@ -279,13 +297,15 @@ def gen_pacientes(n: int):
             min(5, max(1, int(np.random.normal(2 + edad / 40, 0.9)))),
             True,
         ))
+        bidx_generados.append(bidx)
+
     insert("pacientes",
-           ["id", "tipo_documento", "documento_cifrado", "documento_bidx",
+           ["documento_bidx", "tipo_documento", "documento_cifrado",
             "nombre_cifrado", "apellido_cifrado", "telefono_cifrado",
             "direccion_cifrada", "fecha_nacimiento", "sexo", "eps_id",
             "tiene_comorbilidades", "riesgo_asa", "consentimiento_datos"],
            filas)
-    return n
+    return bidx_generados
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +335,7 @@ def retraso_medico(desplazamiento_min: int) -> int:
     return int(np.clip(base, 0, 95))
 
 
-def gen_encuentros(n_pacientes, n_personal, n_camas, meses: int):
+def gen_encuentros(pacientes_bidx: list[str], n_personal, n_camas, meses: int):
     """Cirugías, urgencias y sus observaciones/cancelaciones."""
     encuentros, observaciones, cancelaciones, eventos = [], [], [], []
     eid = oid = cid = evid = 0
@@ -348,7 +368,7 @@ def gen_encuentros(n_pacientes, n_personal, n_camas, meses: int):
         for _ in range(n_cir):
             eid += 1
             proc_id = random.randint(1, 22)
-            paciente_id = random.randint(1, n_pacientes)
+            paciente_id = random.choice(pacientes_bidx)
             urgencia = random.random() < (PCT_URGENCIA * (1.7 if en_crisis else 1))
             hora_ini = random.choices(range(6, 20),
                                       weights=[3, 8, 10, 10, 9, 8, 7, 8, 8, 7, 6, 4, 3, 2])[0]
@@ -497,12 +517,33 @@ def main():
 
     n_pers, n_users = gen_usuarios_y_personal()
     n_camas = gen_recursos()
-    n_pac = gen_pacientes(args.pacientes)
-    n_enc, n_obs, n_can, n_evt = gen_encuentros(n_pac, n_pers, n_camas, args.meses)
+    pacientes_bidx = gen_pacientes(args.pacientes)   # lista de documento_bidx, no un conteo
+    n_pac = len(pacientes_bidx)
+
+    # Cuenta de demo para el rol 'paciente' -- uno de los 3 roles mínimos que
+    # exige la rúbrica. Va aquí, DESPUÉS de gen_pacientes(), porque necesita
+    # un documento_bidx real para engancharse; no existía ningún paciente
+    # todavía cuando corrían las demás cuentas especiales, arriba.
+    # Al estar en el generador, esta cuenta sobrevive cada vez que se
+    # regeneran los datos, en vez de haber quedado como un INSERT suelto
+    # que hay que acordarse de repetir a mano.
+    n_users += 1
+    sql.append(
+        "INSERT INTO usuarios (id, username, password_hash, rol_id, "
+        "paciente_id, debe_cambiar_password) VALUES "
+        f"({n_users}, {esc('paciente_demo')}, {esc(hash_password('Demo#Hospital2026'))}, "
+        f"(SELECT id FROM roles WHERE codigo = 'paciente'), "
+        f"{esc(pacientes_bidx[0])}, FALSE);"
+    )
+
+    n_enc, n_obs, n_can, n_evt = gen_encuentros(pacientes_bidx, n_pers, n_camas, args.meses)
 
     # Resincronizar secuencias
+    # OJO: "pacientes" queda fuera de esta lista a propósito -- ya no tiene
+    # una columna id SERIAL (su llave es documento_bidx), así que no existe
+    # secuencia que resincronizar para esa tabla.
     sql.append("\n-- Ajuste de secuencias")
-    for t in ["personal", "usuarios", "quirofanos", "camas", "pacientes",
+    for t in ["personal", "usuarios", "quirofanos", "camas",
               "encuentros", "observaciones", "cancelaciones", "eventos_estado"]:
         sql.append(
             f"SELECT setval(pg_get_serial_sequence('{t}','id'), "

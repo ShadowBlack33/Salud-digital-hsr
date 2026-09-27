@@ -72,6 +72,18 @@ def verificar_estado(cur, archivo: str):
                     "documento repetido. Si quieres regenerarlos, corre primero "
                     "'db/00_reset_datos.sql'.")
 
+    elif "cedula_como_llave" in nombre:
+        cur.execute(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'pacientes' AND column_name = 'id')"
+        )
+        ya_migrado = not cur.fetchone()[0]
+        if ya_migrado:
+            return ("Esta migración ya se aplicó antes: 'pacientes' ya no tiene "
+                    "columna 'id' (documento_bidx ya es la llave primaria). "
+                    "Volver a correrla va a fallar al intentar borrar columnas "
+                    "que ya no existen.")
+
     return None
 
 

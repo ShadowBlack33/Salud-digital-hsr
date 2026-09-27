@@ -53,7 +53,11 @@ class PacienteActualizar(BaseModel):
 
 
 class PacienteRespuesta(BaseModel):
-    id: int
+    # La llave ya no es un entero autoincremental: es documento_bidx, el
+    # índice ciego (HMAC-SHA256) de la cédula del paciente. Es la misma
+    # llave que se usa en encuentros.paciente_id, observaciones.paciente_id,
+    # etc. No es reversible: no se puede recuperar la cédula a partir de ella.
+    paciente_id: str
     tipo_documento: str
     documento: str
     nombre: str
@@ -73,7 +77,7 @@ def _a_respuesta(p: Paciente, enmascarar_doc: bool = False) -> PacienteRespuesta
     doc = descifrar(p.documento_cifrado, "pacientes.documento")
     tel = descifrar(p.telefono_cifrado, "pacientes.telefono") if p.telefono_cifrado else None
     return PacienteRespuesta(
-        id=p.id,
+        paciente_id=p.documento_bidx,
         tipo_documento=p.tipo_documento,
         documento=enmascarar(doc) if enmascarar_doc else doc,
         nombre=descifrar(p.nombre_cifrado, "pacientes.nombre"),
@@ -144,7 +148,7 @@ def listar(ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "read")),
                             "Solo un rol con alcance total puede ver eliminados")
 
     q = ctx.filtrar_query(q, Paciente)
-    pacientes = q.order_by(Paciente.id).offset(offset).limit(limite).all()
+    pacientes = q.order_by(Paciente.documento_bidx).offset(offset).limit(limite).all()
     # En listados el documento va enmascarado (minimización de exposición)
     return [_a_respuesta(p, enmascarar_doc=True) for p in pacientes]
 
@@ -169,10 +173,10 @@ def buscar(documento: str,
 
 @router.get("/{paciente_id}", response_model=PacienteRespuesta,
             summary="Consultar paciente")
-def obtener(paciente_id: int, request: Request,
+def obtener(paciente_id: str, request: Request,
             ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "read")),
             db: Session = Depends(get_db)):
-    p = db.query(Paciente).filter(Paciente.id == paciente_id,
+    p = db.query(Paciente).filter(Paciente.documento_bidx == paciente_id,
                                   Paciente.activo.is_(True)).first()
     if p is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
@@ -184,14 +188,14 @@ def obtener(paciente_id: int, request: Request,
 
 @router.put("/{paciente_id}", response_model=PacienteRespuesta,
             summary="Editar paciente (soft edit con historial)")
-def actualizar(paciente_id: int, datos: PacienteActualizar, request: Request,
+def actualizar(paciente_id: str, datos: PacienteActualizar, request: Request,
                ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "update")),
                db: Session = Depends(get_db)):
     """
     Soft edit: el valor anterior de cada campo modificado se conserva
     en historial_cambios en vez de sobrescribirse.
     """
-    p = db.query(Paciente).filter(Paciente.id == paciente_id,
+    p = db.query(Paciente).filter(Paciente.documento_bidx == paciente_id,
                                   Paciente.activo.is_(True)).first()
     if p is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
@@ -217,14 +221,14 @@ def actualizar(paciente_id: int, datos: PacienteActualizar, request: Request,
 
 
 @router.delete("/{paciente_id}", summary="Eliminar paciente (soft delete)")
-def eliminar(paciente_id: int, request: Request,
+def eliminar(paciente_id: str, request: Request,
              ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "delete")),
              db: Session = Depends(get_db)):
     """
     Marca como inactivo sin borrar físicamente.
     admin -> cualquier paciente | clínico -> solo los que él registró.
     """
-    p = db.query(Paciente).filter(Paciente.id == paciente_id,
+    p = db.query(Paciente).filter(Paciente.documento_bidx == paciente_id,
                                   Paciente.activo.is_(True)).first()
     if p is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND,
@@ -238,7 +242,7 @@ def eliminar(paciente_id: int, request: Request,
 
 @router.post("/{paciente_id}/restaurar", response_model=PacienteRespuesta,
              summary="Restaurar paciente eliminado (SOLO admin)")
-def restaurar_paciente(paciente_id: int, request: Request,
+def restaurar_paciente(paciente_id: str, request: Request,
                        ctx: ContextoAcceso = Depends(
                            RequierePermiso("paciente", "restore")),
                        db: Session = Depends(get_db)):
@@ -246,7 +250,7 @@ def restaurar_paciente(paciente_id: int, request: Request,
     Undelete. Reservado exclusivamente al rol admin, incluso cuando
     el registro fue eliminado por un médico.
     """
-    p = db.query(Paciente).filter(Paciente.id == paciente_id).first()
+    p = db.query(Paciente).filter(Paciente.documento_bidx == paciente_id).first()
     if p is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
     if p.activo:
@@ -259,7 +263,7 @@ def restaurar_paciente(paciente_id: int, request: Request,
 
 
 @router.get("/{paciente_id}/historial", summary="Historial de cambios")
-def historial(paciente_id: int,
+def historial(paciente_id: str,
               ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "read")),
               db: Session = Depends(get_db)):
     from app.models import HistorialCambio

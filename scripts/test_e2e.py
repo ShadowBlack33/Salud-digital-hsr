@@ -117,7 +117,7 @@ nuevo = {
 }
 r = client.post("/pacientes", json=nuevo, headers=h(med_a))
 check("Médico A crea paciente -> 201", r.status_code == 201, r.text[:120])
-paciente_id = r.json()["id"] if r.status_code == 201 else None
+paciente_id = r.json()["paciente_id"] if r.status_code == 201 else None
 
 r = client.post("/pacientes", json=nuevo, headers=h(med_a))
 check("Documento duplicado -> 409", r.status_code == 409)
@@ -166,7 +166,7 @@ if paciente_id:
 
     with SessionLocal() as db:
         fila = db.execute(text(
-            "SELECT activo, deleted_at IS NOT NULL AS marcado FROM pacientes WHERE id=:i"
+            "SELECT activo, deleted_at IS NOT NULL AS marcado FROM pacientes WHERE documento_bidx=:i"
         ), {"i": paciente_id}).fetchone()
     check("El registro SIGUE en la base (no se borró físicamente)",
           fila is not None and fila[0] is False and fila[1] is True)
@@ -194,7 +194,7 @@ check("El documento se descifra correctamente al leer",
 
 with SessionLocal() as db:
     fila = db.execute(text(
-        "SELECT documento_cifrado, nombre_cifrado FROM pacientes WHERE id=:i"
+        "SELECT documento_cifrado, nombre_cifrado FROM pacientes WHERE documento_bidx=:i"
     ), {"i": paciente_id}).fetchone()
 crudo = bytes(fila[0]).decode(errors="ignore") if fila else ""
 check("En la BD el documento NO está en claro", DOC_PRUEBA not in crudo,
