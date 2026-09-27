@@ -1,0 +1,38 @@
+# Levanta el servidor HAPI FHIR R4 con backend PostgreSQL.
+#   docker compose up -d
+#   Servidor FHIR: http://localhost:8080/fhir
+services:
+  fhir-db:
+    image: postgres:16-alpine
+    container_name: hsr-fhir-db
+    environment:
+      POSTGRES_DB: hapi
+      POSTGRES_USER: hapi
+      POSTGRES_PASSWORD: ${FHIR_DB_PASSWORD:-cambiar_en_produccion}
+    volumes:
+      - fhir_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hapi"]
+      interval: 10s
+      retries: 5
+
+  hapi-fhir:
+    image: hapiproject/hapi:latest
+    container_name: hsr-hapi-fhir
+    depends_on:
+      fhir-db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      spring.datasource.url: jdbc:postgresql://fhir-db:5432/hapi
+      spring.datasource.username: hapi
+      spring.datasource.password: ${FHIR_DB_PASSWORD:-cambiar_en_produccion}
+      spring.datasource.driverClassName: org.postgresql.Driver
+      spring.jpa.properties.hibernate.dialect: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgres94Dialect
+      hapi.fhir.fhir_version: R4
+      hapi.fhir.allow_multiple_delete: "true"
+      hapi.fhir.reuse_cached_search_results_millis: "0"
+
+volumes:
+  fhir_pgdata:

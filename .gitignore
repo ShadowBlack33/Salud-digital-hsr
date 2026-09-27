@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+venv/
+.venv/
+db/03_datos_sinteticos.sql
+*.log
