@@ -301,6 +301,26 @@ with SessionLocal() as db:
         db.rollback()
         check("Log de auditoría es inmutable (append-only)", True)
 
+print("\n[12] Bloqueo de cuenta tras intentos fallidos")
+for i in range(3):
+    r = client.post("/auth/login", json={"username": "facturacion01", "password": "clave-incorrecta"})
+check("3 contraseñas incorrectas seguidas -> la 3ra ya queda bloqueada",
+      r.status_code == 401)
+
+r = client.post("/auth/login", json={"username": "facturacion01", "password": PASSWORD})
+check("Con la clave CORRECTA pero ya bloqueado -> 423, no deja entrar",
+      r.status_code == 423)
+
+with SessionLocal() as db:
+    db.execute(text(
+        "UPDATE usuarios SET intentos_fallidos = 0, bloqueado_hasta = NULL "
+        "WHERE username = 'facturacion01'"
+    ))
+    db.commit()
+
+r = client.post("/auth/login", json={"username": "facturacion01", "password": PASSWORD})
+check("Tras desbloquear, vuelve a entrar normal", r.status_code == 200)
+
 # ---------------------------------------------------------- resumen
 print("\n" + "=" * 70)
 print(f"RESULTADO:  {ok} pruebas superadas, {fallos} fallidas")

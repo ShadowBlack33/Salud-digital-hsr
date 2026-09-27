@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     app_encryption_key: str = os.getenv("APP_ENCRYPTION_KEY", "")
     app_blind_index_key: str = os.getenv("APP_BLIND_INDEX_KEY", "")
 
-    max_intentos_login: int = 5
+    max_intentos_login: int = 3
     minutos_bloqueo: int = 15
 
     # CORS
