@@ -282,9 +282,21 @@ def gen_pacientes(n: int) -> list[str]:
         bidx = blind_index(doc, "pacientes.documento")
         nombre, apellido = fake.first_name(), fake.last_name()
         edad = int(np.clip(np.random.gamma(7, 7), 0, 98))
+
+        # El tipo de documento depende de la edad, no es independiente:
+        # RC es solo para niños hasta ~7 años, TI solo para menores de edad.
+        # Antes se elegía al azar sin mirar la edad, y salían imposibles
+        # como una TI de alguien nacido en 1957.
+        if edad < 7:
+            tipo_documento = "RC"
+        elif edad < 18:
+            tipo_documento = "TI"
+        else:
+            tipo_documento = random.choices(["CC", "CE"], weights=[93, 7])[0]
+
         filas.append((
             bidx,
-            random.choices(["CC", "TI", "CE", "RC"], weights=[80, 10, 6, 4])[0],
+            tipo_documento,
             cifrar(doc, "pacientes.documento"),
             cifrar(nombre, "pacientes.nombre"),
             cifrar(apellido, "pacientes.apellido"),

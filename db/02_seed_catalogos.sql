@@ -101,6 +101,11 @@ INSERT INTO permisos (codigo, recurso, accion, alcance, descripcion) VALUES
 ('observacion:delete:own',   'observacion','delete','own','Soft delete de las propias'),
 ('observacion:delete:all',   'observacion','delete','all','Soft delete de cualquiera'),
 ('observacion:restore',      'observacion','restore','all','Restaurar observación'),
+-- Imágenes médicas (PACS / DICOM vía Orthanc)
+('imagen:create:all',        'imagen','create','all','Subir una imagen al PACS'),
+('imagen:read:all',          'imagen','read','all','Ver imágenes de cualquier paciente'),
+('imagen:read:self',         'imagen','read','self','Ver sus propias imágenes'),
+('imagen:delete:all',        'imagen','delete','all','Eliminar una imagen del PACS (solo admin, a propósito)'),
 -- Recursos físicos
 ('cama:read:all',            'cama','read','all','Ver estado de camas'),
 ('cama:update:all',          'cama','update','all','Cambiar estado de camas'),
@@ -133,6 +138,7 @@ INSERT INTO roles_permisos (rol_id, permiso_id)
 SELECT r.id, p.id FROM roles r, permisos p
 WHERE r.codigo = 'director_medico' AND p.codigo IN (
     'paciente:read:all','encuentro:read:all','observacion:read:all',
+    'imagen:read:all',
     'cama:read:all','quirofano:read:all','agenda:read:all',
     'analitica:read','auditoria:read','fhir:read:all');
 
@@ -143,6 +149,7 @@ WHERE r.codigo = 'coordinador_quirurgico' AND p.codigo IN (
     'paciente:create:all','paciente:read:all','paciente:update:all',
     'encuentro:create:all','encuentro:read:all','encuentro:update:all',
     'observacion:read:all',
+    'imagen:read:all',
     'cama:read:all','cama:update:all',
     'quirofano:read:all','quirofano:update:all',
     'agenda:create:all','agenda:read:all','agenda:update:all','agenda:priorizar',
@@ -155,6 +162,7 @@ WHERE r.codigo = 'medico_especialista' AND p.codigo IN (
     'paciente:create:all','paciente:read:all','paciente:update:own','paciente:delete:own',
     'encuentro:create:all','encuentro:read:all','encuentro:update:own','encuentro:delete:own',
     'observacion:create:all','observacion:read:all','observacion:update:own','observacion:delete:own',
+    'imagen:create:all','imagen:read:all',
     'cama:read:all','quirofano:read:all',
     'agenda:create:all','agenda:read:all','fhir:read:all');
 
@@ -165,6 +173,7 @@ WHERE r.codigo = 'medico_general' AND p.codigo IN (
     'paciente:create:all','paciente:read:all','paciente:update:own',
     'encuentro:create:all','encuentro:read:all','encuentro:update:own','encuentro:delete:own',
     'observacion:create:all','observacion:read:all','observacion:update:own','observacion:delete:own',
+    'imagen:create:all','imagen:read:all',
     'cama:read:all','quirofano:read:all','agenda:read:all','fhir:read:all');
 
 -- anestesiologo: puede bloquear quirófano por criterio clínico
@@ -174,6 +183,7 @@ WHERE r.codigo = 'anestesiologo' AND p.codigo IN (
     'paciente:read:all',
     'encuentro:read:all','encuentro:update:own',
     'observacion:create:all','observacion:read:all','observacion:update:own','observacion:delete:own',
+    'imagen:create:all','imagen:read:all',
     'cama:read:all','quirofano:read:all','quirofano:update:all',
     'agenda:read:all','fhir:read:all');
 
@@ -184,6 +194,7 @@ WHERE r.codigo = 'enfermero_jefe' AND p.codigo IN (
     'paciente:read:all',
     'encuentro:create:all','encuentro:read:all','encuentro:update:own','encuentro:delete:own',
     'observacion:create:all','observacion:read:all','observacion:update:own','observacion:delete:own',
+    'imagen:create:all','imagen:read:all',
     'cama:read:all','cama:update:all',
     'quirofano:read:all','quirofano:update:all',
     'agenda:read:all','analitica:read','fhir:read:all');
@@ -195,6 +206,7 @@ WHERE r.codigo = 'enfermero' AND p.codigo IN (
     'paciente:read:assigned',
     'encuentro:read:assigned',
     'observacion:create:all','observacion:read:all','observacion:update:own','observacion:delete:own',
+    'imagen:create:all','imagen:read:all',
     'cama:read:all','cama:update:all',
     'quirofano:read:all','quirofano:update:all',
     'agenda:read:all');
@@ -214,6 +226,7 @@ WHERE r.codigo = 'auxiliar_enfermeria' AND p.codigo IN (
     'paciente:read:assigned',
     'encuentro:read:assigned',
     'observacion:create:all','observacion:read:all',
+    'imagen:create:all','imagen:read:all',
     'cama:read:all','cama:update:all');
 
 -- secretaria: administrativo puro, SIN acceso a datos clínicos
@@ -243,7 +256,7 @@ WHERE r.codigo = 'servicio_integracion' AND p.codigo IN (
 INSERT INTO roles_permisos (rol_id, permiso_id)
 SELECT r.id, p.id FROM roles r, permisos p
 WHERE r.codigo = 'paciente' AND p.codigo IN (
-    'paciente:read:self','encuentro:read:self','observacion:read:self');
+    'paciente:read:self','encuentro:read:self','observacion:read:self','imagen:read:self');
 
 -- ============================================================================
 -- CATÁLOGOS CLÍNICOS

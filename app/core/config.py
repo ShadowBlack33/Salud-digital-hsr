@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     fhir_base_url: str = os.getenv("FHIR_BASE_URL", "http://localhost:8080/fhir")
     fhir_timeout: int = 30
 
+    # Servidor PACS (Orthanc) -- imágenes médicas en DICOM
+    orthanc_url: str = os.getenv("ORTHANC_URL", "http://localhost:8042")
+    orthanc_user: str = os.getenv("ORTHANC_USER", "api")
+    orthanc_password: str = os.getenv("ORTHANC_PASSWORD", "orthanc_dev_2026")
+
     # Seguridad
     jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "")
     app_encryption_key: str = os.getenv("APP_ENCRYPTION_KEY", "")

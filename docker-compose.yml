@@ -34,5 +34,41 @@ services:
       hapi.fhir.allow_multiple_delete: "true"
       hapi.fhir.reuse_cached_search_results_millis: "0"
 
+  # Servidor PACS (DICOM) para imágenes médicas. El navegador nunca lo toca
+  # directamente -- solo la propia API le habla, por eso el puerto solo se
+  # publica en 127.0.0.1 (nada más que para poder inspeccionarlo tú mismo
+  # durante el desarrollo, igual que en el notebook de la Semana 8).
+  orthanc:
+    image: orthancteam/orthanc:25.5.1
+    container_name: hsr-orthanc
+    restart: unless-stopped
+    environment:
+      ORTHANC__NAME: "Hospital San Rafael - PACS"
+      ORTHANC__AUTHENTICATION_ENABLED: "true"
+      ORTHANC__REMOTE_ACCESS_ALLOWED: "true"
+      ORTHANC__REGISTERED_USERS: |
+        {"api": "${ORTHANC_PASSWORD:-orthanc_dev_2026}"}
+    ports:
+      - "127.0.0.1:8042:8042"
+    volumes:
+      - orthanc_data:/var/lib/orthanc/db
+
+  # Frontend en React, compilado y servido por nginx.
+  # OJO: la API corre con uvicorn directo en tu máquina (no está en Docker),
+  # así que el contenedor no la alcanza como "localhost" -- eso, dentro de
+  # un contenedor, se refiere al contenedor mismo, no a tu PC. Se usa
+  # host.docker.internal, el nombre especial que Docker Desktop resuelve
+  # hacia la máquina anfitriona.
+  front:
+    build:
+      context: ./front
+      args:
+        VITE_API_BASE: http://localhost:8000
+    container_name: hsr-front
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+
 volumes:
   fhir_pgdata:
+  orthanc_data:

@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import auth, clinico, pacientes, recursos
+from app.api import auth, clinico, imaging, pacientes, recursos
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -93,6 +93,7 @@ app.include_router(recursos.router)
 app.include_router(recursos.fhir_router)
 app.include_router(recursos.audit_router)
 app.include_router(recursos.analitica_router)
+app.include_router(imaging.router)
 
 
 @app.get("/", tags=["Sistema"], summary="Información de la API")
@@ -118,5 +119,9 @@ def salud():
     except Exception as e:
         estado_bd = f"error: {type(e).__name__}"
 
+    from app.services import pacs
+    estado_pacs = "ok" if pacs.is_alive() else "no disponible"
+
     return {"api": "ok", "base_datos": estado_bd,
-            "servidor_fhir": settings.fhir_base_url}
+            "servidor_fhir": settings.fhir_base_url,
+            "pacs": estado_pacs}
