@@ -1,41 +1,25 @@
-import { useEffect, useState } from "react";
-import { API_BASE } from "../api";
+import { useSondeo } from "../lib/hooks";
+import { salud } from "../api";
 
-const ETIQUETAS = { api: "API", base_datos: "Base de datos", pacs: "PACS" };
+const ITEMS = [["api", "API"], ["base_datos", "Base de datos"], ["pacs", "PACS"]];
 
-export default function EstadoServicios() {
-  const [estado, setEstado] = useState(null);
-
-  useEffect(() => {
-    let activo = true;
-    async function consultar() {
-      try {
-        const r = await fetch(`${API_BASE}/salud`);
-        const datos = await r.json();
-        if (activo) setEstado(datos);
-      } catch {
-        if (activo) setEstado({ api: "error", base_datos: "error", pacs: "error" });
-      }
-    }
-    consultar();
-    const intervalo = setInterval(consultar, 10000);
-    return () => { activo = false; clearInterval(intervalo); };
-  }, []);
-
+/** Puntos de estado de API, base de datos y PACS (consulta /salud cada 10 s). */
+export default function EstadoServicios({ className = "", oscuro = false }) {
+  const { datos, error } = useSondeo(salud, 10000);
+  const estado = error && !datos ? { api: "error", base_datos: "error", pacs: "error" } : datos;
   if (!estado) return null;
-
   return (
-    <div className="estado-servicios">
-      {Object.entries(ETIQUETAS).map(([clave, etiqueta]) => {
-        const valor = estado[clave];
-        const ok = valor === "ok";
+    <ul className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs ${oscuro ? "text-cloud-card" : "text-gray-strong"} ${className}`} aria-label="Estado de los servicios">
+      {ITEMS.map(([clave, etiqueta]) => {
+        const ok = estado[clave] === "ok";
         return (
-          <span className="estado-item" key={clave} title={valor}>
-            <span className={`punto ${ok ? "punto-ok" : "punto-mal"}`} />
+          <li key={clave} className="flex items-center gap-1.5" title={String(estado[clave])}>
+            <span className={`size-2 rounded-full ${ok ? "anim-pulse-dot bg-green-deep" : "bg-coral-deep"}`} />
             {etiqueta}
-          </span>
+            <span className="sr-only">{ok ? "operativo" : "sin conexión"}</span>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }

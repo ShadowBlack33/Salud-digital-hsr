@@ -1,44 +1,34 @@
-import { useState } from "react";
-import { cerrarSesion, estaAutenticado, getUsuario } from "./api";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import Landing from "./pages/Landing";
 import Login from "./pages/Login";
-import Pacientes from "./pages/Pacientes";
-import PacienteDetalle from "./pages/PacienteDetalle";
-import EstadoServicios from "./components/EstadoServicios";
+import Shell from "./pages/app/Shell";
+import Comando from "./pages/app/Comando";
+import Pacientes from "./pages/app/Pacientes";
+import Ficha from "./pages/app/Ficha";
+import { estaAutenticado } from "./api";
+import { useUsuario } from "./lib/hooks";
+
+/** Solo deja pasar con sesión iniciada; si no, manda al login y vuelve después. */
+function RequiereSesion({ children }) {
+  const usuario = useUsuario(); // se re-evalúa al cerrar sesión o si vence la renovación
+  const { pathname } = useLocation();
+  if (!estaAutenticado() || !usuario) return <Navigate to="/login" replace state={{ desde: pathname }} />;
+  return children;
+}
 
 export default function App() {
-  const [usuario, setUsuario] = useState(estaAutenticado() ? getUsuario() : null);
-  const [pacienteId, setPacienteId] = useState(null);
-
-  if (!usuario) {
-    return <Login onEntrar={setUsuario} />;
-  }
-
-  function salir() {
-    cerrarSesion();
-    setUsuario(null);
-    setPacienteId(null);
-  }
-
   return (
-    <div className="app">
-      <header className="app-header">
-        <div>
-          <strong>Hospital San Rafael</strong>
-          <span className="texto-tenue"> · {usuario.username} ({usuario.rol_nombre})</span>
-        </div>
-        <div className="app-header-derecha">
-          <EstadoServicios />
-          <button className="boton-salir" onClick={salir}>Salir</button>
-        </div>
-      </header>
-
-      <main className="app-contenido">
-        {pacienteId ? (
-          <PacienteDetalle pacienteId={pacienteId} onVolver={() => setPacienteId(null)} />
-        ) : (
-          <Pacientes onSeleccionar={setPacienteId} />
-        )}
-      </main>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/app" element={<RequiereSesion><Shell /></RequiereSesion>}>
+          <Route index element={<Comando />} />
+          <Route path="pacientes" element={<Pacientes />} />
+          <Route path="pacientes/:id" element={<Ficha />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

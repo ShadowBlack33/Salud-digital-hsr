@@ -1,7 +1,7 @@
 """Recursos físicos, sincronización FHIR, auditoría y analítica."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
@@ -82,31 +82,93 @@ def listar_camas(ctx: ContextoAcceso = Depends(RequierePermiso("cama", "read")),
     } for c in camas]
 
 
+ENCUENTRO_ACTIVO = ("planned", "arrived", "triaged", "in-progress", "onleave")
+
+
+def _nombre_corto(nombre: str | None, apellido: str | None) -> str | None:
+    """'R. Gómez': inicial del nombre y apellido. Nunca el nombre completo."""
+    nombre, apellido = (nombre or "").strip(), (apellido or "").strip()
+    if not nombre and not apellido:
+        return None
+    return f"{nombre[0]}. {apellido}".strip() if nombre else apellido
+
+
 @router.get("/camas/ocupacion", summary="Qué paciente ocupa cada cama, desde cuándo")
 def ocupacion_camas(ctx: ContextoAcceso = Depends(RequierePermiso("cama", "read")),
                     db: Session = Depends(get_db),
                     solo_ocupadas: bool = Query(True)):
     """
-    Responde directamente "¿quién está en la cama X, desde cuándo, y en qué
-    va su cirugía?" -- cruzando camas + encuentros + pacientes en una sola
-    consulta, en vez de tener que hacerlo a mano.
+    Responde "¿quién está en la cama X, desde cuándo, y con qué médico?".
+
+    Con solo_ocupadas=false devuelve las 300 camas (es lo que usa el tablero).
+    `encuentro_activo` distingue un paciente que está AHORA de un encuentro
+    viejo ya terminado: solo cuando es true se devuelven nombre corto, médico
+    y procedimiento. Todo se trae por lotes (una consulta por tabla), no una
+    por cama: el tablero consulta esto cada pocos segundos.
     """
     from app.core.crypto import descifrar
 
-    filas = db.execute(text("SELECT * FROM v_camas_ocupacion_detalle")).mappings().all()
+    filas = [dict(f) for f in db.execute(
+        text("SELECT * FROM v_camas_ocupacion_detalle")).mappings().all()]
+    if solo_ocupadas:
+        filas = [f for f in filas if f["estado_cama"] == "ocupada"]
+
+    tipos = {r["cama_id"]: dict(r) for r in db.execute(text(
+        "SELECT c.id AS cama_id, tc.nombre AS tipo_nombre, tc.costo_dia_cop "
+        "FROM camas c JOIN tipos_cama tc ON tc.id = c.tipo_cama_id "
+        "WHERE c.activo")).mappings().all()}
+
+    ids_enc = [f["encuentro_id"] for f in filas if f["encuentro_id"]]
+    encuentros = {}
+    if ids_enc:
+        encuentros = {r["id"]: dict(r) for r in db.execute(text(
+            "SELECT e.id, e.tipo, e.medico_responsable_id, "
+            "       cp.nombre AS procedimiento, dx.descripcion AS diagnostico "
+            "FROM encuentros e "
+            "LEFT JOIN catalogo_procedimientos cp ON cp.id = e.procedimiento_id "
+            "LEFT JOIN diagnosticos_cie10 dx ON dx.id = e.diagnostico_cie10_id "
+            "WHERE e.id = ANY(:ids)"), {"ids": ids_enc}).mappings().all()}
+
+    ids_pac = {f["paciente_id"] for f in filas if f["paciente_id"]}
+    pacientes = ({p.documento_bidx: p for p in db.query(Paciente).filter(
+        Paciente.documento_bidx.in_(ids_pac)).all()} if ids_pac else {})
+
+    ids_med = {e["medico_responsable_id"] for e in encuentros.values()
+               if e["medico_responsable_id"]}
+    medicos = ({m.id: m for m in db.query(Personal).filter(
+        Personal.id.in_(ids_med)).all()} if ids_med else {})
+    nombre_medico: dict[int, str] = {}
+
     resultado = []
     for f in filas:
-        if solo_ocupadas and f["estado_cama"] != "ocupada":
-            continue
         item = dict(f)
-        if item["paciente_id"]:
-            p = db.query(Paciente).filter(
-                Paciente.documento_bidx == item["paciente_id"]).first()
-            item["paciente_documento"] = (
-                descifrar(p.documento_cifrado, "pacientes.documento") if p else None
-            )
-        else:
-            item["paciente_documento"] = None
+        activo = f["estado_encuentro"] in ENCUENTRO_ACTIVO
+        p = pacientes.get(f["paciente_id"]) if f["paciente_id"] else None
+        item["paciente_documento"] = (
+            descifrar(p.documento_cifrado, "pacientes.documento") if p else None)
+        t = tipos.get(f["cama_id"], {})
+        item["tipo_nombre"] = t.get("tipo_nombre")
+        item["costo_dia_cop"] = t.get("costo_dia_cop")
+        item["encuentro_activo"] = activo
+        item.update(paciente_nombre_corto=None, encuentro_tipo=None, procedimiento=None,
+                    diagnostico=None, medico_nombre=None, medico_especialidad=None)
+        if activo and p:
+            item["paciente_nombre_corto"] = _nombre_corto(
+                descifrar(p.nombre_cifrado, "pacientes.nombre"),
+                descifrar(p.apellido_cifrado, "pacientes.apellido"))
+        e = encuentros.get(f["encuentro_id"]) if activo else None
+        if e:
+            item["encuentro_tipo"] = e["tipo"]
+            item["procedimiento"] = e["procedimiento"]
+            item["diagnostico"] = e["diagnostico"]
+            m = medicos.get(e["medico_responsable_id"])
+            if m:
+                if m.id not in nombre_medico:
+                    nombre_medico[m.id] = (
+                        f"{descifrar(m.nombre_cifrado, 'personal.nombre')} "
+                        f"{descifrar(m.apellido_cifrado, 'personal.apellido')}")
+                item["medico_nombre"] = nombre_medico[m.id]
+                item["medico_especialidad"] = m.especialidad.nombre if m.especialidad else None
         resultado.append(item)
     return resultado
 
@@ -146,6 +208,93 @@ def listar_quirofanos(ctx: ContextoAcceso = Depends(RequierePermiso("quirofano",
         "estado_desde": x.estado_desde, "tiene_arco_c": x.tiene_arco_c,
         "fhir_location_id": x.fhir_location_id,
     } for x in q.order_by(Quirofano.id).all()]
+
+
+@router.get("/quirofanos/agenda",
+            summary="Quirófanos con la cirugía en curso y las próximas del día")
+def agenda_quirofanos(ctx: ContextoAcceso = Depends(RequierePermiso("quirofano", "read")),
+                      db: Session = Depends(get_db)):
+    """
+    Para cada quirófano: su estado, la cirugía que está en curso (con la hora
+    programada frente a la real, es decir, el retraso) y las que siguen en las
+    próximas 14 horas. `ahora` es la hora del servidor: el front la usa para
+    calcular el avance sin depender del reloj del navegador.
+    """
+    from app.core.crypto import descifrar
+
+    ahora = datetime.now(timezone.utc)
+    quirofanos = db.query(Quirofano).filter(Quirofano.activo.is_(True)) \
+        .order_by(Quirofano.id).all()
+
+    filas = db.execute(text("""
+        SELECT e.id, e.quirofano_id, e.estado, e.origen, e.paciente_id,
+               e.hora_programada_inicio, e.hora_programada_fin,
+               e.hora_real_inicio, e.medico_responsable_id,
+               cp.nombre AS procedimiento, cp.duracion_estimada_min,
+               esp.nombre AS especialidad,
+               c.codigo AS cama_destino, c.estado AS cama_destino_estado
+        FROM encuentros e
+        JOIN catalogo_procedimientos cp ON cp.id = e.procedimiento_id
+        JOIN especialidades esp ON esp.id = cp.especialidad_id
+        LEFT JOIN camas c ON c.id = e.cama_id
+        WHERE e.activo AND e.tipo = 'cirugia' AND e.quirofano_id IS NOT NULL
+          AND (e.estado = 'in-progress'
+               OR (e.estado = 'planned'
+                   AND e.hora_programada_inicio >= :desde
+                   AND e.hora_programada_inicio <  :hasta))
+        ORDER BY e.hora_programada_inicio
+    """), {"desde": ahora - timedelta(hours=1),
+           "hasta": ahora + timedelta(hours=14)}).mappings().all()
+
+    ids_pac = {f["paciente_id"] for f in filas if f["paciente_id"]}
+    pacientes = ({p.documento_bidx: p for p in db.query(Paciente).filter(
+        Paciente.documento_bidx.in_(ids_pac)).all()} if ids_pac else {})
+    ids_med = {f["medico_responsable_id"] for f in filas if f["medico_responsable_id"]}
+    medicos = ({m.id: m for m in db.query(Personal).filter(
+        Personal.id.in_(ids_med)).all()} if ids_med else {})
+
+    por_qx = {q.id: {"actual": None, "proximas": []} for q in quirofanos}
+    for f in filas:
+        p = pacientes.get(f["paciente_id"])
+        m = medicos.get(f["medico_responsable_id"])
+        retraso = None
+        if f["hora_real_inicio"] and f["hora_programada_inicio"]:
+            retraso = int((f["hora_real_inicio"] - f["hora_programada_inicio"])
+                          .total_seconds() // 60)
+        item = {
+            "encuentro_id": f["id"], "estado": f["estado"], "origen": f["origen"],
+            "procedimiento": f["procedimiento"], "especialidad": f["especialidad"],
+            "duracion_estimada_min": f["duracion_estimada_min"],
+            "hora_programada_inicio": f["hora_programada_inicio"],
+            "hora_programada_fin": f["hora_programada_fin"],
+            "hora_real_inicio": f["hora_real_inicio"],
+            "retraso_inicio_min": retraso,
+            "cirujano": (f"{descifrar(m.nombre_cifrado, 'personal.nombre')} "
+                         f"{descifrar(m.apellido_cifrado, 'personal.apellido')}") if m else None,
+            "paciente_nombre_corto": _nombre_corto(
+                descifrar(p.nombre_cifrado, "pacientes.nombre"),
+                descifrar(p.apellido_cifrado, "pacientes.apellido")) if p else None,
+            "cama_destino": f["cama_destino"],
+            "cama_destino_estado": f["cama_destino_estado"],
+        }
+        bucket = por_qx.get(f["quirofano_id"])
+        if bucket is None:
+            continue
+        if f["estado"] == "in-progress":
+            if bucket["actual"] is None:
+                bucket["actual"] = item
+        else:
+            bucket["proximas"].append(item)
+
+    return {
+        "ahora": ahora.isoformat(),
+        "quirofanos": [{
+            "id": q.id, "codigo": q.codigo, "nombre": q.nombre, "estado": q.estado,
+            "estado_desde": q.estado_desde, "tiene_arco_c": q.tiene_arco_c,
+            "tiene_circulacion_extracorporea": q.tiene_circulacion_extracorporea,
+            "actual": por_qx[q.id]["actual"], "proximas": por_qx[q.id]["proximas"],
+        } for q in quirofanos],
+    }
 
 
 @router.patch("/quirofanos/{quirofano_id}/estado",

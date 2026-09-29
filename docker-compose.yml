@@ -1,10 +1,11 @@
 # Levanta el servidor HAPI FHIR R4 con backend PostgreSQL.
 #   docker compose up -d
 #   Servidor FHIR: http://localhost:8080/fhir
-services:
+  services:
   fhir-db:
     image: postgres:16-alpine
     container_name: hsr-fhir-db
+    restart: unless-stopped
     environment:
       POSTGRES_DB: hapi
       POSTGRES_USER: hapi
@@ -19,6 +20,7 @@ services:
   hapi-fhir:
     image: hapiproject/hapi:latest
     container_name: hsr-hapi-fhir
+    restart: unless-stopped
     depends_on:
       fhir-db:
         condition: service_healthy
@@ -34,10 +36,8 @@ services:
       hapi.fhir.allow_multiple_delete: "true"
       hapi.fhir.reuse_cached_search_results_millis: "0"
 
-  # Servidor PACS (DICOM) para imágenes médicas. El navegador nunca lo toca
-  # directamente -- solo la propia API le habla, por eso el puerto solo se
-  # publica en 127.0.0.1 (nada más que para poder inspeccionarlo tú mismo
-  # durante el desarrollo, igual que en el notebook de la Semana 8).
+  # Servidor PACS (DICOM) para imágenes médicas. El navegador nunca lo toca:
+  # solo la API le habla, por eso el puerto solo se publica en 127.0.0.1.
   orthanc:
     image: orthancteam/orthanc:25.5.1
     container_name: hsr-orthanc
@@ -53,22 +53,48 @@ services:
     volumes:
       - orthanc_data:/var/lib/orthanc/db
 
-  # Frontend en React, compilado y servido por nginx.
-  # OJO: la API corre con uvicorn directo en tu máquina (no está en Docker),
-  # así que el contenedor no la alcanza como "localhost" -- eso, dentro de
-  # un contenedor, se refiere al contenedor mismo, no a tu PC. Se usa
-  # host.docker.internal, el nombre especial que Docker Desktop resuelve
-  # hacia la máquina anfitriona.
+  # API FastAPI. Habla con la base de datos en Neon (por internet), con HAPI FHIR
+  # y con Orthanc (por la red interna de Docker, por su nombre de servicio).
+  # Si la tenías corriendo con uvicorn en tu máquina, apágala: este contenedor
+  # usa el mismo puerto 8000.
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: hsr-api
+    restart: unless-stopped
+    env_file: .env
+    # Lo de aquí abajo pisa lo que diga el .env: dentro de un contenedor,
+    # "localhost" es el propio contenedor, no tu PC ni los otros servicios.
+    environment:
+      FHIR_BASE_URL: http://hapi-fhir:8080/fhir
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USER: api
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:-orthanc_dev_2026}
+    depends_on:
+      - hapi-fhir
+      - orthanc
+    ports:
+      - "8000:8000"
+
+  # Front en React, compilado y servido por nginx. VITE_API_BASE se incrusta en
+  # el JS y lo usa tu NAVEGADOR, por eso es localhost:8000 (el puerto publicado
+  # de la API) y no el nombre "api" de la red interna.
   front:
     build:
       context: ./front
       args:
         VITE_API_BASE: http://localhost:8000
+        # Opcional: las cuentas de demostración del login rellenan la contraseña.
+        # Se lee del .env de esta carpeta; si no existe, queda vacío.
+        VITE_DEMO_PASSWORD: ${VITE_DEMO_PASSWORD:-}
     container_name: hsr-front
     restart: unless-stopped
+    depends_on:
+      - api
     ports:
       - "5173:80"
-
-volumes:
+      
+  volumes:
   fhir_pgdata:
   orthanc_data:

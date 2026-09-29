@@ -302,14 +302,24 @@ with SessionLocal() as db:
         check("Log de auditoría es inmutable (append-only)", True)
 
 print("\n[12] Bloqueo de cuenta tras intentos fallidos")
-for i in range(3):
-    r = client.post("/auth/login", json={"username": "facturacion01", "password": "clave-incorrecta"})
-check("3 contraseñas incorrectas seguidas -> la 3ra ya queda bloqueada",
-      r.status_code == 401)
+malo = {"username": "facturacion01", "password": "clave-incorrecta"}
+r1 = client.post("/auth/login", json=malo)
+check("1er intento fallido -> 401 y le quedan 2 intentos",
+      r1.status_code == 401 and r1.json().get("intentos_restantes") == 2, r1.text[:100])
+r2 = client.post("/auth/login", json=malo)
+check("2do intento fallido -> 401 y le queda 1",
+      r2.status_code == 401 and r2.json().get("intentos_restantes") == 1, r2.text[:100])
+r3 = client.post("/auth/login", json=malo)
+check("3er intento fallido -> 423: la cuenta queda bloqueada en ese momento",
+      r3.status_code == 423 and bool(r3.json().get("bloqueado_hasta")), r3.text[:100])
 
 r = client.post("/auth/login", json={"username": "facturacion01", "password": PASSWORD})
 check("Con la clave CORRECTA pero ya bloqueado -> 423, no deja entrar",
       r.status_code == 423)
+
+r = client.post("/auth/login", json={"username": "usuario_que_no_existe", "password": "x"})
+check("Usuario inexistente -> 401 genérico, sin contador",
+      r.status_code == 401 and "intentos_restantes" not in r.json())
 
 with SessionLocal() as db:
     db.execute(text(
@@ -320,6 +330,27 @@ with SessionLocal() as db:
 
 r = client.post("/auth/login", json={"username": "facturacion01", "password": PASSWORD})
 check("Tras desbloquear, vuelve a entrar normal", r.status_code == 200)
+
+print("\n[13] Tablero: camas y quirófanos con datos del momento")
+r = client.get("/camas/ocupacion?solo_ocupadas=false", headers=h(tok_admin))
+camas_todas = r.json() if r.status_code == 200 else []
+check("Ocupación devuelve las 300 camas", r.status_code == 200 and len(camas_todas) == 300,
+      f"{r.status_code} {len(camas_todas)}")
+if camas_todas:
+    check("Cada cama trae tipo, costo y si su encuentro está activo",
+          all(k in camas_todas[0] for k in ("tipo_nombre", "costo_dia_cop", "encuentro_activo")))
+    activas = [c for c in camas_todas if c["encuentro_activo"] and c["paciente_nombre_corto"]]
+    if activas:
+        nombre = activas[0]["paciente_nombre_corto"]
+        check("El nombre en el tablero es corto (inicial + apellido), nunca completo",
+              len(nombre.split(" ")) <= 2 and nombre[1:3] == ". ", nombre)
+r = client.get("/quirofanos/agenda", headers=h(tok_admin))
+agenda = r.json() if r.status_code == 200 else {}
+check("La agenda trae los 13 quirófanos y la hora del servidor",
+      r.status_code == 200 and len(agenda.get("quirofanos", [])) == 13 and "ahora" in agenda)
+tok_paciente = login("paciente_demo")
+check("Un rol sin permiso de quirófanos (el paciente) no ve la agenda -> 403",
+      client.get("/quirofanos/agenda", headers=h(tok_paciente)).status_code == 403)
 
 # ---------------------------------------------------------- resumen
 print("\n" + "=" * 70)

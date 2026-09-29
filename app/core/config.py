@@ -36,6 +36,11 @@ class Settings(BaseSettings):
 
     max_intentos_login: int = 3
     minutos_bloqueo: int = 15
+    # Si es True, la respuesta de un login fallido dice cuántos intentos le
+    # quedan a la cuenta. Es útil para el usuario, pero tiene un costo: quien
+    # prueba usuarios al azar puede distinguir cuáles existen (solo esos
+    # devuelven el contador). Se puede apagar con LOGIN_MOSTRAR_INTENTOS=false.
+    login_mostrar_intentos: bool = True
 
     # CORS
     cors_origenes: list[str] = ["*"]

@@ -5,6 +5,7 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -66,23 +67,45 @@ def login(datos: LoginRequest, request: Request, db: Session = Depends(get_db)):
 
     ahora = datetime.now(timezone.utc)
     if usuario.bloqueado_hasta and usuario.bloqueado_hasta > ahora:
-        raise HTTPException(
-            status.HTTP_423_LOCKED,
-            f"Cuenta bloqueada hasta {usuario.bloqueado_hasta.isoformat()}",
-        )
+        return JSONResponse(status_code=status.HTTP_423_LOCKED, content={
+            "detail": f"Cuenta bloqueada hasta {usuario.bloqueado_hasta.isoformat()}",
+            "bloqueado_hasta": usuario.bloqueado_hasta.isoformat(),
+            "intentos_restantes": 0,
+            "max_intentos": settings.max_intentos_login,
+        })
 
     if not usuario.activo:
         raise generico
 
     if not verificar_password(datos.password, usuario.password_hash):
         usuario.intentos_fallidos = (usuario.intentos_fallidos or 0) + 1
-        if usuario.intentos_fallidos >= settings.max_intentos_login:
+        bloqueada_ahora = usuario.intentos_fallidos >= settings.max_intentos_login
+        if bloqueada_ahora:
             usuario.bloqueado_hasta = ahora + timedelta(minutes=settings.minutos_bloqueo)
             usuario.intentos_fallidos = 0
+        restantes = (0 if bloqueada_ahora
+                     else settings.max_intentos_login - usuario.intentos_fallidos)
+        hasta_iso = usuario.bloqueado_hasta.isoformat() if bloqueada_ahora else None
         registrar(db, usuario, "usuario", usuario.id, "login",
                   resultado="denegado", request=request)
         db.commit()
-        raise generico
+
+        if not settings.login_mostrar_intentos:
+            raise generico
+        if bloqueada_ahora:
+            # El intento que agota el contador ya responde 423: el usuario
+            # se entera de inmediato de que la cuenta quedó bloqueada.
+            return JSONResponse(status_code=status.HTTP_423_LOCKED, content={
+                "detail": f"Cuenta bloqueada hasta {hasta_iso}",
+                "bloqueado_hasta": hasta_iso,
+                "intentos_restantes": 0,
+                "max_intentos": settings.max_intentos_login,
+            })
+        return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={
+            "detail": "Credenciales inválidas",
+            "intentos_restantes": restantes,
+            "max_intentos": settings.max_intentos_login,
+        })
 
     usuario.intentos_fallidos = 0
     usuario.ultimo_acceso = ahora

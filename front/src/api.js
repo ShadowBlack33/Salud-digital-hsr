@@ -1,84 +1,160 @@
-// Cliente de la API. La URL viene de una variable de entorno de Vite, así
-// que el mismo build sirve en local, en Docker o en producción sin tocar código.
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+// Cliente de la API.
+//
+// Sesión: el token de acceso dura 15 minutos y el de renovación 7 días. Cuando
+// una petición recibe 401, se renueva el par una sola vez (aunque fallen varias
+// peticiones a la vez) y se repite. Si la renovación también falla, la sesión
+// se cierra y la pantalla vuelve al login. Sin esto, un tablero en vivo dejaba
+// de funcionar a los 15 minutos.
 
-let token = localStorage.getItem("hsr_token") || null;
-let usuario = JSON.parse(localStorage.getItem("hsr_usuario") || "null");
+export const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
-export function getUsuario() {
-  return usuario;
-}
+const K = { access: "hsr_access", refresh: "hsr_refresh", usuario: "hsr_usuario" };
 
-export function estaAutenticado() {
-  return !!token;
-}
-
-export function cerrarSesion() {
-  token = null;
-  usuario = null;
-  localStorage.removeItem("hsr_token");
-  localStorage.removeItem("hsr_usuario");
-}
-
-async function manejarRespuesta(r) {
-  if (r.status === 204) return null;
-  const contentType = r.headers.get("content-type") || "";
-  const cuerpo = contentType.includes("application/json") ? await r.json() : await r.text();
-  if (!r.ok) {
-    const detalle = typeof cuerpo === "string" ? cuerpo : cuerpo.detail || JSON.stringify(cuerpo);
-    const error = new Error(detalle);
-    error.status = r.status;
-    throw error;
+export class ApiError extends Error {
+  constructor(status, data, mensaje) {
+    super(mensaje);
+    this.status = status;
+    this.data = data;
   }
+}
+
+// ---- Sesión como un pequeño almacén al que los componentes se suscriben
+const oyentes = new Set();
+let usuario = (() => {
+  try { return JSON.parse(localStorage.getItem(K.usuario)); } catch { return null; }
+})();
+
+export const suscribirSesion = (fn) => { oyentes.add(fn); return () => oyentes.delete(fn); };
+export const getUsuario = () => usuario;
+export const estaAutenticado = () => !!localStorage.getItem(K.access);
+
+function cambiarUsuario(u) {
+  usuario = u;
+  if (u) localStorage.setItem(K.usuario, JSON.stringify(u));
+  else localStorage.removeItem(K.usuario);
+  oyentes.forEach((fn) => fn());
+}
+
+function guardarTokens(t) {
+  localStorage.setItem(K.access, t.access_token);
+  if (t.refresh_token) localStorage.setItem(K.refresh, t.refresh_token);
+}
+
+function cerrarSesionLocal() {
+  localStorage.removeItem(K.access);
+  localStorage.removeItem(K.refresh);
+  cambiarUsuario(null);
+}
+
+/** ¿Tiene el usuario algún permiso 'recurso:accion:*'? (p. ej. puede(u, 'cama', 'update')) */
+export const puede = (u, recurso, accion) =>
+  !!u?.permisos?.some((p) => p.startsWith(`${recurso}:${accion}:`) || p === `${recurso}:${accion}`);
+
+// ---- Peticiones
+async function leerCuerpo(r) {
+  if (r.status === 204) return null;
+  const tipo = r.headers.get("content-type") || "";
+  return tipo.includes("json") ? r.json().catch(() => null) : r.text().catch(() => null);
+}
+
+function comoError(r, cuerpo) {
+  let detalle = "Error inesperado";
+  if (typeof cuerpo === "string" && cuerpo) detalle = cuerpo;
+  else if (typeof cuerpo?.detail === "string") detalle = cuerpo.detail;
+  else if (Array.isArray(cuerpo?.detail)) detalle = cuerpo.detail.map((d) => d.msg).join("; ");
+  return new ApiError(r.status, cuerpo && typeof cuerpo === "object" ? cuerpo : null, detalle);
+}
+
+let renovando = null;
+function renovar() {
+  if (renovando) return renovando;
+  const rt = localStorage.getItem(K.refresh);
+  if (!rt) return Promise.resolve(false);
+  renovando = fetch(`${API_BASE}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: rt }),
+  })
+    .then(async (r) => {
+      if (!r.ok) return false;
+      guardarTokens(await r.json());
+      return true;
+    })
+    .catch(() => false)
+    .finally(() => { renovando = null; });
+  return renovando;
+}
+
+async function pedir(ruta, { json, ...opciones } = {}, reintentar = true) {
+  const token = localStorage.getItem(K.access);
+  const headers = {
+    ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...opciones.headers,
+  };
+  let r;
+  try {
+    r = await fetch(API_BASE + ruta, {
+      ...opciones,
+      headers,
+      body: json !== undefined ? JSON.stringify(json) : opciones.body,
+    });
+  } catch {
+    throw new ApiError(0, null, "No se pudo conectar con el servidor");
+  }
+  if (r.status === 401 && reintentar && token) {
+    if (await renovar()) return pedir(ruta, { json, ...opciones }, false);
+    cerrarSesionLocal();
+  }
+  return r;
+}
+
+/** Petición JSON autenticada. `json` = cuerpo a enviar. Lanza ApiError si falla. */
+export async function api(ruta, opciones) {
+  const r = await pedir(ruta, opciones);
+  const cuerpo = await leerCuerpo(r);
+  if (!r.ok) throw comoError(r, cuerpo);
   return cuerpo;
 }
 
-// Login. Devuelve el error del backend tal cual (incluye el 423 de bloqueo,
-// con la fecha/hora hasta la que la cuenta queda bloqueada).
-export async function login(username, password) {
-  const r = await fetch(`${API_BASE}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
-  });
-  const datos = await manejarRespuesta(r);
-  token = datos.access_token;
-  localStorage.setItem("hsr_token", token);
-
-  const yo = await api("/auth/yo");
-  usuario = yo;
-  localStorage.setItem("hsr_usuario", JSON.stringify(yo));
-  return yo;
-}
-
-// Fetch autenticado genérico para JSON.
-export async function api(ruta, opciones = {}) {
-  const r = await fetch(`${API_BASE}${ruta}`, {
-    ...opciones,
-    headers: {
-      ...(opciones.body && !(opciones.body instanceof FormData)
-        ? { "Content-Type": "application/json" }
-        : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...opciones.headers,
-    },
-  });
-  return manejarRespuesta(r);
-}
-
-// Descarga un recurso binario (una imagen) autenticado y lo devuelve como
-// blob. Un <img src="..."> normal no puede mandar el header Authorization,
-// por eso se descarga así y se muestra desde una URL temporal.
+/** Descarga un recurso binario (una imagen). Un <img src> no puede mandar el
+ *  header Authorization, por eso se descarga así y se muestra desde un blob. */
 export async function apiBlob(ruta) {
-  const r = await fetch(`${API_BASE}${ruta}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!r.ok) {
-    const error = new Error(`No se pudo cargar la imagen (${r.status})`);
-    error.status = r.status;
-    throw error;
-  }
+  const r = await pedir(ruta);
+  if (!r.ok) throw new ApiError(r.status, null, `No se pudo cargar (${r.status})`);
   return r.blob();
 }
 
-export { API_BASE };
+/** Estado de los servicios (no requiere sesión). */
+export async function salud() {
+  const r = await fetch(`${API_BASE}/salud`);
+  if (!r.ok) throw new ApiError(r.status, null, "sin respuesta");
+  return r.json();
+}
+
+export async function login(username, password) {
+  let r;
+  try {
+    r = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+  } catch {
+    throw new ApiError(0, null, "No se pudo conectar con el servidor");
+  }
+  const cuerpo = await leerCuerpo(r);
+  if (!r.ok) throw comoError(r, cuerpo); // .data trae intentos_restantes y bloqueado_hasta
+  guardarTokens(cuerpo);
+  const yo = await api("/auth/yo");
+  cambiarUsuario(yo);
+  return yo;
+}
+
+export async function cerrarSesion() {
+  const rt = localStorage.getItem(K.refresh);
+  if (rt) {
+    try { await pedir("/auth/logout", { method: "POST", json: { refresh_token: rt } }, false); } catch { /* da igual */ }
+  }
+  cerrarSesionLocal();
+}
