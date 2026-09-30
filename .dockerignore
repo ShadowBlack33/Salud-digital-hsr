@@ -1,0 +1,14 @@
+# Contexto de la API (carpeta raíz del proyecto). Lo que no se necesita en la imagen:
+.env
+.env.*
+venv
+.venv
+**/__pycache__
+*.pyc
+.git
+.gitignore
+front
+docs
+db
+*.zip
+*.md
