@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Eye, EyeOff, Loader2, ShieldAlert } from "lucide-react";
 import GaleriaImagenes from "../../components/GaleriaImagenes";
+import BotonHistoriaPDF from "../../components/BotonHistoriaPDF";
+import PestanaIA from "../../components/ficha/PestanaIA";
+import PestanaRemitir from "../../components/ficha/PestanaRemitir";
+import { esClinico, esMedico, esPaciente } from "../../lib/roles";
 import Dato from "../../components/Dato";
 import Insignia from "../../components/Insignia";
 import { api, puede } from "../../api";
@@ -19,10 +23,11 @@ export default function Ficha() {
   const [error, setError] = useState(null);
   const [estancia, setEstancia] = useState(null);
   const [verDoc, setVerDoc] = useState(false);
+  const [pestana, setPestana] = useState("imagenes");
 
   useEffect(() => {
     let vivo = true;
-    setPaciente(null); setError(null); setEstancia(null); setVerDoc(false);
+    setPaciente(null); setError(null); setEstancia(null); setVerDoc(false); setPestana("imagenes");
     api(`/pacientes/${id}`).then((p) => vivo && setPaciente(p)).catch((e) => vivo && setError(e));
     if (puede(usuario, "cama", "read")) {
       api("/camas/ocupacion?solo_ocupadas=false")
@@ -94,7 +99,31 @@ export default function Ficha() {
         </div>
       </section>
 
-      <GaleriaImagenes pacienteId={id} />
+      {(() => {
+        // Pestañas según el rol: la API vuelve a validar cada acción.
+        const pestanas = [["imagenes", "Imágenes"]];
+        if (esClinico(usuario)) pestanas.push(["ia", "Análisis de IA"]);
+        if (esMedico(usuario)) pestanas.push(["remitir", "Remitir"]);
+        const verPDF = esClinico(usuario) || esPaciente(usuario);
+        return (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-2" role="tablist" aria-label="Secciones de la ficha">
+                {pestanas.map(([clave, texto]) => (
+                  <button key={clave} role="tab" aria-selected={pestana === clave} onClick={() => setPestana(clave)}
+                          className={`rounded-full px-4 py-2 text-sm font-medium transition ${pestana === clave ? "bg-charcoal text-white" : "bg-cloud-card text-ink hover:bg-hero-sky"}`}>
+                    {texto}
+                  </button>
+                ))}
+              </div>
+              {verPDF && <BotonHistoriaPDF pacienteId={id} nombre={nombre} />}
+            </div>
+            {pestana === "imagenes" && <GaleriaImagenes pacienteId={id} />}
+            {pestana === "ia" && <PestanaIA pacienteId={id} />}
+            {pestana === "remitir" && <PestanaRemitir pacienteId={id} />}
+          </>
+        );
+      })()}
     </div>
   );
 }

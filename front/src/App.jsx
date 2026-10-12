@@ -5,6 +5,12 @@ import Shell from "./pages/app/Shell";
 import Comando from "./pages/app/Comando";
 import Pacientes from "./pages/app/Pacientes";
 import Ficha from "./pages/app/Ficha";
+import Inicio from "./pages/app/Inicio";
+import MiTurno from "./pages/medico/MiTurno";
+import Remisiones from "./pages/especialista/Remisiones";
+import Facturacion from "./pages/contable/Facturacion";
+import AdminPanel from "./pages/admin/AdminPanel";
+import MiSalud from "./pages/paciente/MiSalud";
 import { estaAutenticado } from "./api";
 import { useUsuario } from "./lib/hooks";
 
@@ -23,7 +29,13 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/app" element={<RequiereSesion><Shell /></RequiereSesion>}>
-          <Route index element={<Comando />} />
+          <Route index element={<Inicio />} />
+          <Route path="mando" element={<Comando />} />
+          <Route path="turno" element={<MiTurno />} />
+          <Route path="remisiones" element={<Remisiones />} />
+          <Route path="facturacion" element={<Facturacion />} />
+          <Route path="admin" element={<AdminPanel />} />
+          <Route path="mi-salud" element={<MiSalud />} />
           <Route path="pacientes" element={<Pacientes />} />
           <Route path="pacientes/:id" element={<Ficha />} />
         </Route>

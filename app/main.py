@@ -123,6 +123,13 @@ def salud():
     from app.services import pacs
     estado_pacs = "ok" if pacs.is_alive() else "no disponible"
 
+    # Servicio de IA (Corte 2): solo se reporta, la API arranca aunque no esté.
+    import httpx
+    try:
+        estado_ml = "ok" if httpx.get(f"{settings.ml_url}/salud", timeout=2).status_code == 200 else "error"
+    except httpx.HTTPError:
+        estado_ml = "no disponible"
+
     return {"api": "ok", "base_datos": estado_bd,
             "servidor_fhir": settings.fhir_base_url,
-            "pacs": estado_pacs}
+            "pacs": estado_pacs, "ml": estado_ml}
