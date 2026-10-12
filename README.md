@@ -1,6 +1,8 @@
-# Sistema de Coordinación de Capacidad Quirúrgica
+# Pulso · coordinación hospitalaria en tiempo real
 
-**Hospital San Rafael** (caso hipotético · ~300 camas · 13 quirófanos)
+Sistema de coordinación de capacidad quirúrgica, camas y urgencias. Toda la
+demostración corre sobre **Hospital San Rafael**, un caso de estudio
+hipotético (~300 camas · 13 quirófanos, datos sintéticos).
 Proyecto integrador — Sistemas en Salud Digital
 
 Coordinación en tiempo real de quirófanos, camas y urgencias, con

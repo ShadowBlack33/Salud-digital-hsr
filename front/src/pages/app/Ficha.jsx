@@ -8,11 +8,13 @@ import PestanaIA from "../../components/ficha/PestanaIA";
 import PestanaRemitir from "../../components/ficha/PestanaRemitir";
 import PestanaHistoria from "../../components/ficha/PestanaHistoria";
 import { esClinico, esMedico, esPaciente } from "../../lib/roles";
+import * as S from "../../lib/servicios";
+import { ESTADO_CIRUGIA, TIPO_ENCUENTRO, valorClinico } from "../../lib/clinico";
 import Dato from "../../components/Dato";
 import Insignia from "../../components/Insignia";
 import { api, puede } from "../../api";
 import { infoCama } from "../../lib/estados";
-import { duracion, edadLegible, enmascarar, iniciales, minutosDesde } from "../../lib/format";
+import { duracion, edadLegible, enmascarar, hora, iniciales, minutosDesde } from "../../lib/format";
 import { useReloj, useUsuario } from "../../lib/hooks";
 
 const SEXO = { M: "Masculino", F: "Femenino", O: "Otro" };
@@ -24,15 +26,18 @@ export default function Ficha() {
   const [paciente, setPaciente] = useState(null);
   const [error, setError] = useState(null);
   const [estancia, setEstancia] = useState(null);
+  const [atencion, setAtencion] = useState(null);    // médico/especialista: su vista del paciente
   const [verDoc, setVerDoc] = useState(false);
   const { state } = useLocation();
   const [pestana, setPestana] = useState(state?.pestana || "historia");
 
   useEffect(() => {
     let vivo = true;
-    setPaciente(null); setError(null); setEstancia(null); setVerDoc(false); setPestana(state?.pestana || "historia");
+    setPaciente(null); setError(null); setEstancia(null); setAtencion(null); setVerDoc(false); setPestana(state?.pestana || "historia");
     api(`/pacientes/${id}`).then((p) => vivo && setPaciente(p)).catch((e) => vivo && setError(e));
-    if (puede(usuario, "cama", "read")) {
+    if (esClinico(usuario)) {
+      S.misPacientes().then((r) => vivo && setAtencion(r.pacientes.find((x) => x.paciente_id === id) || null)).catch(() => {});
+    } else if (puede(usuario, "cama", "read")) {
       api("/camas/ocupacion?solo_ocupadas=false")
         .then((l) => vivo && setEstancia(l.find((c) => c.paciente_id === id && c.encuentro_activo && c.encuentro_tipo === "hospitalizacion") || null))
         .catch(() => {});
@@ -51,8 +56,8 @@ export default function Ficha() {
   return (
     <div className="space-y-6 pb-16">
       {atras && (
-        <Link to="/app/pacientes" className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-strong transition hover:text-ink">
-          <ArrowLeft size={16} aria-hidden="true" />Pacientes
+        <Link to={esClinico(usuario) ? "/app/mis-pacientes" : "/app/pacientes"} className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-strong transition hover:text-ink">
+          <ArrowLeft size={16} aria-hidden="true" />{esClinico(usuario) ? "Mis pacientes" : "Pacientes"}
         </Link>
       )}
 
@@ -74,10 +79,14 @@ export default function Ficha() {
               <span className="rounded-full bg-paper-white px-3 py-1">{SEXO[paciente.sexo] || paciente.sexo}</span>
               {paciente.riesgo_asa && <span className="rounded-full bg-paper-white px-3 py-1">ASA {paciente.riesgo_asa}</span>}
               {paciente.tiene_comorbilidades && <span className="rounded-full bg-gold-soft px-3 py-1 text-gold-ink">Con comorbilidades</span>}
+              <span className="rounded-full bg-paper-white px-3 py-1" title="Quién responde por la atención">
+                {paciente.cobertura === "particular" ? "Particular" : `${paciente.eps_nombre || "EPS"}${paciente.regimen ? ` · ${paciente.regimen}` : ""}`}
+              </span>
             </div>
           </div>
         </div>
 
+        {esClinico(usuario) ? <AtencionActual a={atencion} /> : (
         <div className="rounded-3xl bg-paper-white p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-strong">Estancia actual</p>
           {estancia ? (
@@ -91,6 +100,7 @@ export default function Ficha() {
             <p className="mt-2 text-sm text-gray-strong">No está hospitalizado en este momento.</p>
           )}
         </div>
+        )}
       </section>
 
       {(() => {
@@ -119,6 +129,39 @@ export default function Ficha() {
           </>
         );
       })()}
+    </div>
+  );
+}
+
+/** Lo que el médico necesita ver arriba: dónde está, críticos y cirugía. */
+function AtencionActual({ a }) {
+  const e = a?.encuentro, cx = a?.cirugia;
+  return (
+    <div className="rounded-3xl bg-paper-white p-5">
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-strong">Atención actual</p>
+      {!a ? <p className="mt-2 text-sm text-gray-strong">Sin atención activa a tu cargo.</p> : (
+        <dl className="mt-1 divide-y divide-cloud-card">
+          {e ? (
+            <>
+              <Dato etiqueta="Dónde">{TIPO_ENCUENTRO[e.tipo]}{e.triage ? ` · triage ${e.triage}` : ""}{e.cama ? ` · ${e.cama}` : ""}</Dato>
+              {e.diagnostico && <Dato etiqueta="Diagnóstico">{e.dx_codigo} · {e.diagnostico}</Dato>}
+              {e.medico && <Dato etiqueta="Responsable">{e.soy_responsable ? "Usted" : e.medico}</Dato>}
+            </>
+          ) : <Dato etiqueta="Dónde">Sin encuentro activo</Dato>}
+          {cx && (
+            <Dato etiqueta="Cirugía">
+              {ESTADO_CIRUGIA[cx.estado]} · {cx.procedimiento}{cx.quirofano ? ` · ${cx.quirofano}` : ""}
+              {cx.estado === "planned" && cx.hora_programada_inicio ? ` · ${hora(cx.hora_programada_inicio)}` : ""}
+              {" · "}{cx.mi_papel === "cirujano" ? "usted opera" : cx.mi_papel === "anestesiologo" ? "usted anestesia" : `cirujano: ${cx.cirujano || "sin asignar"}`}
+            </Dato>
+          )}
+          {a.criticos.length > 0 && (
+            <Dato etiqueta="Críticos">
+              <span className="flex flex-wrap justify-end gap-1">{a.criticos.slice(0, 3).map((c, i) => <span key={i} className="rounded-full bg-coral-deep px-2 py-0.5 text-xs font-semibold text-white">{valorClinico(c)}</span>)}</span>
+            </Dato>
+          )}
+        </dl>
+      )}
     </div>
   );
 }

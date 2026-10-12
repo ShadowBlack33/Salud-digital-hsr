@@ -9,6 +9,7 @@
 
 import { api, apiBlob } from "../api";
 import * as M from "./mocks";
+import { normalizarFactura } from "./facturacion";
 
 const rutaInexistente = (e) =>
   (e?.status === 404 && e.message === "Not Found") || (e?.status === 405 && e.message === "Method Not Allowed");
@@ -84,14 +85,23 @@ export const aceptarRemision = (id) =>
   escribir(`/remisiones/${id}/aceptar`, { method: "POST" }, () => M.aceptar(id));
 
 // ------------------------------------------------------------------ contabilidad (R09)
-export const facturas = async () => {
-  const r = await leer("/contabilidad/facturas", M.facturas);
-  return { ...r, datos: lista(r.datos, "facturas") };
+// La lista puede venir completa (y se filtra aquí) o ya filtrada y paginada
+// por la API ({facturas, total}); ver docs/CONTRATO_FACTURACION.md.
+export const facturas = async (filtros = {}) => {
+  const q = new URLSearchParams(Object.entries(filtros).filter(([, v]) => v !== "" && v != null));
+  const r = await leer(`/contabilidad/facturas${q.size ? `?${q}` : ""}`, M.facturas);
+  return { ...r, datos: lista(r.datos, "facturas").map(normalizarFactura), total: r.datos?.total, paginada: !Array.isArray(r.datos) && r.datos?.total != null };
+};
+export const tarifario = async () => {
+  const r = await leer("/contabilidad/tarifario", M.tarifario);
+  return { ...r, datos: lista(r.datos, "servicios") };
 };
 export const crearFactura = (datos) =>
   escribir("/contabilidad/facturas", { method: "POST", json: datos }, () => M.crearFactura(datos));
 export const pagarFactura = (id) =>
   escribir(`/contabilidad/facturas/${id}/pagar`, { method: "PATCH" }, () => M.pagar(id));
+export const anularFactura = (id, motivo) =>
+  escribir(`/contabilidad/facturas/${id}/anular`, { method: "PATCH", json: { motivo } }, () => M.anular(id));
 
 // ------------------------------------------------------------------ historia clínica (R11)
 export const historia = (pacienteId) => leer(`/pacientes/${pacienteId}/historia`, () => M.historia(pacienteId));
@@ -118,3 +128,16 @@ export const auditoria = ({ operacion, entidad, limite = 100 } = {}) => {
   if (entidad) q.set("entidad_tipo", entidad);
   return api(`/auditoria?${q}`);
 };
+
+// ------------------------------------------------------------------ vistas por perfil (rutas reales)
+export const misPacientes = () => api("/mis-pacientes");
+export const misCirugias = (dias = 7) => api(`/mis-cirugias?dias=${dias}`);
+export const tableroHospital = () => api("/analitica/hospital");
+export const miCuenta = () => api("/mi-cuenta");
+
+// ------------------------------------------------------------------ coordinación quirúrgica
+export const cirugiasDia = (fecha) => api(`/cirugias/dia${fecha ? `?fecha=${fecha}` : ""}`);
+export const cirugiasCatalogos = () => api("/cirugias/catalogos");
+export const programarCirugia = (datos) => api("/cirugias", { method: "POST", json: datos });
+export const reprogramarCirugia = (id, datos) => api(`/cirugias/${id}/reprogramar`, { method: "PATCH", json: datos });
+export const cancelarCirugia = (id, datos) => api(`/cirugias/${id}/cancelar`, { method: "POST", json: datos });

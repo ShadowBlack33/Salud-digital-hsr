@@ -35,6 +35,9 @@ class PacienteCrear(BaseModel):
     fecha_nacimiento: date
     sexo: str = Field(..., pattern="^[MFO]$")
     eps_id: int | None = None
+    eps_nombre: str | None = None
+    cobertura: str | None = Field(None, description="particular | eps | especial")
+    regimen: str | None = None
     tiene_comorbilidades: bool = False
     riesgo_asa: int | None = Field(None, ge=1, le=5)
     consentimiento_datos: bool = False
@@ -86,6 +89,10 @@ def _a_respuesta(p: Paciente, enmascarar_doc: bool = False) -> PacienteRespuesta
         fecha_nacimiento=p.fecha_nacimiento,
         sexo=p.sexo,
         eps_id=p.eps_id,
+        eps_nombre=p.eps.nombre if p.eps else None,
+        cobertura=("particular" if not p.eps or p.eps.codigo == "PART"
+                   else "especial" if p.eps.regimen == "especial" else "eps"),
+        regimen=p.eps.regimen if p.eps else None,
         tiene_comorbilidades=bool(p.tiene_comorbilidades),
         riesgo_asa=p.riesgo_asa,
         activo=bool(p.activo),
@@ -178,8 +185,11 @@ def buscar(documento: str,
     bidx = blind_index(documento, "pacientes.documento")
     p = db.query(Paciente).filter(Paciente.documento_bidx == bidx,
                                   Paciente.activo.is_(True)).first()
-    if p is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
+    if p is None or (ctx.alcance_paciente() == "assigned" and not ctx.es_paciente_asignado(p.documento_bidx)):
+        # Para un médico, un paciente que no es suyo "no existe": así el
+        # buscador no confirma si alguien se atiende en el hospital.
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            "Paciente no encontrado entre los suyos" if p else "Paciente no encontrado")
     ctx.verificar_registro(p)
     return _a_respuesta(p)
 

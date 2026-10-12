@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
-    BigInteger, Boolean, Column, Date, DateTime, ForeignKey, Integer,
+    BigInteger, Boolean, Column, Computed, Date, DateTime, ForeignKey, Integer,
     LargeBinary, Numeric, SmallInteger, String, Text, func,
 )
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
@@ -256,6 +256,8 @@ class Paciente(Base):
     created_by = Column(Integer)
     updated_at = Column(DateTime(timezone=True))
 
+    eps = relationship("Eps", lazy="joined")
+
     @property
     def id(self):
         """
@@ -291,7 +293,11 @@ class Encuentro(Base):
     hora_programada_fin = Column(DateTime(timezone=True))
     hora_real_inicio = Column(DateTime(timezone=True))
     hora_real_fin = Column(DateTime(timezone=True))
-    minutos_desviacion = Column(Integer)
+    # Columna generada por Postgres (GENERATED ALWAYS): SQLAlchemy no debe
+    # intentar escribirla, o el INSERT falla.
+    minutos_desviacion = Column(Integer, Computed(
+        "CASE WHEN hora_real_fin IS NOT NULL AND hora_programada_fin IS NOT NULL "
+        "THEN EXTRACT(EPOCH FROM (hora_real_fin - hora_programada_fin))::INT / 60 END", persisted=True))
     fhir_encounter_id = Column(String(64))
     observaciones_texto = Column(Text)
     activo = Column(Boolean, default=True)

@@ -8,7 +8,7 @@ import Inicio from "./pages/app/Inicio";
 import NoEncontrado from "./pages/app/NoEncontrado";
 import Permitido from "./components/Permitido";
 import ErrorEstado from "./components/ErrorEstado";
-import { esAdmin, esClinico, esContable, esMedico, esPaciente } from "./lib/roles";
+import { esAdmin, esClinico, esContable, esCoordinador, esEspecialista, esMedico, esPaciente, programaCirugias } from "./lib/roles";
 import { estaAutenticado, puede } from "./api";
 import { useUsuario } from "./lib/hooks";
 
@@ -23,6 +23,10 @@ const Remisiones = lazy(() => import("./pages/especialista/Remisiones"));
 const Facturacion = lazy(() => import("./pages/contable/Facturacion"));
 const AdminPanel = lazy(() => import("./pages/admin/AdminPanel"));
 const MiSalud = lazy(() => import("./pages/paciente/MiSalud"));
+const MisPacientes = lazy(() => import("./pages/clinico/MisPacientes"));
+const MisCirugias = lazy(() => import("./pages/especialista/MisCirugias"));
+const Cirugias = lazy(() => import("./pages/cirugias/CoordinacionQuirurgica"));
+const Hospital = lazy(() => import("./pages/coordinador/Hospital"));
 
 /** Solo deja pasar con sesión iniciada; si no, manda al login y vuelve después. */
 function RequiereSesion({ children }) {
@@ -30,6 +34,12 @@ function RequiereSesion({ children }) {
   const { pathname } = useLocation();
   if (!estaAutenticado() || !usuario) return <Navigate to="/login" replace state={{ desde: pathname }} />;
   return children;
+}
+
+/** Un médico o especialista no busca en todo el hospital: va a "Mis pacientes". */
+function PacientesSegunPerfil() {
+  const usuario = useUsuario();
+  return esClinico(usuario) ? <Navigate to="/app/mis-pacientes" replace /> : <Pacientes />;
 }
 
 export default function App() {
@@ -42,7 +52,11 @@ export default function App() {
         <Route path="/cambiar-clave" element={<RequiereSesion><CambiarClave /></RequiereSesion>} />
         <Route path="/app" element={<RequiereSesion><Shell /></RequiereSesion>}>
           <Route index element={<Inicio />} />
-          <Route path="mando" element={<Permitido si={(u) => puede(u, "cama", "read")}><Comando /></Permitido>} />
+          <Route path="mando" element={<Permitido si={(u) => puede(u, "cama", "read") && !esCoordinador(u)}><Comando /></Permitido>} />
+          <Route path="hospital" element={<Permitido si={(u) => esCoordinador(u) || esAdmin(u)}><Hospital /></Permitido>} />
+          <Route path="cirugias" element={<Permitido si={programaCirugias}><Cirugias /></Permitido>} />
+          <Route path="mis-pacientes" element={<Permitido si={esClinico}><MisPacientes /></Permitido>} />
+          <Route path="mis-cirugias" element={<Permitido si={(u) => esEspecialista(u) || esMedico(u)}><MisCirugias /></Permitido>} />
           <Route path="turno" element={<Permitido si={esMedico}><MiTurno /></Permitido>} />
           <Route path="remisiones" element={<Permitido si={esClinico}><Remisiones /></Permitido>} />
           <Route path="facturacion" element={<Permitido si={(u) => esContable(u) || esAdmin(u)}><Facturacion /></Permitido>} />
@@ -50,7 +64,7 @@ export default function App() {
           <Route path="mi-salud" element={<Permitido si={esPaciente}><MiSalud /></Permitido>} />
           <Route path="sin-pantalla" element={<ErrorEstado status={403} titulo="Tu rol aún no tiene pantallas" detalle="Tu cuenta está activa, pero este rol no tiene vistas en el sistema todavía. Habla con el administrador." accion={false} />} />
           <Route path="*" element={<NoEncontrado />} />
-          <Route path="pacientes" element={<Pacientes />} />
+          <Route path="pacientes" element={<Permitido si={(u) => puede(u, "paciente", "read") && !esPaciente(u)}>{<PacientesSegunPerfil />}</Permitido>} />
           <Route path="pacientes/:id" element={<Ficha />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

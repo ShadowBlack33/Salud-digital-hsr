@@ -1,8 +1,7 @@
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Clock, HeartPulse, LayoutDashboard, LogOut, Receipt, Search, Send, Shield, Users } from "lucide-react";
+import { Activity, CalendarClock, Clock, HeartPulse, LayoutDashboard, LogOut, Receipt, Search, Send, Shield, Users } from "lucide-react";
 import Logo from "../../components/Logo";
-import EstadoServicios from "../../components/EstadoServicios";
 import { ProveedorAvisos } from "../../components/Avisos";
 import Campana from "../../components/Campana";
 import EnVivo from "../../components/EnVivo";
@@ -12,13 +11,13 @@ import ConexionCaida from "../../components/ConexionCaida";
 import BuscadorRapido from "../../components/BuscadorRapido";
 import LimiteError from "../../components/LimiteError";
 import Esqueleto from "../../components/Esqueleto";
-import { cerrarSesion } from "../../api";
+import { cerrarSesion, vigilarInactividad } from "../../api";
 import { useUsuario } from "../../lib/hooks";
 import { puede } from "../../api";
 import { menu } from "../../lib/roles";
 import { ProveedorTiempoReal } from "../../lib/tiempoReal";
 
-const ICONOS = { admin: Shield, turno: Clock, remisiones: Send, facturacion: Receipt, salud: HeartPulse, mando: LayoutDashboard, pacientes: Users };
+const ICONOS = { admin: Shield, turno: Clock, remisiones: Send, facturacion: Receipt, salud: HeartPulse, mando: LayoutDashboard, pacientes: Users, cirugias: CalendarClock, hospital: Activity };
 
 const enlace = ({ isActive }) =>
   `flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition ${isActive ? "bg-charcoal text-white" : "text-ink hover:bg-cloud-card"}`;
@@ -28,6 +27,9 @@ export default function Shell() {
   const navegar = useNavigate();
   const { pathname } = useLocation();
   const items = menu(usuario);   // cada rol ve solo sus pantallas (lib/roles.js)
+  // 15 minutos sin usar el sistema cierran la sesión (equipos compartidos).
+  useEffect(() => vigilarInactividad(15, () =>
+    navegar("/login", { replace: true, state: { mensaje: "Tu sesión se cerró tras 15 minutos sin actividad." } })), [navegar]);
   // Contraseña temporal puesta por el admin: no se entra a nada hasta cambiarla.
   if (usuario?.debe_cambiar_password) return <Navigate to="/cambiar-clave" replace />;
 
@@ -40,21 +42,20 @@ export default function Shell() {
       <a href="#contenido" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:rounded-full focus:bg-charcoal focus:px-4 focus:py-2 focus:text-white">Saltar al contenido</a>
       <header className="sticky top-4 z-40 mx-auto w-[min(1280px,calc(100%-2rem))]">
         <nav aria-label="Principal" className="flex items-center justify-between gap-3 rounded-[32px] bg-paper-white/85 py-2.5 pl-4 pr-3 shadow-lift backdrop-blur-xl">
-          <Link to="/" aria-label="Ir al inicio" className="shrink-0"><span className="hidden sm:block"><Logo /></span><span className="sm:hidden"><Logo compacto /></span></Link>
+          <Link to="/app" aria-label="Ir a mi inicio" className="shrink-0"><span className="hidden sm:block"><Logo /></span><span className="sm:hidden"><Logo compacto /></span></Link>
 
           <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
             {items.map(([ruta, texto, icono]) => {
               const Icono = ICONOS[icono];
               return (
                 <NavLink key={ruta} to={ruta} className={enlace} title={texto}>
-                  <Icono size={16} aria-hidden="true" /><span className="hidden xl:inline">{texto}</span>
+                  <Icono size={16} aria-hidden="true" /><span className="hidden lg:inline">{texto}</span>
                 </NavLink>
               );
             })}
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            <EstadoServicios className="hidden 2xl:flex" />
             <EnVivo />
             {puede(usuario, "paciente", "read") && usuario?.rol !== "paciente" && (
               <button onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }))}

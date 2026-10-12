@@ -62,11 +62,39 @@ Solo Carlos las aplica, en orden, después de revisarlas:
 
 ```bash
 python scripts/aplicar_sql.py db/08_roles_corte2.sql
+python scripts/aplicar_sql.py db/09_perfiles.sql
 ```
 
 `08` crea los roles `medico`, `especialista` y `contable` y las cuentas
 `medico01`, `especialista01`, `contable01` y `bloqueo_prueba` (misma contraseña
 de demostración que `admin`). Se puede correr más de una vez.
+
+`09` deja los perfiles definitivos, sin duplicados: las cuentas de
+`medico_general`, `medico_especialista` y `facturacion` pasan a `medico`,
+`especialista` y `contable`; `director_medico` pasa a ser `coordinador`
+(coordinador del hospital: tablero general, sin pacientes) y la coordinación
+quirúrgica queda en `enfermero_jefe` (cuenta de demostración `jefe01`). Médico
+y especialista ven solo sus pacientes. Cierra las sesiones abiertas para que
+todos entren con su perfil nuevo. Se puede correr más de una vez.
+
+### Perfiles
+
+| Perfil | Entra a | Ve |
+|---|---|---|
+| `admin` | Administración | Usuarios, bloqueos, auditoría, servicios, pacientes y facturación |
+| `coordinador` | Hospital | Capacidad por área, riesgo de colapso, dinero, IA. Ningún paciente |
+| `enfermero_jefe` | Cirugías | Programa, mueve y cancela cirugías; centro de mando; pacientes |
+| `medico` | Mi turno | Sus pacientes, casos críticos, IA, remisiones |
+| `especialista` | Remisiones | Sus pacientes y sus cirugías (si está asignado o no) |
+| `contable` | Facturación | Cobros por tipo, estado, entidad y paciente. Nada clínico |
+| `paciente` | Mi salud | Su información y lo que se le cobra a él y a su EPS |
+
+### Datos de demostración
+
+El contenedor `jornada` corre, al levantar el sistema, `simular_jornada.py`
+(camas y quirófanos del momento), `casos_demo.py` (pacientes y casos críticos
+de `medico01` y `especialista01`) y, una sola vez, `cargar_radiografias.py`
+(radiografías reales del NIH ChestX-ray14 asignadas a pacientes, en el PACS).
 
 ## 4. Usar el PostgreSQL del compose en vez de Neon
 

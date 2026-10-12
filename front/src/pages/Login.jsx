@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, Eye, EyeOff, Loader2, LockKeyhole, WifiOff } from "lucide-react";
 import Logo from "../components/Logo";
 import EstadoServicios from "../components/EstadoServicios";
-import { estaAutenticado, login } from "../api";
+import { cerrarSesion, estaAutenticado, login } from "../api";
 import { horaConSegundos } from "../lib/format";
 
 const CUENTAS = [
   { usuario: "admin", rol: "Administrador", detalle: "Usuarios, desbloqueos y auditoría" },
-  { usuario: "medico01", rol: "Médico", detalle: "Atiende, analiza con IA y remite" },
-  { usuario: "especialista01", rol: "Especialista", detalle: "Recibe y acepta remisiones" },
+  { usuario: "coordinador", rol: "Coordinador del hospital", detalle: "Capacidad, riesgo de colapso y dinero" },
+  { usuario: "jefe01", rol: "Enfermera jefe", detalle: "Programa y mueve cirugías" },
+  { usuario: "medico01", rol: "Médico general", detalle: "Sus pacientes, críticos e IA" },
+  { usuario: "especialista01", rol: "Especialista", detalle: "Remisiones y sus cirugías" },
   { usuario: "contable01", rol: "Contable", detalle: "Facturación, sin datos clínicos" },
-  { usuario: "paciente_demo", rol: "Paciente", detalle: "Solo su propia información" },
-  { usuario: "coordinador", rol: "Coordinación quirúrgica", detalle: "Camas y quirófanos" },
+  { usuario: "paciente_demo", rol: "Paciente", detalle: "Su salud y lo que se le cobra" },
 ];
 const CLAVE_DEMO = import.meta.env.VITE_DEMO_PASSWORD || "";
 const OCULTAR_CUENTAS = import.meta.env.VITE_OCULTAR_CUENTAS_DEMO === "true";
@@ -58,7 +59,8 @@ export default function Login() {
   const [sacudiendo, setSacudiendo] = useState(false);
   const campoClave = useRef(null);
 
-  if (estaAutenticado()) return <Navigate to={state?.desde || "/app"} replace />;
+  // Volver al login con una sesión abierta (botón atrás, otra URL) la cierra.
+  useEffect(() => { if (estaAutenticado()) cerrarSesion(); }, []);
 
   const bloqueado = fallo?.tipo === "bloqueo";
 
@@ -102,8 +104,9 @@ export default function Login() {
         <main className="anim-rise rounded-[32px] bg-paper-white p-7 shadow-lift sm:p-9">
           <div className={sacudiendo ? "anim-shake" : ""}>
           <Logo />
-          <h1 className="mt-7 text-[32px] font-semibold leading-[1.1] tracking-display">Ingresa al centro de mando</h1>
+          <h1 className="mt-7 text-[32px] font-semibold leading-[1.1] tracking-display">Ingresa a Pulso</h1>
           <p className="mt-2 text-[15px] text-gray-strong">Usa tu usuario institucional. Cada acceso queda en la auditoría.</p>
+          <p className="mt-2 text-xs text-gray-strong">Demostración sobre el caso hipotético <b className="font-semibold text-ink">Hospital San Rafael</b>. Los datos son sintéticos.</p>
           {state?.mensaje && !fallo && <p role="status" className="anim-pop mt-5 rounded-2xl bg-green-soft px-4 py-3 text-sm font-medium text-green-ink">{state.mensaje}</p>}
 
           {bloqueado && (

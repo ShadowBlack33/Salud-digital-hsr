@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import auth, clinico, imaging, pacientes, recursos, usuarios
+from app.api import auth, cirugias, clinico, imaging, pacientes, perfiles, recursos, usuarios
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -115,6 +115,8 @@ app.include_router(recursos.audit_router)
 app.include_router(recursos.analitica_router)
 app.include_router(imaging.router)
 app.include_router(usuarios.router)
+app.include_router(perfiles.router)
+app.include_router(cirugias.router)
 
 
 @app.get("/", tags=["Sistema"], summary="Información de la API")

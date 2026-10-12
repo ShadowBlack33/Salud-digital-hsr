@@ -163,11 +163,13 @@ services:
   # Jornada en curso para el tablero. El generador de datos deja solo historia
   # (cirugías ya terminadas); sin esto, el centro de mando muestra todo libre y
   # camas "en limpieza desde hace semanas". Corre scripts/simular_jornada.py
+  # (y luego scripts/casos_demo.py, los pacientes de medico01 y especialista01)
   # una vez cada vez que se levanta el sistema, cuando la API ya está sana, y
   # termina. Borra y vuelve a crear solo lo que él mismo creó la vez anterior.
   #
   #   SIMULAR_JORNADA=false   en el .env para no correrlo (base compartida)
   #   JORNADA_CADA_MIN=60     en el .env para refrescarla cada hora (demo larga)
+  #   CARGAR_RADIOGRAFIAS=false  para no subir las radiografías NIH al PACS
   #   docker compose run --rm jornada      para correrlo a mano
   jornada:
     build:
@@ -175,6 +177,11 @@ services:
       dockerfile: Dockerfile.api
     container_name: hsr-jornada
     env_file: .env
+    environment:
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USER: api
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:-orthanc_dev_2026}
+      RX_CACHE: /tmp/rx_nih
     restart: "no"
     depends_on:
       api:
@@ -183,8 +190,14 @@ services:
     command:
       - |
         if [ "$${SIMULAR_JORNADA:-true}" = "false" ]; then echo "Jornada omitida (SIMULAR_JORNADA=false)"; exit 0; fi
+        primera=1
         while true; do
           python scripts/simular_jornada.py || echo "La simulación falló; el sistema sigue funcionando."
+          python scripts/casos_demo.py || echo "Los casos de demostración fallaron; el sistema sigue funcionando."
+          if [ "$$primera" = "1" ] && [ "$${CARGAR_RADIOGRAFIAS:-true}" != "false" ]; then
+            python scripts/cargar_radiografias.py || echo "No se cargaron las radiografías (¿sin internet o sin PACS?)."
+          fi
+          primera=0
           [ -z "$${JORNADA_CADA_MIN:-}" ] && exit 0
           echo "Siguiente actualización en $${JORNADA_CADA_MIN} min"; sleep $$(( $${JORNADA_CADA_MIN} * 60 ))
         done

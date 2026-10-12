@@ -78,7 +78,8 @@ check("Usuario inexistente -> 401 (mensaje genérico)", r.status_code == 401)
 tok_admin = login("admin")
 check("Login de admin exitoso", tok_admin is not None)
 
-tok_coord = login("coordinador")
+tok_coord = login("coordinador")      # coordinador del hospital: no ve pacientes
+tok_jefe = login("jefe01")            # enfermero(a) jefe: camas, quirófanos y agenda
 tok_integracion = login("integracion_svc")
 
 # Buscar dos médicos especialistas distintos
@@ -86,7 +87,7 @@ with SessionLocal() as db:
     filas = db.execute(text("""
         SELECT u.username FROM usuarios u
         JOIN roles r ON r.id = u.rol_id
-        WHERE r.codigo = 'medico_especialista' ORDER BY u.id LIMIT 2
+        WHERE r.codigo = 'especialista' AND u.personal_id IS NOT NULL ORDER BY u.id LIMIT 2
     """)).fetchall()
 med_a = login(filas[0][0]) if filas else None
 med_b = login(filas[1][0]) if len(filas) > 1 else None
@@ -231,18 +232,18 @@ if proc and cama_gen and paciente_id:
 
 # -------------------------------------------------------- 9. Recursos
 print("\n[9] Estado de recursos y mapeo FHIR")
-r = client.get("/camas", params={"limite": 5}, headers=h(tok_coord))
+r = client.get("/camas", params={"limite": 5}, headers=h(tok_jefe))
 check("Listar camas -> 200", r.status_code == 200, r.text[:100])
 
 r = client.patch("/camas/1/estado", json={"estado": "en_limpieza",
                                           "motivo": "Prueba e2e"},
-                 headers=h(tok_coord))
+                 headers=h(tok_jefe))
 check("Cambiar estado de cama -> 200", r.status_code == 200, r.text[:120])
 if r.status_code == 200:
     check("Devuelve el código FHIR operationalStatus 'H'",
           r.json()["fhir_operational_status"]["code"] == "H")
 
-r = client.get("/fhir/preview/cama/1", headers=h(tok_coord))
+r = client.get("/fhir/preview/cama/1", headers=h(tok_jefe))
 check("Preview del recurso Location -> 200", r.status_code == 200)
 if r.status_code == 200:
     j = r.json()
@@ -363,6 +364,52 @@ check("La agenda trae los 13 quirófanos y la hora del servidor",
 tok_paciente = login("paciente_demo")
 check("Un rol sin permiso de quirófanos (el paciente) no ve la agenda -> 403",
       client.get("/quirofanos/agenda", headers=h(tok_paciente)).status_code == 403)
+
+# ---------------------------------------------------------- 14. Perfiles
+print("\n[14] Cada perfil ve solo lo suyo")
+roles = {}
+with SessionLocal() as db:
+    for codigo, n in db.execute(text("SELECT r.codigo, COUNT(*) FROM roles r GROUP BY r.codigo")).fetchall():
+        roles[codigo] = n
+check("Sin roles duplicados del Corte 1 (medico_general, medico_especialista, facturacion)",
+      not ({"medico_general", "medico_especialista", "facturacion", "coordinador_quirurgico"} & set(roles)),
+      str(sorted(roles)))
+check("Existen los cinco roles del Corte 2 y el coordinador del hospital",
+      {"admin", "medico", "especialista", "paciente", "contable", "coordinador"} <= set(roles))
+
+# Un paciente creado por el médico A es suyo; el médico B no lo ve.
+if med_a and med_b and paciente_id:
+    check("El médico que registró al paciente lo ve -> 200",
+          client.get(f"/pacientes/{paciente_id}", headers=h(med_a)).status_code == 200)
+    check("Otro médico no lo ve: no está a su cargo -> 403",
+          client.get(f"/pacientes/{paciente_id}", headers=h(med_b)).status_code == 403)
+    r = client.get("/pacientes", params={"limite": 200}, headers=h(med_b))
+    check("La lista del otro médico no lo incluye",
+          r.status_code == 200 and paciente_id not in [p["paciente_id"] for p in r.json()])
+tok_m01 = login("medico01")
+r = client.get("/mis-pacientes", headers=h(tok_m01))
+check("medico01 tiene su lista de pacientes", r.status_code == 200 and "pacientes" in r.json(), r.text[:120])
+r = client.get("/mis-cirugias", headers=h(login("especialista01")))
+check("especialista01 ve las cirugías de sus pacientes", r.status_code == 200 and "cirugias" in r.json(), r.text[:120])
+
+check("El coordinador del hospital no consulta pacientes -> 403",
+      client.get("/pacientes", headers=h(tok_coord)).status_code == 403)
+r = client.get("/analitica/hospital", headers=h(tok_coord))
+check("El coordinador ve el tablero del hospital", r.status_code == 200 and "areas" in r.json(), r.text[:120])
+if r.status_code == 200:
+    check("El tablero del hospital no trae datos de pacientes",
+          "paciente" not in r.text.lower().replace("pacientes", ""), "")
+
+r = client.get("/cirugias/dia", headers=h(tok_jefe))
+check("El enfermero jefe ve la programación quirúrgica", r.status_code == 200 and len(r.json()["salas"]) == 13)
+check("Un médico no reprograma cirugías -> 403",
+      client.patch("/cirugias/1/reprogramar", json={"motivo": "prueba", "hora_inicio": "2030-01-01T10:00:00Z"},
+                   headers=h(tok_m01)).status_code == 403)
+r = client.get("/mi-cuenta", headers=h(tok_paciente))
+check("El paciente ve qué se le cobra a él y a su entidad",
+      r.status_code == 200 and {"cobertura", "servicios", "totales"} <= set(r.json()), r.text[:120])
+check("Un médico no puede abrir 'mi cuenta' de paciente -> 403",
+      client.get("/mi-cuenta", headers=h(tok_m01)).status_code == 403)
 
 # ---------------------------------------------------------- resumen
 print("\n" + "=" * 70)

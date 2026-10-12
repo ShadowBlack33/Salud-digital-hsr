@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, ChevronRight, FileCheck, Send, Users } from "lucide-react";
+import { AlertCircle, AlertTriangle, ChevronRight, FileCheck, Send, Users } from "lucide-react";
 import Esqueleto from "../../components/Esqueleto";
 import * as S from "../../lib/servicios";
 import { useEventos } from "../../lib/tiempoReal";
 import { haceCuanto } from "../../lib/format";
 import Encabezado from "../../components/Encabezado";
 import TarjetaContador from "../../components/TarjetaContador";
-import { api } from "../../api";
 import { useTiempoReal } from "../../lib/tiempoReal";
 import { useUsuario } from "../../lib/hooks";
-import { edadLegible } from "../../lib/format";
+import { ESTADO_CIRUGIA, TIPO_ENCUENTRO, textoCobertura, valorClinico } from "../../lib/clinico";
 
 /** Inicio del médico: trabajo pendiente en vivo (R18) y sus pacientes. */
 export default function MiTurno() {
@@ -33,11 +32,13 @@ export default function MiTurno() {
   useEventos((ev) => { if (!ev.local) cargarDetalle(detalle); });
   const alternar = (cual) => setDetalle((d) => (d === cual ? null : cual));
 
-  useEffect(() => {
-    let vivo = true;
-    api("/pacientes?limite=8&mios=true").then((l) => vivo && setPacientes(l)).catch(() => vivo && setPacientes([]));
-    return () => { vivo = false; };
-  }, []);
+  // Sus pacientes con lo que importa en el turno: críticos, urgencias, cirugía.
+  const cargarPacientes = useCallback(() => S.misPacientes().then((r) => setPacientes(r.pacientes)).catch(() => setPacientes([])), []);
+  useEffect(() => { cargarPacientes(); const id = setInterval(cargarPacientes, 30000); return () => clearInterval(id); }, [cargarPacientes]);
+  useEventos((ev) => { if (!ev.local) cargarPacientes(); });
+  const criticos = (pacientes || []).filter((p) => p.criticos.length > 0);
+  const enUrgencias = (pacientes || []).filter((p) => p.encuentro?.tipo === "urgencias").length;
+  const hospitalizados = (pacientes || []).filter((p) => p.encuentro?.tipo === "hospitalizacion").length;
 
   return (
     <div className="space-y-8 pb-16">
@@ -93,23 +94,60 @@ export default function MiTurno() {
         </section>
       )}
 
-      <section className="rounded-[28px] bg-paper-white p-6 shadow-lift" aria-label="Pacientes">
+      <section className={`rounded-[28px] p-6 ${criticos.length ? "bg-coral-soft" : "bg-cloud-card"}`} aria-labelledby="t-criticos">
+        <h2 id="t-criticos" className="flex items-center gap-2 text-lg font-semibold">
+          <AlertTriangle size={18} className={criticos.length ? "text-coral-deep" : "text-gray-strong"} aria-hidden="true" />
+          Casos críticos de tus pacientes
+          {pacientes && <span className={`rounded-full px-2 text-sm tabular-nums ${criticos.length ? "bg-coral-deep text-white" : "bg-paper-white"}`}>{criticos.length}</span>}
+        </h2>
+        <p className="mt-0.5 text-sm text-gray-strong">Valores críticos de las últimas 72 horas. Ábrelos para revisar y decidir la conducta.</p>
+        {!pacientes ? <div className="mt-4"><Esqueleto filas={3} /></div> : criticos.length === 0 ? (
+          <p className="mt-4 rounded-2xl bg-paper-white px-4 py-4 text-sm text-gray-strong">Ningún paciente tuyo tiene valores críticos recientes.</p>
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {criticos.map((p) => (
+              <li key={p.paciente_id}>
+                <Link to={`/app/pacientes/${p.paciente_id}`} className="flex items-center justify-between gap-3 rounded-2xl bg-paper-white px-4 py-3 transition hover:shadow-lift">
+                  <span className="min-w-0">
+                    <span className="block font-semibold">{p.nombre} {p.apellido}
+                      <span className="font-normal text-gray-strong"> · {p.edad} años{p.encuentro ? ` · ${TIPO_ENCUENTRO[p.encuentro.tipo]}${p.encuentro.triage ? ` triage ${p.encuentro.triage}` : ""}${p.encuentro.cama ? ` · ${p.encuentro.cama}` : ""}` : ""}</span>
+                    </span>
+                    <span className="mt-1 flex flex-wrap gap-1.5">
+                      {p.criticos.slice(0, 3).map((c, i) => <span key={i} className="rounded-full bg-coral-deep px-2.5 py-0.5 text-xs font-semibold text-white">{valorClinico(c)} · {haceCuanto(c.fecha)}</span>)}
+                    </span>
+                  </span>
+                  <ChevronRight size={18} className="shrink-0 text-gray-strong" aria-hidden="true" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="rounded-[28px] bg-paper-white p-6 shadow-lift" aria-label="Mis pacientes">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-lg font-semibold"><Users size={18} aria-hidden="true" />Mis pacientes</h2>
-          <Link to="/app/pacientes" className="text-sm font-medium text-metric-blue hover:underline">Ver todos</Link>
+          <Link to="/app/mis-pacientes" className="text-sm font-medium text-metric-blue hover:underline">Ver todos ({pacientes?.length ?? "…"})</Link>
         </div>
+        {pacientes && (
+          <p className="mb-2 text-sm text-gray-strong">{enUrgencias} en urgencias · {hospitalizados} hospitalizados · {pacientes.filter((p) => p.cirugia).length} con cirugía</p>
+        )}
         {!pacientes ? (
           <Esqueleto filas={5} />
         ) : pacientes.length === 0 ? (
-          <p className="py-4 text-sm text-gray-strong">No tienes pacientes a tu cargo en este momento. <Link to="/app/pacientes" className="font-medium text-metric-blue hover:underline">Buscar entre todos</Link>.</p>
+          <p className="py-4 text-sm text-gray-strong">No tienes pacientes a tu cargo en este momento.</p>
         ) : (
           <ul className="divide-y divide-cloud-card">
-            {pacientes.map((p) => (
+            {pacientes.filter((p) => !p.criticos.length).slice(0, 6).map((p) => (
               <li key={p.paciente_id}>
                 <Link to={`/app/pacientes/${p.paciente_id}`} className="flex items-center justify-between gap-3 rounded-2xl px-3 py-3 transition hover:bg-cloud-card/60">
                   <span>
                     <span className="block text-sm font-medium">{p.nombre} {p.apellido}</span>
-                    <span className="block text-xs text-gray-strong">{p.tipo_documento} {p.documento} · {edadLegible(p.fecha_nacimiento)}{p.riesgo_asa ? ` · ASA ${p.riesgo_asa}` : ""}</span>
+                    <span className="block text-xs text-gray-strong">
+                      {p.tipo_documento} {p.documento} · {p.edad} años · {textoCobertura(p.cobertura)}
+                      {p.encuentro ? ` · ${TIPO_ENCUENTRO[p.encuentro.tipo]}${p.encuentro.cama ? ` ${p.encuentro.cama}` : ""}` : ""}
+                      {p.cirugia ? ` · cirugía ${ESTADO_CIRUGIA[p.cirugia.estado].toLowerCase()}` : ""}
+                    </span>
                   </span>
                   <ChevronRight size={18} className="text-gray-strong" aria-hidden="true" />
                 </Link>

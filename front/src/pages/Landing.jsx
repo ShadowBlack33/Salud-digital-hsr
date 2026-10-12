@@ -4,7 +4,7 @@ import { ArrowRight, BedDouble, CalendarClock, Database, HeartPulse, Lock, ScanL
 import Anillo from "../components/Anillo";
 import Aparicion from "../components/Aparicion";
 import Logo from "../components/Logo";
-import { estaAutenticado } from "../api";
+import { cerrarSesion, estaAutenticado } from "../api";
 import { GRUPOS, ORDEN_GRUPOS } from "../lib/estados";
 import { cop } from "../lib/format";
 import { useAparicion, useContador } from "../lib/hooks";
@@ -13,19 +13,21 @@ const COSTO_HORA_UCI = 75000; // ≈ $1.800.000 por día / 24 h (comunicación p
 
 /* ----------------------------------------------------------------- NAVEGACIÓN */
 function Navegacion() {
-  const dentro = estaAutenticado();
+  // Salir del panel a la página pública cierra la sesión: para volver hay que
+  // iniciar sesión otra vez (computadores compartidos).
+  useEffect(() => { if (estaAutenticado()) cerrarSesion(); }, []);
   const enlaces = [["#impacto", "Impacto"], ["#semaforo", "Semáforo"], ["#arquitectura", "Arquitectura"], ["#evidencia", "Evidencia"]];
   return (
     <header className="fixed inset-x-0 top-4 z-40 mx-auto w-[min(1120px,calc(100%-2rem))]">
       <nav aria-label="Principal" className="flex items-center justify-between rounded-[32px] bg-paper-white/80 py-2.5 pl-4 pr-2.5 shadow-lift backdrop-blur-xl">
-        <Link to="/" aria-label="San Rafael OS, inicio"><Logo /></Link>
+        <Link to="/" aria-label="Pulso, inicio"><Logo /></Link>
         <ul className="hidden items-center gap-1 md:flex">
           {enlaces.map(([href, texto]) => (
             <li key={href}><a href={href} className="rounded-full px-4 py-2 text-sm font-medium text-ink transition hover:bg-cloud-card">{texto}</a></li>
           ))}
         </ul>
-        <Link to={dentro ? "/app" : "/login"} className="inline-flex items-center gap-2 rounded-full bg-charcoal px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ink">
-          {dentro ? "Ir al centro de mando" : "Ingresar"}<ArrowRight size={15} aria-hidden="true" />
+        <Link to="/login" className="inline-flex items-center gap-2 rounded-full bg-charcoal px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ink">
+          Ingresar<ArrowRight size={15} aria-hidden="true" />
         </Link>
       </nav>
     </header>
@@ -111,7 +113,7 @@ function Hero() {
       <div aria-hidden="true" className="anim-drift pointer-events-none absolute -right-20 top-48 size-[420px] rounded-full bg-signal-gold/20 blur-3xl [animation-delay:-7s]" />
       <div className="relative mx-auto max-w-5xl text-center">
         <p className="anim-rise inline-flex items-center gap-2 rounded-full bg-paper-white/80 px-4 py-2 text-sm font-medium shadow-lift backdrop-blur">
-          <HeartPulse size={16} className="text-coral-deep" aria-hidden="true" />Caso de estudio · Hospital San Rafael
+          <HeartPulse size={16} className="text-coral-deep" aria-hidden="true" />Demostración sobre el caso hipotético · Hospital San Rafael
         </p>
         <h1 className="anim-rise mt-7 text-[44px] font-semibold leading-[1.02] tracking-display [animation-delay:80ms] sm:text-6xl lg:text-[76px]">
           El centro de comando en tiempo real para camas, quirófanos y urgencias
@@ -355,7 +357,7 @@ export default function Landing() {
         <Cierre />
       </main>
       <footer className="border-t border-cloud-card px-6 py-8 text-center text-sm text-gray-strong">
-        Hospital San Rafael es un caso de estudio hipotético. Los datos del sistema son sintéticos. Proyecto integrador · Sistemas en Salud Digital · Universidad Autónoma de Occidente · 2026
+        Pulso es la aplicación; toda la demostración corre sobre Hospital San Rafael, un caso de estudio hipotético. Los datos del sistema son sintéticos. Proyecto integrador · Sistemas en Salud Digital · Universidad Autónoma de Occidente · 2026
       </footer>
     </div>
   );

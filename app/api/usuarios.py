@@ -7,6 +7,8 @@ existe registro público, así que nadie puede asignarse un rol a sí mismo.
 """
 from __future__ import annotations
 
+import re
+import unicodedata
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -23,9 +25,18 @@ router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 
 
 # ------------------------------------------------------------------ esquemas
+def normalizar_usuario(texto: str) -> str:
+    """'Carlos Orozco' -> 'carlos.orozco'. Sin tildes, en minúsculas, espacios
+    como punto. Así el admin escribe el nombre como quiera y el usuario queda
+    fácil de teclear en el login."""
+    sin_tildes = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
+    limpio = re.sub(r"[^a-z0-9_.-]+", ".", sin_tildes.strip().lower())
+    return re.sub(r"\.{2,}", ".", limpio).strip(".-_")
+
+
 class UsuarioCrear(BaseModel):
-    username: str = Field(..., min_length=3, max_length=60, pattern=r"^[A-Za-z0-9_.-]+$",
-                          examples=["medico02"])
+    username: str = Field(..., min_length=3, max_length=60, examples=["Carlos Orozco", "medico02"],
+                          description="Se normaliza: 'Carlos Orozco' queda como 'carlos.orozco'.")
     password: str = Field(..., description="Contraseña inicial. El usuario debe cambiarla al entrar.")
     rol: str = Field(..., examples=["medico"])
     personal_id: int | None = Field(None, description="Para roles asistenciales: su registro en 'personal'.")
@@ -77,8 +88,11 @@ def crear(datos: UsuarioCrear,
     if rol is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"El rol '{datos.rol}' no existe")
 
-    if db.query(Usuario).filter(Usuario.username == datos.username).first():
-        raise HTTPException(status.HTTP_409_CONFLICT, "Ese nombre de usuario ya existe")
+    username = normalizar_usuario(datos.username)
+    if len(username) < 3:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "El nombre de usuario es muy corto")
+    if db.query(Usuario).filter(Usuario.username == username).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, f"El usuario '{username}' ya existe")
 
     ok, mensaje = validar_fortaleza(datos.password)
     if not ok:
@@ -100,7 +114,7 @@ def crear(datos: UsuarioCrear,
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Ese registro de personal no existe")
 
     nuevo = Usuario(
-        username=datos.username,
+        username=username,
         password_hash=hash_password(datos.password),
         rol_id=rol.id,
         personal_id=datos.personal_id,

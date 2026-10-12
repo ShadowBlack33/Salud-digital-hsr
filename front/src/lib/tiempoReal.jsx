@@ -16,7 +16,7 @@
 // no exista.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { API_BASE } from "../api";
+import { API_BASE, tokenActual } from "../api";
 import { useAvisos } from "../components/Avisos";
 import * as S from "./servicios";
 import * as M from "./mocks";
@@ -58,7 +58,7 @@ export function ProveedorTiempoReal({ children }) {
     if (ev?.mensaje) avisar(ev.mensaje, urgente || /bloque/i.test(ev.tipo) ? "alerta" : "ok");
     if (urgente) {
       sonarAlerta();
-      notificarEscritorio("Alerta crítica · San Rafael OS", ev.mensaje || "Hay un caso crítico por revisar.");
+      notificarEscritorio("Alerta crítica · Pulso", ev.mensaje || "Hay un caso crítico por revisar.");
     }
     refrescar();
     oyentes.current.forEach((fn) => fn(ev));
@@ -71,7 +71,7 @@ export function ProveedorTiempoReal({ children }) {
   useEffect(() => {
     let es = null, espera = 5000, temporizador = null, vivo = true;
     const abrir = () => {
-      const token = localStorage.getItem("hsr_access");
+      const token = tokenActual();
       if (!token || !vivo) return;
       es = new EventSource(`${API_BASE}/eventos/stream?token=${encodeURIComponent(token)}`);
       es.onopen = () => { setConectado(true); espera = 5000; };
@@ -136,7 +136,7 @@ export function ProveedorTiempoReal({ children }) {
   // Contador en el título de la pestaña: con varias ventanas abiertas se ve
   // cuál recibió el aviso sin entrar a ella.
   useEffect(() => {
-    const base = "San Rafael OS · Centro de mando clínico";
+    const base = "Pulso · Coordinación hospitalaria";
     document.title = noLeidas > 0 ? `(${noLeidas}) ${base}` : base;
     return () => { document.title = base; };
   }, [noLeidas]);

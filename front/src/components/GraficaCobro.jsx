@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { cop } from "../lib/format";
+import { TIPOS_COBRO } from "../lib/facturacion";
 
-const NOMBRES = { consulta: "Consulta", analisis_ia: "Análisis de IA", remision: "Remisión" };
+const NOMBRES = { ...TIPOS_COBRO, analisis_ia: "Análisis de IA" };
 // "Por cobrar" usa rayas además del color: verde y dorado se confunden con
 // daltonismo rojo-verde, así que el patrón y la diferencia de luz los separan.
 const RAYAS = "repeating-linear-gradient(135deg, var(--color-gold-soft) 0 5px, color-mix(in srgb, var(--color-gold-deep) 55%, transparent) 5px 7px)";
@@ -10,7 +11,8 @@ const RAYAS = "repeating-linear-gradient(135deg, var(--color-gold-soft) 0 5px, c
 export default function GraficaCobro({ facturas }) {
   const [foco, setFoco] = useState(null);
   const grupos = Object.values(facturas.filter((f) => f.estado_pago !== "anulada").reduce((acc, f) => {
-    const g = (acc[f.servicio] ??= { servicio: f.servicio, pagado: 0, pendiente: 0 });
+    const clave = f.tipo_cobro || f.servicio;
+    const g = (acc[clave] ??= { servicio: clave, pagado: 0, pendiente: 0 });
     g[f.estado_pago === "pagada" ? "pagado" : "pendiente"] += Number(f.valor || 0);
     return acc;
   }, {})).sort((a, b) => (b.pagado + b.pendiente) - (a.pagado + a.pendiente));
@@ -20,7 +22,7 @@ export default function GraficaCobro({ facturas }) {
   return (
     <figure className="rounded-[28px] bg-paper-white p-6 shadow-lift" aria-label="Cobrado frente a por cobrar por servicio">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <figcaption className="text-lg font-semibold">Cobro por servicio</figcaption>
+        <figcaption className="text-lg font-semibold">Cobro por tipo de servicio <span className="text-sm font-normal text-gray-strong">(según los filtros)</span></figcaption>
         <ul className="flex gap-4 text-xs text-gray-strong" aria-label="Leyenda">
           <li className="flex items-center gap-1.5"><span className="h-3 w-5 rounded-[4px] bg-green-deep" aria-hidden="true" />Cobrado</li>
           <li className="flex items-center gap-1.5"><span className="h-3 w-5 rounded-[4px]" style={{ background: RAYAS }} aria-hidden="true" />Por cobrar</li>

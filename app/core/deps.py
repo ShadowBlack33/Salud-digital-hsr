@@ -129,11 +129,55 @@ class ContextoAcceso:
         self.db = db
         self.request = request
 
+    # ---------------------------------------------------- pacientes asignados
+    # Un médico o especialista solo trabaja con SUS pacientes (alcance
+    # 'assigned' en paciente:read). Son suyos los que él registró y los que
+    # tienen un encuentro a su cargo (médico responsable o anestesiólogo).
+    # Las remisiones aceptadas se suman en `pacientes_asignados_subq` cuando
+    # exista la tabla del módulo de remisiones.
+    def alcance_paciente(self) -> str | None:
+        return tiene_permiso(self.payload.get("permisos", []), "paciente", "read")
+
+    def pacientes_asignados_subq(self):
+        """Subconsulta con los documento_bidx de los pacientes de este usuario."""
+        from sqlalchemy import or_, select, text, union
+        from app.models import Encuentro, Paciente
+        personal_id = self.payload.get("personal_id")
+        partes = [select(Paciente.documento_bidx).where(Paciente.created_by == self.usuario.id)]
+        if personal_id is not None:
+            partes.append(select(Encuentro.paciente_id).where(
+                Encuentro.activo.is_(True),
+                or_(Encuentro.medico_responsable_id == personal_id,
+                    Encuentro.anestesiologo_id == personal_id)))
+            if _hay_tabla_remisiones(self.db):
+                partes.append(select(text("paciente_id")).select_from(text("remisiones")).where(
+                    text("especialista_id = :pid AND estado IN ('aceptada','atendida')")
+                    .bindparams(pid=personal_id)))
+        return union(*partes).subquery()
+
+    def es_paciente_asignado(self, paciente_id: str) -> bool:
+        from sqlalchemy import exists, select
+        sub = self.pacientes_asignados_subq()
+        return bool(self.db.scalar(select(exists().where(sub.c[0] == paciente_id))))
+
     def verificar_registro(self, registro) -> None:
         """
         Guarda de NIVEL 2: ¿puede tocar ESTE registro en concreto?
         Sin esta llamada, un médico podría editar los pacientes de otro.
         """
+        from app.models import Paciente
+        if isinstance(registro, Paciente) and self.alcance_paciente() == "assigned":
+            # Vale para cualquier recurso que cuelgue del paciente (imágenes,
+            # historia, IA): si no es su paciente, no ve nada de él.
+            if not self.es_paciente_asignado(registro.documento_bidx):
+                from app.services.auditoria import registrar
+                registrar(self.db, self.usuario, self.recurso, None, self.accion,
+                          resultado="denegado", request=self.request)
+                self.db.commit()
+                raise HTTPException(status.HTTP_403_FORBIDDEN,
+                                    "Este paciente no está a su cargo")
+            if self.alcance in ("all", "assigned"):
+                return
         try:
             verificar_acceso_registro(self.alcance, registro,
                                       self.payload, self.recurso)
@@ -163,5 +207,28 @@ class ContextoAcceso:
         if self.alcance == "assigned":
             personal_id = self.payload.get("personal_id")
             if hasattr(modelo, "medico_responsable_id"):
-                return query.filter(modelo.medico_responsable_id == personal_id)
+                from sqlalchemy import or_
+                return query.filter(or_(modelo.medico_responsable_id == personal_id,
+                                        modelo.anestesiologo_id == personal_id))
+            from app.models import Paciente
+            if modelo is Paciente:
+                sub = self.pacientes_asignados_subq()
+                return query.filter(Paciente.documento_bidx.in_(sub.select()))
         return query
+
+
+_REMISIONES: dict[str, bool] = {}
+
+
+def _hay_tabla_remisiones(db) -> bool:
+    """¿Ya existe la tabla del módulo de remisiones? Se consulta una sola vez."""
+    if "ok" not in _REMISIONES:
+        from sqlalchemy import text
+        try:
+            _REMISIONES["ok"] = db.execute(text("SELECT to_regclass('public.remisiones') IS NOT NULL")).scalar() \
+                and db.execute(text("""SELECT COUNT(*) = 3 FROM information_schema.columns
+                                       WHERE table_name = 'remisiones'
+                                         AND column_name IN ('paciente_id','especialista_id','estado')""")).scalar()
+        except Exception:  # noqa: BLE001
+            _REMISIONES["ok"] = False
+    return bool(_REMISIONES["ok"])

@@ -5,6 +5,8 @@ import { CornerDownLeft, Loader2, Search, UserRound } from "lucide-react";
 import { api, puede } from "../api";
 import { useUsuario } from "../lib/hooks";
 import { edadLegible } from "../lib/format";
+import { esClinico } from "../lib/roles";
+import * as S from "../lib/servicios";
 
 const soloDigitos = (t) => /^\d{5,}$/.test(t);
 const normalizar = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -13,11 +15,14 @@ const normalizar = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase
  * Búsqueda rápida de pacientes (Ctrl + K) desde cualquier pantalla.
  * · Un número de documento se busca con el índice ciego: la base nunca descifra la tabla.
  * · Un nombre se filtra sobre la primera página de pacientes ya cargada.
+ * · Un médico o especialista busca SOLO entre sus pacientes: la API tampoco
+ *   le devuelve otros (un documento ajeno responde "no encontrado").
  */
 export default function BuscadorRapido() {
   const usuario = useUsuario();
   const navegar = useNavigate();
   const habilitado = puede(usuario, "paciente", "read") && usuario?.rol !== "paciente";
+  const soloMios = esClinico(usuario);
   const [abierto, setAbierto] = useState(false);
   const [texto, setTexto] = useState("");
   const [lista, setLista] = useState(null);
@@ -38,8 +43,11 @@ export default function BuscadorRapido() {
     if (!abierto) return;
     setTexto(""); setActivo(0); setPorDocumento({ estado: "inactivo" });
     setTimeout(() => entrada.current?.focus(), 0);
-    if (!lista) api("/pacientes?limite=200").then(setLista).catch(() => setLista([]));
-  }, [abierto, lista]);
+    if (!lista) {
+      const carga = soloMios ? S.misPacientes().then((r) => r.pacientes) : api("/pacientes?limite=200");
+      carga.then(setLista).catch(() => setLista([]));
+    }
+  }, [abierto, lista, soloMios]);
 
   // Documento exacto: blind index en la API (con una pequeña espera al escribir).
   useEffect(() => {
@@ -78,13 +86,13 @@ export default function BuscadorRapido() {
         <div className="flex items-center gap-3 border-b border-cloud-card px-5 py-4">
           <Search size={18} className="text-gray-strong" aria-hidden="true" />
           <input ref={entrada} value={texto} onChange={(e) => { setTexto(e.target.value); setActivo(0); }} onKeyDown={teclas}
-                 placeholder="Nombre o número de documento" aria-label="Buscar paciente" role="combobox" aria-expanded={resultados.length > 0}
+                 placeholder={soloMios ? "Buscar entre mis pacientes: nombre o documento" : "Nombre o número de documento"} aria-label="Buscar paciente" role="combobox" aria-expanded={resultados.length > 0}
                  className="flex-1 bg-transparent text-[16px] outline-none placeholder:text-gray-strong" />
           <kbd className="rounded-md bg-cloud-card px-1.5 py-0.5 font-mono text-[11px] text-gray-strong">Esc</kbd>
         </div>
         <ul role="listbox" className="max-h-[50vh] overflow-y-auto p-2">
           {porDocumento.estado === "buscando" && <li className="flex items-center gap-2 px-3 py-3 text-sm text-gray-strong"><Loader2 size={15} className="anim-spin" />Buscando por documento (índice ciego)…</li>}
-          {porDocumento.estado === "nada" && <li className="px-3 py-3 text-sm text-gray-strong">No hay un paciente activo con ese documento.</li>}
+          {porDocumento.estado === "nada" && <li className="px-3 py-3 text-sm text-gray-strong">{soloMios ? "Ese documento no corresponde a ninguno de tus pacientes." : "No hay un paciente activo con ese documento."}</li>}
           {resultados.map((p, i) => (
             <li key={p.paciente_id} role="option" aria-selected={i === activo}>
               <button onClick={() => ir(p)} onMouseEnter={() => setActivo(i)}
@@ -92,14 +100,14 @@ export default function BuscadorRapido() {
                 <span className="grid size-9 place-items-center rounded-full bg-paper-white"><UserRound size={16} aria-hidden="true" /></span>
                 <span className="flex-1">
                   <span className="block text-sm font-medium">{p.nombre} {p.apellido}</span>
-                  <span className="block text-xs text-gray-strong">{p.tipo_documento} {p.documento} · {edadLegible(p.fecha_nacimiento)}</span>
+                  <span className="block text-xs text-gray-strong">{p.tipo_documento} {p.documento} · {p.edad != null ? `${p.edad} años` : edadLegible(p.fecha_nacimiento)}</span>
                 </span>
                 {i === activo && <CornerDownLeft size={15} className="text-gray-strong" aria-hidden="true" />}
               </button>
             </li>
           ))}
-          {!texto && <li className="px-3 py-3 text-sm text-gray-strong">Escribe un nombre, o un documento completo para buscarlo sin descifrar la base.</li>}
-          {texto && !soloDigitos(texto.trim()) && resultados.length === 0 && lista && <li className="px-3 py-3 text-sm text-gray-strong">Sin coincidencias entre los primeros {lista.length} pacientes.</li>}
+          {!texto && <li className="px-3 py-3 text-sm text-gray-strong">{soloMios ? `Buscas entre tus ${lista?.length ?? ""} pacientes. Escribe un nombre o un documento completo.` : "Escribe un nombre, o un documento completo para buscarlo sin descifrar la base."}</li>}
+          {texto && !soloDigitos(texto.trim()) && resultados.length === 0 && lista && <li className="px-3 py-3 text-sm text-gray-strong">{soloMios ? "Ninguno de tus pacientes coincide." : `Sin coincidencias entre los primeros ${lista.length} pacientes.`}</li>}
         </ul>
       </div>
     </div>,

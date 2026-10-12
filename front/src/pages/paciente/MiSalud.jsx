@@ -5,6 +5,7 @@ import Anillo from "../../components/Anillo";
 import Esqueleto from "../../components/Esqueleto";
 import GaleriaImagenes from "../../components/GaleriaImagenes";
 import BotonHistoriaPDF from "../../components/BotonHistoriaPDF";
+import MisCobros from "../../components/MisCobros";
 import { api } from "../../api";
 import * as S from "../../lib/servicios";
 import { useReloj, useUsuario } from "../../lib/hooks";
@@ -97,7 +98,7 @@ export default function MiSalud() {
       <header className="anim-rise">
         <p className="text-xs font-semibold uppercase tracking-wider text-metric-blue">Mi salud</p>
         <h1 className="mt-1 text-[34px] font-semibold leading-tight tracking-display">Hola, {paciente.nombre}</h1>
-        <p className="mt-1 text-[15px] text-gray-strong">Aquí ves tus próximas citas, tus resultados y tus imágenes. Solo tú y tu equipo médico pueden verlos.</p>
+        <p className="mt-1 text-[15px] text-gray-strong">Aquí ves tus próximas citas, tus resultados, tus imágenes y lo que se te cobra. Solo tú y tu equipo médico pueden verlos.</p>
         {historia.demo && <div className="mt-2"><ChipDemo visible /></div>}
       </header>
 
@@ -128,6 +129,8 @@ export default function MiSalud() {
       </section>
 
       <GaleriaImagenes pacienteId={pid} />
+
+      <MisCobros />
 
       {pasados.length > 0 && (
         <section className="rounded-[28px] bg-paper-white p-6 shadow-lift" aria-label="Historial">

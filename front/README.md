@@ -1,4 +1,7 @@
-# San Rafael OS · front
+# Pulso · front
+
+La aplicación se llama **Pulso**. Toda la demostración corre sobre el caso
+hipotético Hospital San Rafael.
 
 React 19 + Vite + Tailwind 4 + Lucide, con la paleta y los tokens de Bevel.
 
@@ -44,14 +47,16 @@ Cambiar cualquiera exige reconstruir: `docker compose build --no-cache front`.
 
 Cada rol entra a su propia pantalla (`src/lib/roles.js`):
 
-| Rol | Inicio | Además |
+| Perfil | Inicio | Además |
 |---|---|---|
-| `admin` | `/app/admin`: usuarios, cuentas bloqueadas, auditoría, servicios | Centro de mando, pacientes |
-| `medico` | `/app/turno`: pendientes en vivo y sus pacientes | Remisiones, centro de mando, pacientes |
-| `especialista` | `/app/remisiones`: remisiones recibidas | Centro de mando, pacientes |
-| `contable` | `/app/facturacion` | Nada clínico |
-| `paciente` | `/app/mi-salud` (pensada para celular) | Solo su información |
-| Roles del Corte 1 | `/app/mando` (centro de mando) | Pacientes |
+| `admin` | `/app/admin`: usuarios, bloqueos, auditoría, servicios | Pacientes, facturación |
+| `coordinador` | `/app/hospital`: capacidad por área, riesgo de colapso, dinero, IA | Nada más (no ve pacientes) |
+| `enfermero_jefe` | `/app/cirugias`: programar, mover y cancelar cirugías | Centro de mando, pacientes |
+| `medico` | `/app/turno`: casos críticos y pendientes | Mis pacientes, remisiones |
+| `especialista` | `/app/remisiones` | Mis pacientes, mis cirugías |
+| `contable` | `/app/facturacion`: filtros por tipo, estado, entidad y paciente | Nada clínico |
+| `paciente` | `/app/mi-salud` (celular): incluye lo que se le cobra | Solo su información |
+| Perfiles operativos del Corte 1 | `/app/mando` | Pacientes |
 
 La ficha del paciente suma las pestañas **Análisis de IA** (aprobar o rechazar, ver el payload enviado al
 modelo), **Remitir** y el botón de **historia clínica en PDF**. Arriba de todo quedan la campana con la
@@ -78,7 +83,7 @@ el equipo publica la ruta, se usa sola. Rutas que el front espera, además de la
 
 | Atajo | Qué hace |
 |---|---|
-| **Ctrl + K** | Buscar paciente: por nombre, o por documento completo con el índice ciego. |
+| **Ctrl + K** | Buscar paciente: por nombre, o por documento completo con el índice ciego. Médicos y especialistas buscan solo entre sus pacientes. |
 | **Ctrl + Shift + D** | Panel de demostración: guion de los 6 pasos (se marcan solos) y eventos simulados. No cambia de rol ni da permisos. |
 
 ### Otras piezas
@@ -96,3 +101,8 @@ llega sin recargar:
 
     python scripts/demo_e2e.py --url http://localhost:5173              # con eventos simulados
     python scripts/demo_e2e.py --url https://xxxx.trycloudflare.com --modo real --ver
+
+### Sesión
+
+La sesión vive en `sessionStorage`: se pierde al cerrar la pestaña. Volver a la
+página de inicio o al login la cierra, y 15 minutos sin actividad también.

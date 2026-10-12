@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Aplicación
-    app_nombre: str = "API Coordinación de Capacidad Quirúrgica"
+    app_nombre: str = "Pulso API · coordinación hospitalaria (caso Hospital San Rafael)"
     app_version: str = "1.0.0"
     entorno: str = os.getenv("ENTORNO", "desarrollo")
     debug: bool = os.getenv("DEBUG", "false").lower() == "true"

@@ -1,15 +1,15 @@
 import { useTiempoReal } from "../lib/tiempoReal";
 
-/** Indicador del canal en vivo: verde y latiendo si está conectado. */
+/** Punto verde discreto cuando el canal en vivo está conectado. Si no lo está
+ *  no muestra nada: el aviso de conexión caída ya lo da <ConexionCaida/>, y un
+ *  "Reconectando" permanente en la barra solo distrae. */
 export default function EnVivo() {
   const tr = useTiempoReal();
-  if (!tr) return null;
-  const ok = tr.conectado;
+  if (!tr?.conectado) return null;
   return (
-    <span role="status" title={ok ? "Recibiendo eventos en tiempo real" : "Reconectando el canal en vivo (los avisos llegarán al volver)"}
-          className={`hidden items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold sm:flex ${ok ? "bg-green-soft text-green-ink" : "bg-cloud-card text-slate-ink"}`}>
-      <span className={`size-2 rounded-full ${ok ? "anim-pulse-dot bg-green-deep" : "bg-body-gray"}`} aria-hidden="true" />
-      {ok ? "En vivo" : "Reconectando"}
+    <span role="status" title="En vivo: los avisos llegan sin recargar" className="hidden size-10 place-items-center sm:grid">
+      <span className="anim-pulse-dot size-2.5 rounded-full bg-green-deep" aria-hidden="true" />
+      <span className="sr-only">En vivo</span>
     </span>
   );
 }

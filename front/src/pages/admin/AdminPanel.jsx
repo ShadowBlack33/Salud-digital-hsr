@@ -3,6 +3,7 @@ import Esqueleto from "../../components/Esqueleto";
 import { Activity, Ban, KeyRound, Loader2, Lock, RefreshCw, ShieldCheck, Unlock, UserPlus, X } from "lucide-react";
 import Encabezado from "../../components/Encabezado";
 import Insignia from "../../components/Insignia";
+import CampoClave, { claveValida } from "../../components/CampoClave";
 import { useAvisos } from "../../components/Avisos";
 import * as S from "../../lib/servicios";
 import { useEventos, useTiempoReal } from "../../lib/tiempoReal";
@@ -127,6 +128,10 @@ function Usuarios({ estado, onCambio }) {
   );
 }
 
+// Igual que app/api/usuarios.py:normalizar_usuario, para mostrar cómo quedará.
+const normalizar = (t) => t.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase()
+  .replace(/[^a-z0-9_.-]+/g, ".").replace(/\.{2,}/g, ".").replace(/^[._-]+|[._-]+$/g, "");
+
 function CrearUsuario({ onCreado }) {
   const { avisar } = useAvisos();
   const [roles, setRoles] = useState([]);
@@ -138,12 +143,13 @@ function CrearUsuario({ onCreado }) {
 
   const enviar = async (e) => {
     e.preventDefault();
+    if (!claveValida(datos.password)) { setError("La contraseña inicial no cumple las reglas marcadas en gris."); return; }
     setEnviando(true); setError(null);
     try {
       const cuerpo = { username: datos.username.trim(), rol: datos.rol, password: datos.password };
       if (datos.rol === "paciente") cuerpo.documento_paciente = datos.documento_paciente.trim();
-      await S.crearUsuario(cuerpo);
-      avisar(`Usuario ${cuerpo.username} creado. Deberá cambiar la contraseña al entrar.`);
+      const creado = await S.crearUsuario(cuerpo);
+      avisar(`Usuario ${creado?.username || cuerpo.username} creado. Deberá cambiar la contraseña al entrar.`);
       onCreado();
     } catch (err) { setError(err.message); }
     finally { setEnviando(false); }
@@ -151,16 +157,19 @@ function CrearUsuario({ onCreado }) {
 
   return (
     <form onSubmit={enviar} className="anim-pop mb-6 grid gap-3 rounded-3xl bg-cloud-card/60 p-5 sm:grid-cols-2">
-      <label className="text-sm">Usuario<input required minLength={3} value={datos.username} onChange={campo("username")} className={`${entrada} mt-1 bg-paper-white`} /></label>
+      <label className="text-sm">Usuario
+        <input required minLength={3} value={datos.username} onChange={campo("username")} placeholder="Nombre o usuario, p. ej. Carlos Orozco" className={`${entrada} mt-1 bg-paper-white`} />
+        {datos.username.trim() && normalizar(datos.username) !== datos.username.trim() && (
+          <span className="mt-1 block text-xs text-gray-strong">Entrará como <b className="font-semibold text-ink">{normalizar(datos.username) || "…"}</b></span>
+        )}
+      </label>
       <label className="text-sm">Rol
         <select value={datos.rol} onChange={campo("rol")} className={`${entrada} mt-1 bg-paper-white`}>
           {(roles.length ? roles : [{ codigo: "medico", nombre: "Médico" }]).map((r) => <option key={r.codigo} value={r.codigo}>{r.nombre}</option>)}
         </select>
       </label>
-      <label className="text-sm">Contraseña inicial
-        <input required type="password" autoComplete="new-password" value={datos.password} onChange={campo("password")} className={`${entrada} mt-1 bg-paper-white`} />
-        <span className="mt-1 block text-xs text-gray-strong">Mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo.</span>
-      </label>
+      <CampoClave id="clave-inicial" etiqueta="Contraseña inicial (temporal)" valor={datos.password} reglas generar
+                  onCambio={(v) => setDatos((d) => ({ ...d, password: v }))} claseEntrada={`${entrada} bg-paper-white`} />
       {datos.rol === "paciente" && (
         <label className="text-sm">Documento del paciente<input required value={datos.documento_paciente} onChange={campo("documento_paciente")} className={`${entrada} mt-1 bg-paper-white`} /></label>
       )}

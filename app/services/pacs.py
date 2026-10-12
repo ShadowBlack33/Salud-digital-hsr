@@ -89,7 +89,8 @@ def instance_paciente_bidx(instance_id: str) -> str:
     return tags.get("PatientID", "")
 
 
-def dicomize(png_bytes: bytes, paciente, descripcion: str) -> str:
+def dicomize(png_bytes: bytes, paciente, descripcion: str, modalidad: str = "OT",
+             extra: dict | None = None) -> str:
     """
     Convierte un PNG en una instancia DICOM dentro de Orthanc y devuelve su ID.
 
@@ -107,7 +108,10 @@ def dicomize(png_bytes: bytes, paciente, descripcion: str) -> str:
             "PatientSex": paciente["sexo"],
             "StudyDescription": descripcion,
             "SeriesDescription": descripcion,
-            "Modality": "OT",   # OT = "Other" -- no es un estudio de una modalidad clínica real
+            # OT = "Other" para lo que sube un usuario; DX para las radiografías
+            # del dataset NIH ChestX-ray14 (scripts/cargar_radiografias.py).
+            "Modality": modalidad,
+            **(extra or {}),
         },
     }
     return orthanc("POST", "/tools/create-dicom", json=body).json()["ID"]

@@ -5,6 +5,8 @@
 //
 // Todo es ficticio: nombres, documentos y valores son inventados.
 
+import { generarMovimientos, repartir, TARIFARIO } from "./facturacion";
+
 const ahora = () => new Date().toISOString();
 const haceMin = (m) => new Date(Date.now() - m * 60000).toISOString();
 let sec = 2000;   // por encima de los ids sembrados abajo, para no repetirlos
@@ -24,11 +26,8 @@ const db = {
       especialista: "Dr. Alejandro Caicedo", motivo: "Valoración por cirugía cardiovascular antes del reemplazo valvular.",
       estado: "pendiente", created_at: haceMin(12) },
   ],
-  facturas: [
-    { id: "F-1001", paciente_id: "demo-1", servicio: "analisis_ia", descripcion: "Análisis de IA: predicción de cama UCI", valor: 85000, fecha: haceMin(60 * 26), estado_pago: "pagada", reporte_id: 501 },
-    { id: "F-1002", paciente_id: "demo-2", servicio: "consulta", descripcion: "Consulta de urgencias", valor: 145000, fecha: haceMin(90), estado_pago: "pendiente" },
-    { id: "F-1003", paciente_id: "demo-3", servicio: "remision", descripcion: "Interconsulta con cirugía cardiovascular", valor: 210000, fecha: haceMin(60 * 20), estado_pago: "pendiente" },
-  ],
+  // Un mes de movimientos (~3.300), generados la primera vez que se piden.
+  facturas: null,
 };
 
 export const especialistas = () => [
@@ -115,26 +114,33 @@ export function agregarRemision(motivo) {
 }
 
 // --------------------------------------------------------------- facturación
-export const facturas = () => db.facturas;
-export function crearFactura({ paciente_id, servicio, valor, descripcion }) {
-  const f = { id: `F-${nuevoId()}`, paciente_id, servicio, descripcion, valor: Number(valor), fecha: ahora(), estado_pago: "pendiente" };
-  db.facturas = [f, ...db.facturas];
+const listaFacturas = () => (db.facturas ??= generarMovimientos());
+export const facturas = () => listaFacturas();
+export const tarifario = () => TARIFARIO;
+export function crearFactura(datos) {
+  const f = { id: `F-${nuevoId()}`, fecha: ahora(), estado_pago: "pendiente", origen: "manual", ...datos, valor: Number(datos.valor) };
+  db.facturas = [f, ...listaFacturas()];
   return f;
 }
 export function agregarFacturaAutomatica() {
   return crearFacturaConReporte(nuevoId());
 }
 function crearFacturaConReporte(reporteId) {
-  const f = { id: `F-${nuevoId()}`, paciente_id: "demo-1", servicio: "analisis_ia", descripcion: "Análisis de IA aprobado por el clínico",
-              valor: 85000, fecha: ahora(), estado_pago: "pendiente", reporte_id: reporteId };
-  db.facturas = [f, ...db.facturas];
+  const cobertura = { tipo: "eps", entidad: "EPS Alfa", regimen: "contributivo" };
+  const f = { id: `F-${nuevoId()}`, paciente_id: "demo-1", paciente_nombre: "Juan Fernando Pérez", paciente_documento: "****4521",
+              servicio: "analisis_ia", tipo_cobro: "ia", cups: "IA0001", descripcion: "Análisis de IA aprobado por el clínico",
+              cantidad: 1, valor_unitario: 85000, valor: 85000, cobertura, ...repartir(85000, cobertura, "ia"),
+              fecha: ahora(), estado_pago: "pendiente", origen: "automatica", reporte_id: reporteId };
+  db.facturas = [f, ...listaFacturas()];
   return f;
 }
-export function pagar(id) {
-  const f = db.facturas.find((x) => x.id === id);
-  if (f) f.estado_pago = "pagada";
+const cambiarEstado = (id, estado) => {
+  const f = listaFacturas().find((x) => x.id === id);
+  if (f) f.estado_pago = estado;
   return f;
-}
+};
+export const pagar = (id) => cambiarEstado(id, "pagada");
+export const anular = (id) => cambiarEstado(id, "anulada");
 
 // --------------------------------------------------------------- historia
 export const historia = (pacienteId) => ({
