@@ -160,6 +160,35 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
 
+  # Jornada en curso para el tablero. El generador de datos deja solo historia
+  # (cirugías ya terminadas); sin esto, el centro de mando muestra todo libre y
+  # camas "en limpieza desde hace semanas". Corre scripts/simular_jornada.py
+  # una vez cada vez que se levanta el sistema, cuando la API ya está sana, y
+  # termina. Borra y vuelve a crear solo lo que él mismo creó la vez anterior.
+  #
+  #   SIMULAR_JORNADA=false   en el .env para no correrlo (base compartida)
+  #   JORNADA_CADA_MIN=60     en el .env para refrescarla cada hora (demo larga)
+  #   docker compose run --rm jornada      para correrlo a mano
+  jornada:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: hsr-jornada
+    env_file: .env
+    restart: "no"
+    depends_on:
+      api:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ "$${SIMULAR_JORNADA:-true}" = "false" ]; then echo "Jornada omitida (SIMULAR_JORNADA=false)"; exit 0; fi
+        while true; do
+          python scripts/simular_jornada.py || echo "La simulación falló; el sistema sigue funcionando."
+          [ -z "$${JORNADA_CADA_MIN:-}" ] && exit 0
+          echo "Siguiente actualización en $${JORNADA_CADA_MIN} min"; sleep $$(( $${JORNADA_CADA_MIN} * 60 ))
+        done
+
   # Front en React, compilado y servido por nginx. nginx también hace de
   # puerta única: /api va a la API, /api/eventos es el canal en vivo y /fhir
   # va a HAPI. Por eso VITE_API_BASE es una ruta relativa: el navegador llama

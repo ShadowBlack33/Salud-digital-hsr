@@ -11,6 +11,11 @@ docker compose ps             # todos deben quedar "running" / "healthy"
 Servicios: `postgres`, `mongo`, `fhir-db`, `hapi-fhir`, `orthanc`, `ml`, `api`,
 `front` (nginx) y `cloudflared`.
 
+Al terminar de arrancar, el servicio `jornada` corre `scripts/simular_jornada.py` una vez
+(cirugías en curso, camas ocupadas, tiempos al día) y se apaga: por eso aparece como
+"Exited (0)" en `docker compose ps`, y está bien. Para repetirlo a mano:
+`docker compose run --rm jornada`. Para no correrlo, `SIMULAR_JORNADA=false` en el `.env`.
+
 ## 2. URL pública
 
 ```bash
