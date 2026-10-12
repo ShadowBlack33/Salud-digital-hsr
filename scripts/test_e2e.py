@@ -310,8 +310,11 @@ r2 = client.post("/auth/login", json=malo)
 check("2do intento fallido -> 401 y le queda 1",
       r2.status_code == 401 and r2.json().get("intentos_restantes") == 1, r2.text[:100])
 r3 = client.post("/auth/login", json=malo)
+# Corte 2 (R02): el bloqueo dura hasta que el admin lo quite, así que la
+# respuesta trae requiere_admin en vez de una hora de desbloqueo.
 check("3er intento fallido -> 423: la cuenta queda bloqueada en ese momento",
-      r3.status_code == 423 and bool(r3.json().get("bloqueado_hasta")), r3.text[:100])
+      r3.status_code == 423 and (bool(r3.json().get("bloqueado_hasta"))
+                                 or r3.json().get("requiere_admin") is True), r3.text[:100])
 
 r = client.post("/auth/login", json={"username": "facturacion01", "password": PASSWORD})
 check("Con la clave CORRECTA pero ya bloqueado -> 423, no deja entrar",
@@ -321,15 +324,24 @@ r = client.post("/auth/login", json={"username": "usuario_que_no_existe", "passw
 check("Usuario inexistente -> 401 genérico, sin contador",
       r.status_code == 401 and "intentos_restantes" not in r.json())
 
+# Solo el admin desbloquea (R02), por el endpoint y no con SQL a mano.
 with SessionLocal() as db:
-    db.execute(text(
-        "UPDATE usuarios SET intentos_fallidos = 0, bloqueado_hasta = NULL "
-        "WHERE username = 'facturacion01'"
-    ))
-    db.commit()
+    id_bloqueado = db.execute(text(
+        "SELECT id FROM usuarios WHERE username = 'facturacion01'")).scalar()
+r = client.post(f"/usuarios/{id_bloqueado}/desbloquear", headers=h(tok_coord))
+check("Un rol distinto de admin no puede desbloquear -> 403", r.status_code == 403)
+r = client.post(f"/usuarios/{id_bloqueado}/desbloquear", headers=h(tok_admin))
+check("El admin desbloquea la cuenta -> 200", r.status_code == 200, r.text[:100])
 
 r = client.post("/auth/login", json={"username": "facturacion01", "password": PASSWORD})
 check("Tras desbloquear, vuelve a entrar normal", r.status_code == 200)
+
+with SessionLocal() as db:
+    ops = {fila[0] for fila in db.execute(text(
+        "SELECT operacion FROM log_auditoria WHERE entidad_tipo = 'usuario' "
+        "AND entidad_id = :id"), {"id": str(id_bloqueado)})}
+check("Bloqueo y desbloqueo quedan en la auditoría",
+      {"bloqueo", "desbloqueo"} <= ops, str(ops))
 
 print("\n[13] Tablero: camas y quirófanos con datos del momento")
 r = client.get("/camas/ocupacion?solo_ocupadas=false", headers=h(tok_admin))

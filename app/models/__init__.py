@@ -7,7 +7,7 @@ from sqlalchemy import (
     BigInteger, Boolean, Column, Date, DateTime, ForeignKey, Integer,
     LargeBinary, Numeric, SmallInteger, String, Text, func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -79,7 +79,7 @@ class Sesion(Base):
     id = Column(Integer, primary_key=True)
     usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     refresh_token_hash = Column(String(64), unique=True, nullable=False)
-    ip_origen = Column(String)
+    ip_origen = Column(INET)   # INET en la BD: con String, dos registros en un mismo flush fallan
     user_agent = Column(Text)
     emitido_at = Column(DateTime(timezone=True), server_default=func.now())
     expira_at = Column(DateTime(timezone=True), nullable=False)
@@ -343,7 +343,7 @@ class LogAuditoria(Base):
     resultado = Column(String(15), default="exito")
     valor_anterior = Column(JSONB)
     valor_nuevo = Column(JSONB)
-    ip_origen = Column(String)
+    ip_origen = Column(INET)   # INET en la BD: con String, dos registros en un mismo flush fallan
     user_agent = Column(Text)
     endpoint = Column(String(200))
     timestamp = Column(DateTime(timezone=True), server_default=func.now())

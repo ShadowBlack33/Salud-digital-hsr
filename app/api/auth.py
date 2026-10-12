@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -16,10 +17,31 @@ from app.core.security import (
     validar_fortaleza, verificar_password,
 )
 from app.models import Sesion, Usuario
+from app.services import reactores
 from app.services.auditoria import registrar
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 settings = get_settings()
+log = logging.getLogger("hsr.auth")
+
+# Bloqueo "hasta que el admin lo quite": una fecha que nunca llega.
+BLOQUEO_INDEFINIDO = datetime(9999, 1, 1, tzinfo=timezone.utc)
+
+
+def _respuesta_bloqueo(usuario: Usuario) -> JSONResponse:
+    """423 uniforme para toda cuenta bloqueada."""
+    requiere_admin = usuario.bloqueado_hasta >= BLOQUEO_INDEFINIDO
+    contenido = {
+        "detail": ("Cuenta bloqueada por intentos fallidos. Pida al administrador que la desbloquee."
+                   if requiere_admin else
+                   f"Cuenta bloqueada hasta {usuario.bloqueado_hasta.isoformat()}"),
+        "requiere_admin": requiere_admin,
+        "intentos_restantes": 0,
+        "max_intentos": settings.max_intentos_login,
+    }
+    if not requiere_admin:
+        contenido["bloqueado_hasta"] = usuario.bloqueado_hasta.isoformat()
+    return JSONResponse(status_code=status.HTTP_423_LOCKED, content=contenido)
 
 
 class LoginRequest(BaseModel):
@@ -67,12 +89,12 @@ def login(datos: LoginRequest, request: Request, db: Session = Depends(get_db)):
 
     ahora = datetime.now(timezone.utc)
     if usuario.bloqueado_hasta and usuario.bloqueado_hasta > ahora:
-        return JSONResponse(status_code=status.HTTP_423_LOCKED, content={
-            "detail": f"Cuenta bloqueada hasta {usuario.bloqueado_hasta.isoformat()}",
-            "bloqueado_hasta": usuario.bloqueado_hasta.isoformat(),
-            "intentos_restantes": 0,
-            "max_intentos": settings.max_intentos_login,
-        })
+        # R13: el intento sobre una cuenta bloqueada también queda trazado,
+        # aunque traiga la contraseña correcta (R02 exige rechazarlo).
+        registrar(db, usuario, "usuario", usuario.id, "login",
+                  resultado="denegado", request=request)
+        db.commit()
+        return _respuesta_bloqueo(usuario)
 
     if not usuario.activo:
         raise generico
@@ -81,26 +103,36 @@ def login(datos: LoginRequest, request: Request, db: Session = Depends(get_db)):
         usuario.intentos_fallidos = (usuario.intentos_fallidos or 0) + 1
         bloqueada_ahora = usuario.intentos_fallidos >= settings.max_intentos_login
         if bloqueada_ahora:
-            usuario.bloqueado_hasta = ahora + timedelta(minutes=settings.minutos_bloqueo)
+            # R02: con bloqueo_requiere_admin la cuenta queda bloqueada hasta
+            # que el admin la libere (POST /usuarios/{id}/desbloquear). Se
+            # guarda como una fecha muy lejana para no cambiar el esquema: el
+            # resto del sistema ya trata "bloqueado_hasta > ahora" como bloqueo.
+            usuario.bloqueado_hasta = (BLOQUEO_INDEFINIDO if settings.bloqueo_requiere_admin
+                                       else ahora + timedelta(minutes=settings.minutos_bloqueo))
             usuario.intentos_fallidos = 0
         restantes = (0 if bloqueada_ahora
                      else settings.max_intentos_login - usuario.intentos_fallidos)
-        hasta_iso = usuario.bloqueado_hasta.isoformat() if bloqueada_ahora else None
         registrar(db, usuario, "usuario", usuario.id, "login",
                   resultado="denegado", request=request)
+        if bloqueada_ahora:
+            registrar(db, usuario, "usuario", usuario.id, "bloqueo",
+                      valor_nuevo={"username": usuario.username,
+                                   "intentos": settings.max_intentos_login,
+                                   "requiere_admin": settings.bloqueo_requiere_admin},
+                      request=request)
+            try:
+                reactores.al_bloquear(db, usuario)   # R19: aviso al admin
+            except Exception:  # un aviso fallido no puede deshacer el bloqueo
+                log.exception("No se pudo avisar del bloqueo de %s", usuario.username)
         db.commit()
 
+        if bloqueada_ahora:
+            # El intento que agota el contador ya responde 423: el usuario se
+            # entera de inmediato. Se responde así aunque login_mostrar_intentos
+            # esté apagado, porque R02 exige que el bloqueo sea explícito.
+            return _respuesta_bloqueo(usuario)
         if not settings.login_mostrar_intentos:
             raise generico
-        if bloqueada_ahora:
-            # El intento que agota el contador ya responde 423: el usuario
-            # se entera de inmediato de que la cuenta quedó bloqueada.
-            return JSONResponse(status_code=status.HTTP_423_LOCKED, content={
-                "detail": f"Cuenta bloqueada hasta {hasta_iso}",
-                "bloqueado_hasta": hasta_iso,
-                "intentos_restantes": 0,
-                "max_intentos": settings.max_intentos_login,
-            })
         return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={
             "detail": "Credenciales inválidas",
             "intentos_restantes": restantes,
@@ -155,6 +187,9 @@ def refresh_token(datos: RefreshRequest, request: Request,
                                        Usuario.activo.is_(True)).first()
     if usuario is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Usuario no válido")
+    # Una cuenta bloqueada no puede seguir renovando la sesión que ya tenía.
+    if usuario.bloqueado_hasta and usuario.bloqueado_hasta > datetime.now(timezone.utc):
+        return _respuesta_bloqueo(usuario)
 
     sesion.revocado_at = datetime.now(timezone.utc)
 

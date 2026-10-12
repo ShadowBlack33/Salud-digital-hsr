@@ -107,8 +107,13 @@ dedicado) y por supuesto cualquier variante de SHA sin derivación de clave.
 **Política de contraseñas:** mínimo 12 caracteres, con mayúscula, minúscula,
 dígito y carácter especial.
 
-**Protección contra fuerza bruta:** bloqueo temporal de la cuenta tras 5
-intentos fallidos. El endpoint de login devuelve un mensaje genérico y ejecuta
+**Protección contra fuerza bruta:** tras **3 intentos fallidos seguidos** la
+cuenta queda bloqueada hasta que un administrador la desbloquee
+(`POST /usuarios/{id}/desbloquear`, Corte 2, R02). Mientras tanto, incluso la
+contraseña correcta recibe `423` y tampoco se puede renovar una sesión ya
+abierta. El bloqueo y el desbloqueo quedan en la auditoría y el bloqueo avisa
+al admin. Con `BLOQUEO_REQUIERE_ADMIN=false` vuelve el bloqueo temporal de 15
+minutos del Corte 1. El endpoint de login devuelve un mensaje genérico y ejecuta
 el hashing incluso cuando el usuario no existe, para no filtrar información
 por diferencia en el tiempo de respuesta.
 
@@ -214,7 +219,16 @@ Este es un ejemplo aplicado de *privacidad por diseño*.
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: no-referrer`
-- CORS con `*` **bloqueado en producción** por validación de arranque
+- CORS con `*` **bloqueado en producción** por validación de arranque. Los
+  orígenes permitidos se leen de `CORS_ORIGENES`; un origen desconocido no
+  recibe `Access-Control-Allow-Origin` (Corte 2, R03)
+- **Un solo origen público** (Corte 2): nginx sirve el front y hace de proxy
+  hacia la API (`/api`) y FHIR (`/fhir`); el túnel de Cloudflare expone solo
+  nginx. API, HAPI, PACS y PostgreSQL publican puertos únicamente en
+  `127.0.0.1`
+- **Limitación de tasa** en nginx (`limit_req`): 10 peticiones por segundo por
+  cliente con ráfaga de 30; el exceso recibe `429`. Detrás del túnel el
+  cliente se identifica por `CF-Connecting-IP`
 - Los errores no controlados devuelven un mensaje genérico: una traza podría
   revelar estructura interna o datos de pacientes
 
@@ -223,7 +237,9 @@ Este es un ejemplo aplicado de *privacidad por diseño*.
 ## 10. Gestión de secretos
 
 Todas las claves provienen de variables de entorno; ninguna está en el
-repositorio (`.env` está en `.gitignore`).
+repositorio (`.env`, `.env.*` y `pass.env` están en `.gitignore`). En el
+repositorio solo va `.env.example`, con los nombres de las variables y sin
+valores.
 
 En arranque con `ENTORNO=produccion`, la aplicación **se niega a iniciar** si
 falta algún secreto o si CORS está abierto.
@@ -248,7 +264,12 @@ Reconocerlas explícitamente es parte del rigor del trabajo:
    API intermedia, no en OAuth2 con scopes FHIR nativos.
 5. **Blind index solo soporta igualdad exacta.** Ver sección 3.
 6. **Servidor HAPI FHIR sin autenticación propia** en la configuración de
-   desarrollo. En producción debería ir detrás de un gateway autenticado.
+   desarrollo. En el Corte 2 queda expuesto en `/fhir` porque el contrato de
+   verificación exige que acepte un `POST` de `Observation` (R21); tiene
+   limitación de tasa, pero no autenticación. En producción debería ir
+   detrás de un gateway autenticado.
+7. **Quick tunnel de Cloudflare.** La URL pública cambia si el contenedor
+   `cloudflared` se reinicia. Un túnel con nombre daría una URL fija.
 
 ---
 

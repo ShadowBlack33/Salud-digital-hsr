@@ -7,11 +7,12 @@ import { estaAutenticado, login } from "../api";
 import { horaConSegundos } from "../lib/format";
 
 const CUENTAS = [
-  { usuario: "admin", rol: "Administrador", detalle: "Acceso completo" },
+  { usuario: "admin", rol: "Administrador", detalle: "Usuarios, desbloqueos y auditoría" },
+  { usuario: "medico01", rol: "Médico", detalle: "Atiende, analiza con IA y remite" },
+  { usuario: "especialista01", rol: "Especialista", detalle: "Recibe y acepta remisiones" },
+  { usuario: "contable01", rol: "Contable", detalle: "Facturación, sin datos clínicos" },
+  { usuario: "paciente_demo", rol: "Paciente", detalle: "Solo su propia información" },
   { usuario: "coordinador", rol: "Coordinación quirúrgica", detalle: "Camas y quirófanos" },
-  { usuario: "enfe0082", rol: "Jefe de enfermería", detalle: "Tablero de camas" },
-  { usuario: "medi0001", rol: "Médico especialista", detalle: "Pacientes e imágenes" },
-  { usuario: "paciente_demo", rol: "Paciente", detalle: "Solo su propia ficha" },
 ];
 const CLAVE_DEMO = import.meta.env.VITE_DEMO_PASSWORD || "";
 const OCULTAR_CUENTAS = import.meta.env.VITE_OCULTAR_CUENTAS_DEMO === "true";
@@ -69,7 +70,9 @@ export default function Login() {
       await login(usuario.trim(), clave);
       navegar(state?.desde || "/app", { replace: true });
     } catch (err) {
-      if (err.status === 423) setFallo({ tipo: "bloqueo", hasta: leerBloqueo(err) });
+      if (err.status === 423) setFallo(err.data?.requiere_admin
+        ? { tipo: "bloqueo", requiereAdmin: true }
+        : { tipo: "bloqueo", hasta: leerBloqueo(err) });
       else if (err.status === 401) { setFallo({ tipo: "credenciales", restantes: err.data?.intentos_restantes, max: err.data?.max_intentos ?? 3 }); setSacudiendo(true); setTimeout(() => setSacudiendo(false), 500); }
       else if (err.status === 0) setFallo({ tipo: "red" });
       else setFallo({ tipo: "otro", mensaje: err.message });
@@ -104,9 +107,22 @@ export default function Login() {
 
           {bloqueado && (
             <div role="alert" className="anim-pop mt-6 rounded-3xl bg-coral-soft p-5 text-coral-ink">
-              <p className="flex items-center gap-2 font-semibold"><LockKeyhole size={18} aria-hidden="true" />Cuenta bloqueada temporalmente</p>
-              <p className="mt-1 text-sm">Fallaste 3 veces seguidas. Por seguridad, podrás volver a intentar a las {horaConSegundos(fallo.hasta)}</p>
-              <p className="mt-3 flex items-center gap-3 text-ink"><CuentaRegresiva hasta={fallo.hasta} onTermina={() => setFallo(null)} /><span className="text-sm text-coral-ink">para desbloquearse</span></p>
+              {fallo.requiereAdmin ? (
+                <>
+                  <p className="flex items-center gap-2 font-semibold"><LockKeyhole size={18} aria-hidden="true" />Cuenta bloqueada</p>
+                  <p className="mt-1 text-sm">Se registraron 3 intentos fallidos seguidos. Por seguridad, solo el administrador puede desbloquearla. El aviso ya le llegó.</p>
+                  <button type="button" onClick={() => { setFallo(null); setUsuario(""); setClave(""); }}
+                          className="mt-3 rounded-full bg-paper-white px-4 py-2 text-sm font-medium text-ink transition hover:bg-cloud-card">
+                    Entrar con otra cuenta
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="flex items-center gap-2 font-semibold"><LockKeyhole size={18} aria-hidden="true" />Cuenta bloqueada temporalmente</p>
+                  <p className="mt-1 text-sm">Fallaste 3 veces seguidas. Por seguridad, podrás volver a intentar a las {horaConSegundos(fallo.hasta)}</p>
+                  <p className="mt-3 flex items-center gap-3 text-ink"><CuentaRegresiva hasta={fallo.hasta} onTermina={() => setFallo(null)} /><span className="text-sm text-coral-ink">para desbloquearse</span></p>
+                </>
+              )}
             </div>
           )}
 
@@ -135,7 +151,7 @@ export default function Login() {
                 <p className="flex items-start gap-2 font-medium">
                   {fallo.tipo === "red" ? <WifiOff size={17} className="mt-0.5 shrink-0" aria-hidden="true" /> : <AlertTriangle size={17} className="mt-0.5 shrink-0" aria-hidden="true" />}
                   {fallo.tipo === "credenciales" && (conContador
-                    ? (ultimo ? "Contraseña incorrecta. Te queda 1 intento antes del bloqueo temporal." : `Usuario o contraseña incorrectos. Te quedan ${fallo.restantes} intentos.`)
+                    ? (ultimo ? "Contraseña incorrecta. Te queda 1 intento antes de que la cuenta se bloquee." : `Usuario o contraseña incorrectos. Te quedan ${fallo.restantes} intentos.`)
                     : "Usuario o contraseña incorrectos.")}
                   {fallo.tipo === "red" && "No se pudo conectar con el servidor. Revisa que la API esté encendida."}
                   {fallo.tipo === "otro" && fallo.mensaje}
