@@ -2,16 +2,19 @@ import { useState } from "react";
 import { FileDown, Loader2 } from "lucide-react";
 import { useAvisos } from "./Avisos";
 import { descargarHistoriaPDF } from "../lib/servicios";
+import { useTiempoReal } from "../lib/tiempoReal";
 
 /** Descarga la historia clínica en PDF (R11). Solo incluye reportes de IA aprobados (lo filtra la API). */
 export default function BotonHistoriaPDF({ pacienteId, nombre, ancho = false, texto = "Descargar historia clínica (PDF)" }) {
   const { avisar } = useAvisos();
   const [bajando, setBajando] = useState(false);
+  const tr = useTiempoReal();
   const bajar = async () => {
     setBajando(true);
     try {
       const archivo = `historia_${(nombre || "paciente").toLowerCase().replace(/\s+/g, "_")}.pdf`;
       await descargarHistoriaPDF(pacienteId, archivo);
+      tr?.marcarHito("pdf_descargado");
     } catch (err) {
       avisar(err.status === 404 ? "La descarga del PDF todavía no está disponible en la API." : err.message, "error");
     } finally { setBajando(false); }

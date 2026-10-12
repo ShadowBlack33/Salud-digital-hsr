@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Check, Clock, Inbox, Loader2, Send, UserCheck } from "lucide-react";
 import Encabezado from "../../components/Encabezado";
 import Insignia from "../../components/Insignia";
+import Esqueleto from "../../components/Esqueleto";
 import { useAvisos } from "../../components/Avisos";
 import * as S from "../../lib/servicios";
 import { useEventos } from "../../lib/tiempoReal";
@@ -54,7 +55,7 @@ export default function Remisiones() {
                   subtitulo={recibe ? "Pacientes que otros médicos te remitieron para valoración." : "Pacientes que remitiste a un especialista. Para remitir, abre la ficha del paciente."}
                   demo={estado.demo} />
 
-      {estado.cargando && <p className="flex items-center gap-2 text-sm text-gray-strong"><Loader2 size={16} className="anim-spin" />Cargando…</p>}
+      {estado.cargando && <Esqueleto filas={3} alto="h-20" />}
       {estado.error && <p role="alert" className="rounded-3xl bg-coral-soft p-5 text-sm text-coral-ink">{estado.error.message}</p>}
 
       {!estado.cargando && !estado.error && estado.lista.length === 0 && (

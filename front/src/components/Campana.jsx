@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Activity, AlertTriangle, Bell, CheckCircle2, FileText, Receipt, Send, UserX } from "lucide-react";
+import { pedirPermisoEscritorio, permisoEscritorio } from "../lib/sonido";
+import { Activity, AlertTriangle, Bell, BellRing, CheckCircle2, FileText, Receipt, Send, UserX } from "lucide-react";
 import Panel from "./Panel";
 import ChipDemo from "./ChipDemo";
 import { useTiempoReal } from "../lib/tiempoReal";
@@ -20,6 +21,7 @@ const ICONOS = {
 export default function Campana() {
   const tr = useTiempoReal();
   const [abierta, setAbierta] = useState(false);
+  const [permiso, setPermiso] = useState(permisoEscritorio);
   if (!tr) return null;
   const { notificaciones, noLeidas, marcarLeida, conectado, demo } = tr;
 
@@ -38,10 +40,17 @@ export default function Campana() {
       <Panel abierto={abierta} onCerrar={() => setAbierta(false)} titulo="Bandeja"
              subtitulo={`${noLeidas} sin leer · ${conectado ? "en vivo" : "reconectando el canal…"}`}>
         {demo && <div className="mb-3"><ChipDemo visible /></div>}
+        {permiso === "default" && (
+          <button onClick={async () => setPermiso(await pedirPermisoEscritorio())}
+                  className="mb-3 flex w-full items-center gap-3 rounded-3xl bg-hero-sky p-4 text-left text-sm transition hover:bg-cloud-card">
+            <BellRing size={18} className="shrink-0 text-metric-blue" aria-hidden="true" />
+            <span><span className="block font-medium">Activar avisos del escritorio</span><span className="text-xs text-gray-strong">Las alertas críticas te llegan aunque estés en otra ventana.</span></span>
+          </button>
+        )}
         {notificaciones.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-strong">No tienes avisos.</p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-2" aria-live="polite">
             {notificaciones.map((n) => {
               const [Icono, tono] = ICONOS[n.tipo] || [Bell, "text-gray-strong"];
               return (

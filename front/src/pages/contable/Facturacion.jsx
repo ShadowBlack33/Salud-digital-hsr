@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Loader2, Plus, Sparkles, X } from "lucide-react";
+import { Check, Download, Loader2, Plus, Sparkles, X } from "lucide-react";
+import GraficaCobro from "../../components/GraficaCobro";
+import Esqueleto from "../../components/Esqueleto";
 import Encabezado from "../../components/Encabezado";
 import Insignia from "../../components/Insignia";
 import { useAvisos } from "../../components/Avisos";
@@ -46,9 +48,24 @@ export default function Facturacion() {
   const pagado = estado.lista.filter((f) => f.estado_pago === "pagada").reduce((s, f) => s + Number(f.valor || 0), 0);
   const filas = estado.lista.filter((f) => filtro === "todas" || f.estado_pago === filtro);
 
+  // CSV con BOM y punto y coma: Excel en español lo abre bien sin configurar nada.
+  const exportar = () => {
+    const celda = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
+    const encabezado = ["factura", "paciente_id", "servicio", "descripcion", "valor_cop", "fecha", "estado_pago", "reporte_id"];
+    const lineas = filas.map((f) => [f.id, f.paciente_id, SERVICIOS[f.servicio] || f.servicio, f.descripcion, f.valor, f.fecha, f.estado_pago, f.reporte_id].map(celda).join(";"));
+    const blob = new Blob(["\ufeff" + [encabezado.join(";"), ...lineas].join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    Object.assign(document.createElement("a"), { href: url, download: `facturas_${filtro}_${new Date().toISOString().slice(0, 10)}.csv` }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+
   return (
     <div className="space-y-8 pb-16">
       <Encabezado titulo="Facturación" subtitulo="Servicios facturados: consultas, análisis de IA y remisiones." demo={estado.demo}>
+        <button onClick={exportar} disabled={filas.length === 0}
+                className="flex items-center gap-2 rounded-full bg-cloud-card px-5 py-2.5 text-sm font-semibold transition hover:bg-hero-sky disabled:opacity-40">
+          <Download size={16} />Exportar CSV
+        </button>
         <button onClick={() => setFormulario((v) => !v)}
                 className="flex items-center gap-2 rounded-full bg-charcoal px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ink">
           {formulario ? <X size={16} /> : <Plus size={16} />}{formulario ? "Cerrar" : "Nueva factura"}
@@ -61,6 +78,8 @@ export default function Facturacion() {
         <Resumen etiqueta="Por cobrar" valor={cop(total - pagado)} clase="bg-gold-soft text-gold-ink" />
       </div>
 
+      {!estado.cargando && <GraficaCobro facturas={estado.lista} />}
+
       {formulario && <NuevaFactura onCreada={() => { setFormulario(false); cargar(true); avisar("Factura creada."); }} />}
 
       <section className="rounded-[28px] bg-paper-white p-6 shadow-lift" aria-label="Facturas">
@@ -71,7 +90,7 @@ export default function Facturacion() {
           ))}
         </div>
         {estado.cargando ? (
-          <p className="flex items-center gap-2 text-sm text-gray-strong"><Loader2 size={16} className="anim-spin" />Cargando…</p>
+          <Esqueleto filas={4} />
         ) : estado.error ? (
           <p role="alert" className="text-sm text-coral-ink">{estado.error.message}</p>
         ) : (
@@ -95,8 +114,8 @@ export default function Facturacion() {
                         <span className="font-medium">{SERVICIOS[f.servicio] || f.servicio}</span>
                         {f.reporte_id && (
                           <span title={`Generada sola al aprobar el reporte ${f.reporte_id}`}
-                                className="ml-2 inline-flex items-center gap-1 rounded-full bg-hero-sky px-2 py-0.5 text-[11px] font-semibold text-metric-blue">
-                            <Sparkles size={11} aria-hidden="true" />Automática
+                                className="ml-2 inline-flex items-center gap-1 rounded-full bg-hero-sky px-2 py-0.5 text-[11px] font-semibold text-ink">
+                            <Sparkles size={11} className="text-metric-blue" aria-hidden="true" />Automática
                           </span>
                         )}
                         {f.descripcion && <span className="block text-xs text-gray-strong">{f.descripcion}</span>}

@@ -145,11 +145,17 @@ services:
       ML_URL: http://ml:8001
       # Detrás de nginx y del túnel, la IP real llega en X-Forwarded-For.
       FORWARDED_ALLOW_IPS: "*"
+    # La API espera a que Mongo y la IA estén sanos; HAPI y Orthanc no traen
+    # herramientas para un healthcheck confiable, así que basta con que arranquen.
     depends_on:
-      - hapi-fhir
-      - orthanc
-      - mongo
-      - ml
+      hapi-fhir:
+        condition: service_started
+      orthanc:
+        condition: service_started
+      mongo:
+        condition: service_healthy
+      ml:
+        condition: service_healthy
     # Solo desde este equipo (Swagger). Hacia afuera la API sale por nginx, en /api.
     ports:
       - "127.0.0.1:8000:8000"
@@ -166,27 +172,37 @@ services:
         # Opcional: las cuentas de demostración del login rellenan la contraseña.
         # Se lee del .env de esta carpeta; si no existe, queda vacío.
         VITE_DEMO_PASSWORD: ${VITE_DEMO_PASSWORD:-}
+        VITE_MINUTOS_ESCALAMIENTO: ${VITE_MINUTOS_ESCALAMIENTO:-5}
     container_name: hsr-front
     restart: unless-stopped
     depends_on:
-      - api
-      - hapi-fhir
+      api:
+        condition: service_healthy
+      hapi-fhir:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 15s
+      retries: 3
     ports:
       - "5173:80"
 
   # Túnel de Cloudflare (R04): expone nginx por una URL HTTPS pública.
-  # Es un "quick tunnel": la URL cambia cada vez que este contenedor se
-  # reinicia. Se genera el sábado, se copia a tester.yaml y NO se reinicia
-  # hasta después de la sustentación. Para una URL fija, crear un túnel con
-  # nombre en Cloudflare y cambiar el command por:
-  #   tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+  #
+  # Por defecto es un "quick tunnel": no necesita cuenta, pero la URL cambia
+  # cada vez que este contenedor se reinicia. Se genera el sábado, se copia a
+  # tester.yaml y NO se reinicia hasta después de la sustentación.
+  #
+  # URL fija (túnel con nombre, ver docs/DESPLIEGUE.md): en el .env poner
+  #   CLOUDFLARED_COMANDO=tunnel --no-autoupdate run --token <token de Cloudflare>
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: hsr-cloudflared
     restart: unless-stopped
-    command: tunnel --no-autoupdate --url http://front:80
+    command: ${CLOUDFLARED_COMANDO:-tunnel --no-autoupdate --url http://front:80}
     depends_on:
-      - front
+      front:
+        condition: service_healthy
 
 volumes:
   fhir_pgdata:

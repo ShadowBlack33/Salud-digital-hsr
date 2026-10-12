@@ -147,8 +147,15 @@ export async function login(username, password) {
   if (!r.ok) throw comoError(r, cuerpo); // .data trae intentos_restantes y bloqueado_hasta
   guardarTokens(cuerpo);
   const yo = await api("/auth/yo");
-  cambiarUsuario(yo);
+  // La bandera viene en la respuesta del login; /auth/yo también la trae en las versiones nuevas.
+  cambiarUsuario({ ...yo, debe_cambiar_password: yo.debe_cambiar_password ?? !!cuerpo.debe_cambiar_password });
   return yo;
+}
+
+/** Cambia la contraseña. La API revoca todas las sesiones: después hay que volver a entrar. */
+export async function cambiarPassword(actual, nueva) {
+  await api("/auth/cambiar-password", { method: "POST", json: { password_actual: actual, password_nueva: nueva } });
+  cerrarSesionLocal();
 }
 
 export async function cerrarSesion() {

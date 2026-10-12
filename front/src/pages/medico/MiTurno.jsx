@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, ChevronRight, FileCheck, Loader2, Send, Users } from "lucide-react";
+import { AlertCircle, ChevronRight, FileCheck, Send, Users } from "lucide-react";
+import Esqueleto from "../../components/Esqueleto";
+import * as S from "../../lib/servicios";
+import { useEventos } from "../../lib/tiempoReal";
+import { haceCuanto } from "../../lib/format";
 import Encabezado from "../../components/Encabezado";
 import TarjetaContador from "../../components/TarjetaContador";
 import { api } from "../../api";
@@ -11,12 +15,27 @@ import { edadLegible } from "../../lib/format";
 /** Inicio del médico: trabajo pendiente en vivo (R18) y sus pacientes. */
 export default function MiTurno() {
   const usuario = useUsuario();
-  const { pendientes, demo } = useTiempoReal();
+  const { pendientes, demo, alertasActivas } = useTiempoReal();
   const [pacientes, setPacientes] = useState(null);
+  const [detalle, setDetalle] = useState(null);       // "reportes" | "remisiones" | "alertas"
+  const [items, setItems] = useState(null);
+
+  // El detalle se carga al abrirlo y se refresca con cada evento.
+  const cargarDetalle = useCallback(async (cual) => {
+    if (!cual) return;
+    setItems(null);
+    try {
+      if (cual === "reportes") setItems((await S.reportesPendientes()).datos);
+      if (cual === "remisiones") setItems((await S.remisiones()).datos.filter((r) => r.estado === "pendiente"));
+    } catch { setItems([]); }
+  }, []);
+  useEffect(() => { cargarDetalle(detalle); }, [detalle, cargarDetalle]);
+  useEventos((ev) => { if (!ev.local) cargarDetalle(detalle); });
+  const alternar = (cual) => setDetalle((d) => (d === cual ? null : cual));
 
   useEffect(() => {
     let vivo = true;
-    api("/pacientes?limite=8").then((l) => vivo && setPacientes(l)).catch(() => vivo && setPacientes([]));
+    api("/pacientes?limite=8&mios=true").then((l) => vivo && setPacientes(l)).catch(() => vivo && setPacientes([]));
     return () => { vivo = false; };
   }, []);
 
@@ -26,23 +45,63 @@ export default function MiTurno() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <TarjetaContador etiqueta="Reportes de IA por revisar" valor={pendientes.reportes_por_revisar} icono={FileCheck}
-                         detalle="Esperan tu aprobación antes de entrar a la historia" />
+                         detalle="Esperan tu aprobación antes de entrar a la historia"
+                         onClick={() => alternar("reportes")} abierta={detalle === "reportes"} />
         <TarjetaContador etiqueta="Remisiones" valor={pendientes.remisiones_recibidas} icono={Send} tono="text-green-deep"
-                         detalle="Pendientes de respuesta" />
+                         detalle="Pendientes de respuesta" onClick={() => alternar("remisiones")} abierta={detalle === "remisiones"} />
         <TarjetaContador etiqueta="Alertas activas" valor={pendientes.alertas_activas} icono={AlertCircle}
                          tono={pendientes.alertas_activas ? "text-coral-deep" : "text-gray-strong"}
-                         resaltar={pendientes.alertas_activas > 0} detalle="Casos críticos sin reconocer" />
+                         resaltar={pendientes.alertas_activas > 0} detalle="Casos críticos sin reconocer"
+                         onClick={() => alternar("alertas")} abierta={detalle === "alertas"} />
       </div>
+
+      {detalle && (
+        <section className="anim-pop rounded-[28px] bg-paper-white p-6 shadow-lift" aria-label="Detalle">
+          {detalle === "alertas" ? (
+            alertasActivas.length === 0 ? <p className="text-sm text-gray-strong">No hay alertas activas.</p> : (
+              <ul className="divide-y divide-cloud-card">
+                {alertasActivas.map((a) => (
+                  <li key={a.id}>
+                    <Link to={`/app/pacientes/${a.paciente_id}`} state={{ pestana: "ia" }} className="flex items-center justify-between gap-3 rounded-2xl px-3 py-3 transition hover:bg-cloud-card/60">
+                      <span><span className="block text-sm font-medium">{a.mensaje}</span><span className="text-xs text-gray-strong">{haceCuanto(a.created_at)} · reconócela en el aviso de arriba</span></span>
+                      <ChevronRight size={18} className="text-gray-strong" aria-hidden="true" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : !items ? <Esqueleto filas={2} /> : items.length === 0 ? (
+            <p className="text-sm text-gray-strong">{detalle === "reportes" ? "No hay reportes esperando revisión." : "No hay remisiones pendientes."}</p>
+          ) : (
+            <ul className="divide-y divide-cloud-card">
+              {items.map((x) => (
+                <li key={x.id}>
+                  <Link to={detalle === "reportes" ? `/app/pacientes/${x.paciente_id}` : "/app/remisiones"} state={detalle === "reportes" ? { pestana: "ia" } : undefined}
+                        className="flex items-center justify-between gap-3 rounded-2xl px-3 py-3 transition hover:bg-cloud-card/60">
+                    <span>
+                      <span className="block text-sm font-medium">
+                        {detalle === "reportes" ? `Reporte ${x.id} · ${Math.round(Number(x.probabilidad || 0) * 100)} % de requerir UCI` : `${x.paciente_nombre || "Paciente"} · ${x.especialista || x.medico}`}
+                      </span>
+                      <span className="text-xs text-gray-strong">{haceCuanto(x.created_at)}{detalle === "reportes" ? " · abrir para aprobar o rechazar" : ` · ${x.motivo}`}</span>
+                    </span>
+                    <ChevronRight size={18} className="text-gray-strong" aria-hidden="true" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <section className="rounded-[28px] bg-paper-white p-6 shadow-lift" aria-label="Pacientes">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-lg font-semibold"><Users size={18} aria-hidden="true" />Pacientes</h2>
+          <h2 className="flex items-center gap-2 text-lg font-semibold"><Users size={18} aria-hidden="true" />Mis pacientes</h2>
           <Link to="/app/pacientes" className="text-sm font-medium text-metric-blue hover:underline">Ver todos</Link>
         </div>
         {!pacientes ? (
-          <p className="flex items-center gap-2 py-4 text-sm text-gray-strong"><Loader2 size={16} className="anim-spin" />Cargando…</p>
+          <Esqueleto filas={5} />
         ) : pacientes.length === 0 ? (
-          <p className="py-4 text-sm text-gray-strong">No hay pacientes para mostrar.</p>
+          <p className="py-4 text-sm text-gray-strong">No tienes pacientes a tu cargo en este momento. <Link to="/app/pacientes" className="font-medium text-metric-blue hover:underline">Buscar entre todos</Link>.</p>
         ) : (
           <ul className="divide-y divide-cloud-card">
             {pacientes.map((p) => (

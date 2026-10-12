@@ -59,6 +59,10 @@ export const reportesDePaciente = async (pacienteId) => {
 };
 export const analizar = (pacienteId) =>
   escribir("/ia/analizar", { method: "POST", json: { paciente_id: pacienteId } }, () => M.analizar(pacienteId));
+export const reportesPendientes = async () => {
+  const r = await leer("/ia/reportes?estado=pendiente", M.reportesPendientes);
+  return { ...r, datos: lista(r.datos, "reportes") };
+};
 export const reporte = (id) => leer(`/ia/reportes/${id}`, () => M.reporte(id));
 export const payloadReporte = async (id) => {
   const r = await leer(`/ia/reportes/${id}/payload`, () => M.payload(id));

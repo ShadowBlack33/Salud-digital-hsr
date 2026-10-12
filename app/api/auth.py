@@ -259,4 +259,6 @@ def yo(usuario: Usuario = Depends(get_usuario_actual)):
         "permisos": usuario.codigos_permisos,
         "personal_id": usuario.personal_id,
         "paciente_id": usuario.paciente_id,
+        # El front lo usa para obligar a cambiar la contraseña inicial.
+        "debe_cambiar_password": bool(usuario.debe_cambiar_password),
     }

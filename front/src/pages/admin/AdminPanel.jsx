@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, Lock, RefreshCw, ShieldCheck, Unlock, UserPlus, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Esqueleto from "../../components/Esqueleto";
+import { Activity, Ban, KeyRound, Loader2, Lock, RefreshCw, ShieldCheck, Unlock, UserPlus, X } from "lucide-react";
 import Encabezado from "../../components/Encabezado";
 import Insignia from "../../components/Insignia";
 import { useAvisos } from "../../components/Avisos";
 import * as S from "../../lib/servicios";
-import { useEventos } from "../../lib/tiempoReal";
+import { useEventos, useTiempoReal } from "../../lib/tiempoReal";
 import { useSondeo } from "../../lib/hooks";
 import { salud } from "../../api";
 import { fechaYHora, haceCuanto } from "../../lib/format";
@@ -28,10 +29,12 @@ export default function AdminPanel() {
   return (
     <div className="space-y-6 pb-16">
       <Encabezado titulo="Administración" subtitulo="Usuarios, cuentas bloqueadas, auditoría y estado del sistema." />
+      <ResumenHoy bloqueadas={bloqueadas.length} />
 
       <div className="flex flex-wrap gap-2" role="tablist" aria-label="Secciones">
         {PESTANAS.map(([id, texto]) => (
-          <button key={id} role="tab" aria-selected={pestana === id} onClick={() => setPestana(id)}
+          <button key={id} role="tab" aria-selected={pestana === id}
+                  onClick={() => { setPestana(id); if (id === "usuarios" || id === "bloqueadas") cargarUsuarios(); }}
                   className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${pestana === id ? "bg-charcoal text-white" : "bg-cloud-card text-ink hover:bg-hero-sky"}`}>
             {texto}
             {id === "bloqueadas" && bloqueadas.length > 0 && (
@@ -50,6 +53,34 @@ export default function AdminPanel() {
 }
 
 const tarjeta = "rounded-[28px] bg-paper-white p-6 shadow-lift";
+
+const esHoy = (iso) => iso && new Date(iso).toDateString() === new Date().toDateString();
+
+/** Indicadores del día sacados de la auditoría (R13). Se recalculan con cada evento. */
+function ResumenHoy({ bloqueadas }) {
+  const [registros, setRegistros] = useState(null);
+  const cargar = useCallback(() => S.auditoria({ limite: 500 }).then((l) => setRegistros(l.filter((r) => esHoy(r.timestamp)))).catch(() => setRegistros([])), []);
+  useEffect(() => { cargar(); }, [cargar]);
+  useEventos((ev) => { if (!ev.local) cargar(); });
+
+  const contar = (f) => (registros ? registros.filter(f).length : "—");
+  const tarjetas = [
+    ["Logins fallidos hoy", contar((r) => r.operacion === "login" && r.resultado === "denegado"), KeyRound, "text-gold-deep"],
+    ["Cuentas bloqueadas ahora", bloqueadas, Lock, "text-coral-deep"],
+    ["Accesos denegados hoy", contar((r) => r.resultado === "denegado"), Ban, "text-coral-deep"],
+    ["Eventos FHIR recibidos hoy", contar((r) => r.operacion === "fhir_evento"), Activity, "text-sleep-lilac"],
+  ];
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Resumen de hoy">
+      {tarjetas.map(([etiqueta, valor, Icono, tono]) => (
+        <div key={etiqueta} className="rounded-[24px] bg-cloud-card p-5">
+          <div className="flex items-center justify-between gap-2 text-xs font-medium"><span>{etiqueta}</span><Icono size={16} className={tono} aria-hidden="true" /></div>
+          <span key={valor} className="anim-pop mt-2 block text-3xl font-semibold tabular-nums tracking-display">{valor}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 const entrada = "w-full rounded-2xl bg-cloud-card px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-metric-blue/40";
 
 function Usuarios({ estado, onCambio }) {
@@ -69,7 +100,7 @@ function Usuarios({ estado, onCambio }) {
       {crear && <CrearUsuario onCreado={() => { setCrear(false); onCambio(); }} />}
       <input type="search" value={buscar} onChange={(e) => { setBuscar(e.target.value); setCuantos(25); }} aria-label="Buscar usuario"
              placeholder={`Buscar entre ${estado.lista.length} usuarios por nombre o rol`} className={`${entrada} mb-3 max-w-md`} />
-      {estado.cargando ? <Cargando /> : estado.error ? <ErrorTexto error={estado.error} /> : (
+      {estado.cargando ? <Esqueleto filas={6} alto="h-10" /> : estado.error ? <ErrorTexto error={estado.error} /> : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead><tr className="text-xs text-gray-strong"><th className="pb-3 font-medium">Usuario</th><th className="pb-3 font-medium">Rol</th><th className="pb-3 font-medium">Último acceso</th><th className="pb-3 font-medium">Estado</th></tr></thead>
@@ -145,10 +176,11 @@ function CrearUsuario({ onCreado }) {
 
 function Bloqueadas({ lista, onCambio }) {
   const { avisar } = useAvisos();
+  const tr = useTiempoReal();
   const [ocupado, setOcupado] = useState(null);
   const desbloquear = async (u) => {
     setOcupado(u.id);
-    try { await S.desbloquear(u.id); avisar(`Cuenta ${u.username} desbloqueada. Quedó en la auditoría.`); onCambio(); }
+    try { await S.desbloquear(u.id); avisar(`Cuenta ${u.username} desbloqueada. Quedó en la auditoría.`); tr?.marcarHito("cuenta_desbloqueada"); onCambio(); }
     catch (err) { avisar(err.message, "error"); }
     finally { setOcupado(null); }
   };
@@ -182,15 +214,24 @@ const OPERACIONES = ["", "login", "bloqueo", "desbloqueo", "create", "update", "
                      "ia_analisis", "aprobacion", "rechazo", "remision_crear", "remision_aceptar", "factura", "alerta", "alerta_reconocida", "fhir_evento"];
 
 function Auditoria() {
+  const marcarHito = useTiempoReal()?.marcarHito;
   const [filtro, setFiltro] = useState({ operacion: "", entidad: "" });
+  useEffect(() => { marcarHito?.("auditoria_vista"); }, [marcarHito]);
   const [estado, setEstado] = useState({ cargando: true, lista: [], error: null });
+  const [nuevas, setNuevas] = useState(new Set());
+  const vistas = useRef(null);
   const cargar = useCallback(async () => {
     setEstado((e) => ({ ...e, cargando: true }));
-    try { setEstado({ cargando: false, lista: await S.auditoria({ ...filtro, limite: 200 }), error: null }); }
-    catch (err) { setEstado({ cargando: false, lista: [], error: err }); }
+    try {
+      const lista = await S.auditoria({ ...filtro, limite: 200 });
+      // Las filas que no estaban antes entran resaltadas: la auditoría se ve "en vivo".
+      if (vistas.current) setNuevas(new Set(lista.filter((a) => !vistas.current.has(a.id)).map((a) => a.id)));
+      vistas.current = new Set(lista.map((a) => a.id));
+      setEstado({ cargando: false, lista, error: null });
+    } catch (err) { setEstado({ cargando: false, lista: [], error: err }); }
   }, [filtro]);
   useEffect(() => { cargar(); }, [cargar]);
-  useEventos(() => cargar());
+  useEventos((ev) => { if (!ev.local) cargar(); });
 
   return (
     <section className={tarjeta} aria-label="Auditoría">
@@ -205,7 +246,7 @@ function Auditoria() {
         </label>
         <button onClick={cargar} aria-label="Recargar" className="grid size-10 place-items-center rounded-full bg-cloud-card transition hover:bg-hero-sky"><RefreshCw size={16} /></button>
       </div>
-      {estado.cargando && estado.lista.length === 0 ? <Cargando /> : estado.error ? <ErrorTexto error={estado.error} /> : (
+      {estado.cargando && estado.lista.length === 0 ? <Esqueleto filas={6} alto="h-10" /> : estado.error ? <ErrorTexto error={estado.error} /> : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead><tr className="text-xs text-gray-strong">
@@ -214,7 +255,7 @@ function Auditoria() {
             </tr></thead>
             <tbody className="divide-y divide-cloud-card">
               {estado.lista.map((a) => (
-                <tr key={a.id} className={a.resultado === "denegado" ? "bg-coral-soft/50" : ""}>
+                <tr key={a.id} className={`transition-colors duration-1000 ${nuevas.has(a.id) ? "anim-pop bg-hero-sky" : a.resultado === "denegado" ? "bg-coral-soft/50" : ""}`}>
                   <td className="whitespace-nowrap py-2.5 text-xs text-gray-strong">{fechaYHora(a.timestamp)}</td>
                   <td className="py-2.5">{a.usuario_id ?? "—"} <span className="text-xs text-gray-strong">{a.rol}</span></td>
                   <td className="py-2.5"><span className="rounded-full bg-cloud-card px-2.5 py-0.5 text-xs font-medium">{a.operacion}</span></td>
@@ -259,5 +300,4 @@ function Servicios() {
   );
 }
 
-const Cargando = () => <p className="flex items-center gap-2 text-sm text-gray-strong"><Loader2 size={16} className="anim-spin" />Cargando…</p>;
 const ErrorTexto = ({ error }) => <p role="alert" className="text-sm text-coral-ink">{error.message}</p>;

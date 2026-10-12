@@ -6,6 +6,8 @@ Esquema OpenAPI:                     /openapi.json
 """
 from __future__ import annotations
 
+import logging
+import re
 import time
 
 from fastapi import FastAPI, Request
@@ -16,6 +18,24 @@ from app.api import auth, clinico, imaging, pacientes, recursos, usuarios
 from app.core.config import get_settings
 
 settings = get_settings()
+
+
+class _SinTokenEnRegistros(logging.Filter):
+    """
+    El canal en vivo recibe el JWT en la URL (?token=...), porque EventSource
+    no puede mandar cabeceras. Sin este filtro, uvicorn escribiría el token
+    completo en su registro de accesos. Se reemplaza por '***'.
+    """
+    _patron = re.compile(r"(token=)[^&\s]+")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(self._patron.sub(r"\1***", a) if isinstance(a, str) else a
+                                for a in record.args)
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_SinTokenEnRegistros())
 
 DESCRIPCION = """
 API del sistema de coordinación en tiempo real de **quirófanos, camas y urgencias**.

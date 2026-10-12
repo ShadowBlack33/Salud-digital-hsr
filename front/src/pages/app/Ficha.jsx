@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Eye, EyeOff, Loader2, ShieldAlert } from "lucide-react";
+import { Link, useLocation, useParams } from "react-router-dom";
+import { ArrowLeft, Eye, EyeOff, Loader2 } from "lucide-react";
 import GaleriaImagenes from "../../components/GaleriaImagenes";
 import BotonHistoriaPDF from "../../components/BotonHistoriaPDF";
+import ErrorEstado from "../../components/ErrorEstado";
 import PestanaIA from "../../components/ficha/PestanaIA";
 import PestanaRemitir from "../../components/ficha/PestanaRemitir";
+import PestanaHistoria from "../../components/ficha/PestanaHistoria";
 import { esClinico, esMedico, esPaciente } from "../../lib/roles";
 import Dato from "../../components/Dato";
 import Insignia from "../../components/Insignia";
@@ -23,11 +25,12 @@ export default function Ficha() {
   const [error, setError] = useState(null);
   const [estancia, setEstancia] = useState(null);
   const [verDoc, setVerDoc] = useState(false);
-  const [pestana, setPestana] = useState("imagenes");
+  const { state } = useLocation();
+  const [pestana, setPestana] = useState(state?.pestana || "historia");
 
   useEffect(() => {
     let vivo = true;
-    setPaciente(null); setError(null); setEstancia(null); setVerDoc(false); setPestana("imagenes");
+    setPaciente(null); setError(null); setEstancia(null); setVerDoc(false); setPestana(state?.pestana || "historia");
     api(`/pacientes/${id}`).then((p) => vivo && setPaciente(p)).catch((e) => vivo && setError(e));
     if (puede(usuario, "cama", "read")) {
       api("/camas/ocupacion?solo_ocupadas=false")
@@ -40,16 +43,7 @@ export default function Ficha() {
   const atras = puede(usuario, "paciente", "read") && (puede(usuario, "cama", "read") || usuario?.rol !== "paciente");
 
   if (error) {
-    return (
-      <div role="alert" className="flex items-start gap-3 rounded-[28px] bg-coral-soft p-6 text-coral-ink">
-        <ShieldAlert className="mt-0.5 shrink-0" aria-hidden="true" />
-        <div>
-          <p className="font-semibold">{error.status === 404 ? "Paciente no encontrado" : error.status === 403 ? "No tienes acceso a este paciente" : "No se pudo cargar la ficha"}</p>
-          <p className="mt-1 text-sm">{error.message}</p>
-          <Link to="/app/pacientes" className="mt-3 inline-block rounded-full bg-coral-ink px-4 py-2 text-sm font-semibold text-white">Volver a pacientes</Link>
-        </div>
-      </div>
-    );
+    return <ErrorEstado error={error} titulo={error.status === 404 ? "Paciente no encontrado" : error.status === 403 ? "No tienes acceso a este paciente" : undefined} />;
   }
   if (!paciente) return <p className="flex items-center gap-2 text-sm text-gray-strong"><Loader2 size={16} className="anim-spin" />Cargando ficha…</p>;
 
@@ -101,7 +95,7 @@ export default function Ficha() {
 
       {(() => {
         // Pestañas según el rol: la API vuelve a validar cada acción.
-        const pestanas = [["imagenes", "Imágenes"]];
+        const pestanas = [["historia", "Historia"], ["imagenes", "Imágenes"]];
         if (esClinico(usuario)) pestanas.push(["ia", "Análisis de IA"]);
         if (esMedico(usuario)) pestanas.push(["remitir", "Remitir"]);
         const verPDF = esClinico(usuario) || esPaciente(usuario);
@@ -118,6 +112,7 @@ export default function Ficha() {
               </div>
               {verPDF && <BotonHistoriaPDF pacienteId={id} nombre={nombre} />}
             </div>
+            {pestana === "historia" && <PestanaHistoria pacienteId={id} />}
             {pestana === "imagenes" && <GaleriaImagenes pacienteId={id} />}
             {pestana === "ia" && <PestanaIA pacienteId={id} />}
             {pestana === "remitir" && <PestanaRemitir pacienteId={id} />}

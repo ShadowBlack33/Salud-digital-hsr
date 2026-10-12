@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { CalendarClock, CheckCircle2, HeartPulse, Loader2, ShieldAlert, Sparkles } from "lucide-react";
+import { CalendarClock, CheckCircle2, ChevronDown, HeartPulse, ShieldAlert, Sparkles } from "lucide-react";
 import ChipDemo from "../../components/ChipDemo";
+import Anillo from "../../components/Anillo";
+import Esqueleto from "../../components/Esqueleto";
 import GaleriaImagenes from "../../components/GaleriaImagenes";
 import BotonHistoriaPDF from "../../components/BotonHistoriaPDF";
 import { api } from "../../api";
@@ -17,6 +19,45 @@ function explicar(r) {
     return `Según tus exámenes, es probable (${pct} %) que después de la cirugía necesites unos días en cuidados intensivos. Tu equipo ya lo tuvo en cuenta para tenerte un espacio listo.`;
   }
   return `Según tus exámenes, lo más probable es que después de la cirugía no necesites cuidados intensivos (${pct} % de probabilidad de necesitarlos).`;
+}
+
+/** "Faltan 2 días y 3 horas". */
+function cuantoFalta(iso, ahora) {
+  const m = Math.round((Date.parse(iso) - ahora) / 60000);
+  if (m <= 0) return "Es ahora";
+  const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), min = m % 60;
+  if (d > 0) return `Faltan ${d} ${d === 1 ? "día" : "días"}${h ? ` y ${h} ${h === 1 ? "hora" : "horas"}` : ""}`;
+  if (h > 0) return `Faltan ${h} ${h === 1 ? "hora" : "horas"}${min ? ` y ${min} min` : ""}`;
+  return `Faltan ${min} min`;
+}
+
+/** Un resultado aprobado, explicado sin jerga, con el detalle desplegable. */
+function Resultado({ r }) {
+  const pct = Math.round(Number(r.probabilidad || 0) * 100);
+  return (
+    <li className="rounded-3xl bg-cloud-card p-5">
+      <div className="flex items-start gap-4">
+        <Anillo valor={pct} tamano={76} grosor={8} color="var(--color-metric-blue)" etiqueta={`${pct} por ciento`}>
+          <span className="text-base font-semibold tabular-nums">{pct}%</span>
+        </Anillo>
+        <div className="min-w-0">
+          <p className="text-[15px] leading-relaxed">{explicar(r)}</p>
+          {r.observaciones && <p className="mt-2 text-sm text-gray-strong">Nota de tu médico: “{r.observaciones}”</p>}
+          <p className="mt-2 text-xs text-gray-strong">{fechaYHora(r.created_at)}</p>
+        </div>
+      </div>
+      <details className="group mt-4 rounded-2xl bg-paper-white px-4 py-3">
+        <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium">
+          ¿Qué significa esto?<ChevronDown size={16} className="transition group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <div className="mt-2 space-y-2 text-sm leading-relaxed text-gray-strong">
+          <p>Un programa de computador comparó tus exámenes de antes de la cirugía con los de miles de pacientes. El número es qué tan probable es que necesites cuidados intensivos después.</p>
+          <p>No es un diagnóstico: tu médico lo revisó y lo aprobó antes de que lo vieras. Sirve para que el hospital tenga tu cama lista con tiempo.</p>
+          <p>Si tienes dudas, pregúntale a tu médico en tu próxima cita.</p>
+        </div>
+      </details>
+    </li>
+  );
 }
 
 /** Portal del paciente (R01: el paciente solo ve su propia información). Pensado primero para celular. */
@@ -42,7 +83,7 @@ export default function MiSalud() {
   if (error) {
     return <p role="alert" className="flex items-center gap-2 rounded-[28px] bg-coral-soft p-6 text-sm text-coral-ink"><ShieldAlert size={18} />{error.message}</p>;
   }
-  if (!paciente) return <p className="flex items-center gap-2 text-sm text-gray-strong"><Loader2 size={16} className="anim-spin" />Cargando tu información…</p>;
+  if (!paciente) return <div className="mx-auto max-w-2xl"><Esqueleto filas={4} alto="h-16" /></div>;
 
   const encuentros = historia.datos?.encuentros ?? [];
   const proximos = encuentros.filter((e) => e.fecha && Date.parse(e.fecha) >= ahora).sort((a, b) => Date.parse(a.fecha) - Date.parse(b.fecha));
@@ -66,6 +107,7 @@ export default function MiSalud() {
           <>
             <h2 className="mt-4 text-2xl font-semibold leading-tight tracking-display">{proximo.descripcion || TIPO[proximo.tipo] || "Cita"}</h2>
             <p className="mt-1 text-sm text-gray-strong">{fechaYHora(proximo.fecha)}{proximo.lugar ? ` · ${proximo.lugar}` : ""}</p>
+            <p className="mt-3 text-[15px] font-semibold tabular-nums">{cuantoFalta(proximo.fecha, ahora)}</p>
             <span className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-green-soft px-3 py-1 text-xs font-semibold text-green-ink"><CheckCircle2 size={13} aria-hidden="true" />{proximo.estado === "programado" ? "Confirmada" : proximo.estado}</span>
           </>
         ) : (
@@ -80,13 +122,7 @@ export default function MiSalud() {
           <p className="mt-4 rounded-3xl bg-cloud-card p-5 text-sm">Todavía no tienes resultados aprobados.</p>
         ) : (
           <ul className="mt-4 space-y-3">
-            {reportes.map((r) => (
-              <li key={r.id} className="rounded-3xl bg-cloud-card p-5">
-                <p className="text-[15px] leading-relaxed">{explicar(r)}</p>
-                {r.observaciones && <p className="mt-2 text-sm text-gray-strong">Nota de tu médico: “{r.observaciones}”</p>}
-                <p className="mt-2 text-xs text-gray-strong">{fechaYHora(r.created_at)}</p>
-              </li>
-            ))}
+            {reportes.map((r) => <Resultado key={r.id} r={r} />)}
           </ul>
         )}
       </section>

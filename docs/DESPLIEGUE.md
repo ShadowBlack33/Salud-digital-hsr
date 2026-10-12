@@ -31,6 +31,26 @@ reinicia. Se genera el sábado 17, se copia a `tester.yaml` y **no se reinicia
 el contenedor** hasta después de la sustentación. El equipo que lo corre se
 queda encendido del 19 al 20.
 
+### URL fija (opcional, recomendado si hay dominio)
+
+Un *quick tunnel* no necesita cuenta, pero su URL cambia al reiniciar. Un túnel
+con nombre da una URL fija; necesita una cuenta de Cloudflare **y un dominio
+administrado en Cloudflare** (puede ser uno barato).
+
+1. En el panel de Cloudflare: **Zero Trust → Networks → Tunnels → Create a
+   tunnel → Cloudflared**. Ponerle nombre (por ejemplo `hsr`).
+2. Copiar el token que muestra el paso de instalación (lo que va después de
+   `--token`).
+3. En **Public Hostname**, agregar por ejemplo `hsr.tudominio.com` con
+   servicio `HTTP` y URL `front:80`.
+4. En el `.env`:
+
+       CLOUDFLARED_COMANDO=tunnel --no-autoupdate run --token <el token>
+
+5. `docker compose up -d cloudflared`. La URL fija es la del paso 3.
+
+El token es un secreto: va solo en el `.env`.
+
 ## 3. Migraciones del Corte 2 (base compartida)
 
 Solo Carlos las aplica, en orden, después de revisarlas:

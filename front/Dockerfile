@@ -16,11 +16,14 @@ COPY . .
 ARG VITE_API_BASE=http://localhost:8000
 ARG VITE_DEMO_PASSWORD=
 ARG VITE_OCULTAR_CUENTAS_DEMO=false
+ARG VITE_MINUTOS_ESCALAMIENTO=5
 ENV VITE_API_BASE=$VITE_API_BASE \
     VITE_DEMO_PASSWORD=$VITE_DEMO_PASSWORD \
-    VITE_OCULTAR_CUENTAS_DEMO=$VITE_OCULTAR_CUENTAS_DEMO
+    VITE_OCULTAR_CUENTAS_DEMO=$VITE_OCULTAR_CUENTAS_DEMO \
+    VITE_MINUTOS_ESCALAMIENTO=$VITE_MINUTOS_ESCALAMIENTO
 RUN npm run build
 
 FROM nginx:1.27-alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY nginx/seguridad.conf /etc/nginx/seguridad.conf

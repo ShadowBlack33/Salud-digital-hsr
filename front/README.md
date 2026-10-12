@@ -69,9 +69,30 @@ FastAPI) usa los datos de `src/lib/mocks.js` y la pantalla muestra **Datos de de
 el equipo publica la ruta, se usa sola. Rutas que el front espera, además de las del contrato:
 
 - `GET /ia/reportes?paciente_id=` lista los reportes de un paciente (todos los estados).
+- `GET /ia/reportes?estado=pendiente` los reportes por revisar (para "Mi turno").
 - `GET /especialistas` devuelve `[{id, nombre, especialidad}]` para el selector de remisión.
+- Opcional en cada alerta: `escala_en` (ISO) y `escalada_at`, para la cuenta regresiva del escalamiento.
+  Sin ellos, el front cuenta `VITE_MINUTOS_ESCALAMIENTO` (5 por defecto) desde `created_at`.
 
-### Panel de demostración
+### Atajos
 
-**Ctrl + Shift + D** abre un panel que simula eventos (remisión, alerta crítica, factura automática,
-cuenta bloqueada, glucosa desde FHIR) para ensayar la sustentación. No cambia de rol ni da permisos.
+| Atajo | Qué hace |
+|---|---|
+| **Ctrl + K** | Buscar paciente: por nombre, o por documento completo con el índice ciego. |
+| **Ctrl + Shift + D** | Panel de demostración: guion de los 6 pasos (se marcan solos) y eventos simulados. No cambia de rol ni da permisos. |
+
+### Otras piezas
+
+- **Cambio de contraseña** (`/cambiar-clave`): obligatorio cuando el admin crea la cuenta; también desde el chip del usuario.
+- **En vivo:** indicador en la barra, contador de no leídas en el título de la pestaña, sonido y aviso del
+  escritorio para alertas críticas (se activan desde la bandeja).
+- **Errores:** 403 y 404 amables, aviso si se cae la conexión y un límite que evita la pantalla en blanco.
+- **Carga diferida:** cada pantalla se descarga solo cuando se abre.
+
+### Ensayo automático
+
+`scripts/demo_e2e.py` abre médico, especialista, contable y admin a la vez y comprueba que cada reacción
+llega sin recargar:
+
+    python scripts/demo_e2e.py --url http://localhost:5173              # con eventos simulados
+    python scripts/demo_e2e.py --url https://xxxx.trycloudflare.com --modo real --ver

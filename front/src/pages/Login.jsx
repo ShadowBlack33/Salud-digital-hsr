@@ -104,6 +104,7 @@ export default function Login() {
           <Logo />
           <h1 className="mt-7 text-[32px] font-semibold leading-[1.1] tracking-display">Ingresa al centro de mando</h1>
           <p className="mt-2 text-[15px] text-gray-strong">Usa tu usuario institucional. Cada acceso queda en la auditoría.</p>
+          {state?.mensaje && !fallo && <p role="status" className="anim-pop mt-5 rounded-2xl bg-green-soft px-4 py-3 text-sm font-medium text-green-ink">{state.mensaje}</p>}
 
           {bloqueado && (
             <div role="alert" className="anim-pop mt-6 rounded-3xl bg-coral-soft p-5 text-coral-ink">

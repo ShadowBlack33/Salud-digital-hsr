@@ -4,9 +4,10 @@ import Anillo from "../Anillo";
 import Panel from "../Panel";
 import Insignia from "../Insignia";
 import ChipDemo from "../ChipDemo";
+import Esqueleto from "../Esqueleto";
 import { useAvisos } from "../Avisos";
 import * as S from "../../lib/servicios";
-import { useEventos } from "../../lib/tiempoReal";
+import { useEventos, useTiempoReal } from "../../lib/tiempoReal";
 import { fechaYHora } from "../../lib/format";
 
 const ESTADO = { pendiente: ["proceso", "Pendiente"], aprobado: ["libre", "Aprobado"], rechazado: ["bloqueado", "Rechazado"] };
@@ -64,7 +65,7 @@ export default function PestanaIA({ pacienteId }) {
         </button>
       </div>
 
-      {estado.cargando && <p className="flex items-center gap-2 text-sm text-gray-strong"><Loader2 size={16} className="anim-spin" />Cargando reportes…</p>}
+      {estado.cargando && <Esqueleto filas={2} alto="h-16" />}
       {estado.error && <p role="alert" className="text-sm text-coral-ink">{estado.error.message}</p>}
 
       {pendientes.map((r) => <ReportePendiente key={r.id} reporte={r} onVerPayload={() => verPayload(r)} onDecidido={cargar} />)}
@@ -112,6 +113,7 @@ export default function PestanaIA({ pacienteId }) {
 
 function ReportePendiente({ reporte: r, onVerPayload, onDecidido }) {
   const { avisar } = useAvisos();
+  const tr = useTiempoReal();
   const [observaciones, setObservaciones] = useState("");
   const [enviando, setEnviando] = useState(null);
   const pct = Math.round(Number(r.probabilidad || 0) * 100);
@@ -122,6 +124,7 @@ function ReportePendiente({ reporte: r, onVerPayload, onDecidido }) {
     try {
       await S.decidirReporte(r.id, decision, observaciones.trim() || null);
       avisar(decision === "aprobar" ? "Reporte aprobado: ya forma parte de la historia clínica." : "Reporte rechazado. Queda como evidencia.");
+      if (decision === "aprobar") tr?.marcarHito("reporte_aprobado");
       onDecidido();
     } catch (err) { avisar(err.message, "error"); setEnviando(null); }
   };

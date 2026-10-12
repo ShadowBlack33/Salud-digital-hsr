@@ -22,7 +22,7 @@ export function rutaInicio(u) {
   if (esPaciente(u)) return "/app/mi-salud";
   if (puede(u, "cama", "read")) return "/app/mando";
   if (puede(u, "paciente", "read")) return "/app/pacientes";
-  return "/app/mi-salud";
+  return "/app/sin-pantalla";
 }
 
 /** Entradas del menú: [ruta, etiqueta, clave de ícono]. */

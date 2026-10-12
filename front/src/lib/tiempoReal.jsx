@@ -20,6 +20,7 @@ import { API_BASE } from "../api";
 import { useAvisos } from "../components/Avisos";
 import * as S from "./servicios";
 import * as M from "./mocks";
+import { notificarEscritorio, sonarAlerta } from "./sonido";
 
 const Contexto = createContext(null);
 export const useTiempoReal = () => useContext(Contexto);
@@ -53,10 +54,18 @@ export function ProveedorTiempoReal({ children }) {
   }, []);
 
   const despachar = useCallback((ev) => {
-    if (ev?.mensaje) avisar(ev.mensaje, /alerta|critic|bloque/i.test(ev.tipo) ? "alerta" : "ok");
+    const urgente = /alerta|critic/i.test(ev?.tipo || "");
+    if (ev?.mensaje) avisar(ev.mensaje, urgente || /bloque/i.test(ev.tipo) ? "alerta" : "ok");
+    if (urgente) {
+      sonarAlerta();
+      notificarEscritorio("Alerta crítica · San Rafael OS", ev.mensaje || "Hay un caso crítico por revisar.");
+    }
     refrescar();
     oyentes.current.forEach((fn) => fn(ev));
   }, [avisar, refrescar]);
+
+  // Hitos del guion de demostración (acciones locales que no llegan como evento).
+  const marcarHito = useCallback((tipo) => oyentes.current.forEach((fn) => fn({ tipo, local: true })), []);
 
   // Conexión SSE con reconexión progresiva (5 s, 10 s, ... hasta 30 s).
   useEffect(() => {
@@ -122,12 +131,22 @@ export function ProveedorTiempoReal({ children }) {
     despachar(ev);
   }, [despachar]);
 
+  const noLeidas = estado.notificaciones.filter((n) => !n.leida).length;
+
+  // Contador en el título de la pestaña: con varias ventanas abiertas se ve
+  // cuál recibió el aviso sin entrar a ella.
+  useEffect(() => {
+    const base = "San Rafael OS · Centro de mando clínico";
+    document.title = noLeidas > 0 ? `(${noLeidas}) ${base}` : base;
+    return () => { document.title = base; };
+  }, [noLeidas]);
+
   const valor = useMemo(() => ({
     ...estado,
-    noLeidas: estado.notificaciones.filter((n) => !n.leida).length,
+    noLeidas,
     alertasActivas: estado.alertas.filter((a) => a.estado === "activa"),
-    conectado, suscribir, marcarLeida, reconocer, refrescar, simularEvento,
-  }), [estado, conectado, suscribir, marcarLeida, reconocer, refrescar, simularEvento]);
+    conectado, suscribir, marcarLeida, reconocer, refrescar, simularEvento, marcarHito,
+  }), [estado, noLeidas, conectado, suscribir, marcarLeida, reconocer, refrescar, simularEvento, marcarHito]);
 
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
 }

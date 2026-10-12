@@ -138,7 +138,8 @@ def crear(datos: PacienteCrear, request: Request,
 def listar(ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "read")),
            db: Session = Depends(get_db),
            limite: int = Query(50, le=200), offset: int = Query(0, ge=0),
-           incluir_eliminados: bool = Query(False)):
+           incluir_eliminados: bool = Query(False),
+           mios: bool = Query(False, description="Solo los pacientes con encuentros a cargo del médico de la sesión")):
     q = db.query(Paciente)
     # CLAVE: sin este filtro los registros "borrados" seguirían apareciendo
     if not incluir_eliminados:
@@ -148,6 +149,18 @@ def listar(ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "read")),
                             "Solo un rol con alcance total puede ver eliminados")
 
     q = ctx.filtrar_query(q, Paciente)
+    if mios:
+        # "Mis pacientes": los que tienen un encuentro a cargo de este médico
+        # o los que él mismo registró (por ejemplo, el paciente de la demo).
+        from sqlalchemy import or_
+        from app.models import Encuentro
+        condiciones = [Paciente.created_by == ctx.usuario.id]
+        personal_id = ctx.payload.get("personal_id")
+        if personal_id is not None:
+            a_cargo = (db.query(Encuentro.paciente_id)
+                       .filter(Encuentro.medico_responsable_id == personal_id).distinct())
+            condiciones.append(Paciente.documento_bidx.in_(a_cargo))
+        q = q.filter(or_(*condiciones))
     pacientes = q.order_by(Paciente.documento_bidx).offset(offset).limit(limite).all()
     # En listados el documento va enmascarado (minimización de exposición)
     return [_a_respuesta(p, enmascarar_doc=True) for p in pacientes]

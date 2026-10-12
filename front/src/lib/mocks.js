@@ -67,6 +67,7 @@ export function reconocer(id, nota) {
 }
 
 // --------------------------------------------------------------- IA
+export const reportesPendientes = () => db.reportes.filter((r) => r.estado === "pendiente");
 export const reportesDe = (pacienteId) => db.reportes.filter((r) => r.paciente_id === pacienteId);
 export const reporte = (id) => db.reportes.find((r) => r.id === Number(id));
 export function analizar(pacienteId) {
