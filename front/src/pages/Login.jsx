@@ -8,7 +8,7 @@ import { horaConSegundos } from "../lib/format";
 
 const CUENTAS = [
   { usuario: "admin", rol: "Administrador", detalle: "Usuarios, desbloqueos y auditoría" },
-  { usuario: "coordinador", rol: "Coordinador del hospital", detalle: "Capacidad, riesgo de colapso y dinero" },
+  { usuario: "coordinador", rol: "Coordinador del hospital", detalle: "Capacidad, ocupación proyectada y dinero" },
   { usuario: "jefe01", rol: "Enfermera jefe", detalle: "Programa y mueve cirugías" },
   { usuario: "medico01", rol: "Médico general", detalle: "Sus pacientes, críticos e IA" },
   { usuario: "especialista01", rol: "Especialista", detalle: "Remisiones y sus cirugías" },

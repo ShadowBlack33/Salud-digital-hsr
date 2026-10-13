@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.deps import get_db, get_usuario_actual
+from app.core.deps import get_db, get_token_payload, get_usuario_actual
 from app.core.security import (
     crear_access_token, crear_refresh_token, hash_password,
     validar_fortaleza, verificar_password,
@@ -143,19 +143,20 @@ def login(datos: LoginRequest, request: Request, db: Session = Depends(get_db)):
     usuario.ultimo_acceso = ahora
 
     permisos = usuario.codigos_permisos
-    access = crear_access_token(
-        usuario.id, usuario.username, usuario.rol.codigo, permisos,
-        usuario.personal_id, usuario.paciente_id,
-    )
     refresh, refresh_hash, expira = crear_refresh_token()
-
-    db.add(Sesion(
+    sesion = Sesion(
         usuario_id=usuario.id,
         refresh_token_hash=refresh_hash,
         ip_origen=None,
         user_agent=request.headers.get("user-agent"),
         expira_at=expira,
-    ))
+    )
+    db.add(sesion)
+    db.flush()   # id de la sesión para ligarlo al token
+    access = crear_access_token(
+        usuario.id, usuario.username, usuario.rol.codigo, permisos,
+        usuario.personal_id, usuario.paciente_id, sesion.id,
+    )
     registrar(db, usuario, "usuario", usuario.id, "login", request=request)
     db.commit()
 
@@ -194,11 +195,12 @@ def refresh_token(datos: RefreshRequest, request: Request,
     sesion.revocado_at = datetime.now(timezone.utc)
 
     permisos = usuario.codigos_permisos
-    access = crear_access_token(usuario.id, usuario.username, usuario.rol.codigo,
-                                permisos, usuario.personal_id, usuario.paciente_id)
     nuevo_refresh, nuevo_hash, expira = crear_refresh_token()
-    db.add(Sesion(usuario_id=usuario.id, refresh_token_hash=nuevo_hash,
-                  expira_at=expira))
+    nueva = Sesion(usuario_id=usuario.id, refresh_token_hash=nuevo_hash, expira_at=expira)
+    db.add(nueva)
+    db.flush()
+    access = crear_access_token(usuario.id, usuario.username, usuario.rol.codigo,
+                                permisos, usuario.personal_id, usuario.paciente_id, nueva.id)
     db.commit()
 
     return TokenResponse(
@@ -209,16 +211,18 @@ def refresh_token(datos: RefreshRequest, request: Request,
 
 
 @router.post("/logout", summary="Cerrar sesión")
-def logout(datos: RefreshRequest, db: Session = Depends(get_db),
-           usuario: Usuario = Depends(get_usuario_actual)):
+def logout(datos: RefreshRequest, request: Request, db: Session = Depends(get_db),
+           usuario: Usuario = Depends(get_usuario_actual),
+           payload: dict = Depends(get_token_payload)):
+    """Revoca la sesión: el refresh y también el access token ligado (sid)."""
     token_hash = hashlib.sha256(datos.refresh_token.encode()).hexdigest()
-    sesion = db.query(Sesion).filter(
-        Sesion.refresh_token_hash == token_hash,
-        Sesion.usuario_id == usuario.id,
-    ).first()
-    if sesion:
-        sesion.revocado_at = datetime.now(timezone.utc)
-        db.commit()
+    ahora = datetime.now(timezone.utc)
+    db.query(Sesion).filter(
+        Sesion.usuario_id == usuario.id, Sesion.revocado_at.is_(None),
+        (Sesion.refresh_token_hash == token_hash) | (Sesion.id == payload.get("sid", -1)),
+    ).update({"revocado_at": ahora}, synchronize_session=False)
+    registrar(db, usuario, "usuario", usuario.id, "logout", request=request)
+    db.commit()
     return {"mensaje": "Sesión cerrada"}
 
 

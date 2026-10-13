@@ -254,7 +254,7 @@ def main() -> None:
         }, descripcion, modalidad="DX", extra={
             "StudyDate": fecha.strftime("%Y%m%d"), "StudyTime": fecha.strftime("%H%M%S"),
             "BodyPartExamined": "CHEST", "ViewPosition": info["vista"],
-            "InstitutionName": "Hospital San Rafael (caso de estudio)",
+            "InstitutionName": "Cohorte externa NIH ChestX-ray14 (ilustrativa)",
         })
         hechas += 1
     print(f"\nRadiografías cargadas: {hechas}" if not a.simular else "\n(simulación: no se subió nada)")

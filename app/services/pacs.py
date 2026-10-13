@@ -70,10 +70,16 @@ def list_images(paciente_documento_bidx: str) -> list[dict]:
     images = []
     for instance_id in ids:
         t = orthanc("GET", f"/instances/{instance_id}/simplified-tags").json()
+        desc = t.get("SeriesDescription") or t.get("StudyDescription") or "Imagen"
         images.append({
             "id": instance_id,   # el contrato del tester pide `id` o `url`
             "instance_id": instance_id,
-            "description": t.get("SeriesDescription") or t.get("StudyDescription") or "Imagen",
+            "description": desc,
+            # Procedencia honesta: las de la demo son reales pero de una cohorte
+            # externa, vinculadas a un paciente sintético (no son sus exámenes).
+            "origen": ("Imagen real de cohorte externa (NIH ChestX-ray14), vinculada a un caso sintético"
+                       if "NIH" in desc else t.get("InstitutionName") or "Cargada en Pulso"),
+            "ilustrativa": "NIH" in desc,
             "modality": t.get("Modality"),
             "date": t.get("StudyDate"),
             "time": t.get("StudyTime") or "",

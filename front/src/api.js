@@ -116,6 +116,8 @@ async function pedir(ruta, { json, ...opciones } = {}, reintentar = true) {
     throw new ApiError(0, null, "No se pudo conectar con el servidor");
   }
   if (r.status === 401 && reintentar && token) {
+    // Otra petición ya renovó la sesión mientras esta viajaba: reintentar con el token nuevo.
+    if (almacen.getItem(K.access) && almacen.getItem(K.access) !== token) return pedir(ruta, { json, ...opciones }, false);
     if (await renovar()) return pedir(ruta, { json, ...opciones }, false);
     cerrarSesionLocal();
   }

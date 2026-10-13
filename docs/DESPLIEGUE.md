@@ -68,7 +68,11 @@ python scripts/corregir_nombres.py        # nombres que no coincidían con el se
 ```
 
 `10` crea la tabla de remisiones (R08) y sus permisos: el médico remite, el
-especialista la ve, puede revisar al paciente y la acepta.
+especialista la ve, puede revisar al paciente y la acepta o la rechaza con un
+motivo, y luego la cierra como atendida. Agrega `cerrada_at`/`cerrada_por`:
+al rechazar, el especialista pierde el acceso a la ficha; al atender, lo
+conserva `REMISION_ACCESO_DIAS` (7). Se puede correr más de una vez, también
+sobre una base que ya tenía la versión anterior de la tabla.
 
 `08` crea los roles `medico`, `especialista` y `contable` y las cuentas
 `medico01`, `especialista01`, `contable01` y `bloqueo_prueba` (misma contraseña
@@ -115,6 +119,8 @@ python scripts/aplicar_sql.py db/04_mejoras_catalogo_eventos.sql
 python scripts/aplicar_sql.py db/06_permisos_imagen.sql
 python scripts/aplicar_sql.py db/07_tipo_documento_por_edad.sql
 python scripts/aplicar_sql.py db/08_roles_corte2.sql
+python scripts/aplicar_sql.py db/09_perfiles.sql
+python scripts/aplicar_sql.py db/10_remisiones.sql
 ```
 
 `05_cedula_como_llave.sql` **no** se aplica: era la migración de una base
@@ -137,4 +143,24 @@ curl -s $URL/api/salud
 for i in $(seq 1 80); do curl -s -o /dev/null -w "%{http_code}\n" $URL/api/salud; done | sort | uniq -c
 # CORS (R03): un origen desconocido no recibe Access-Control-Allow-Origin
 curl -s -D - -o /dev/null -H "Origin: https://otro.example" $URL/api/salud | grep -i access-control || echo "sin CORS (bien)"
+# FHIR: sin token solo se publica una Observation (R21) y se lee /metadata
+curl -s -o /dev/null -w "%{http_code} (esperado 401)\n" "$URL/fhir/Patient?_count=1"
+curl -s -o /dev/null -w "%{http_code} (esperado 200)\n" "$URL/fhir/metadata"
+curl -s -o /dev/null -w "%{http_code} (esperado 403)\n" -X DELETE "$URL/fhir/Patient/1"
 ```
+
+## 6. Interruptores y reglas configurables
+
+| Variable (en `.env`) | Valor por defecto | Qué hace |
+|---|---|---|
+| `VITE_DATOS_DEMO` | `true` | `false` = el front no rellena con datos de ejemplo las rutas que aún no existen y oculta el panel de demostración. Para la sustentación, cuando todos los módulos estén desplegados. Requiere `docker compose build front`. El tester habla con la API: nunca ve esos datos. |
+| `REMISION_ACCESO_DIAS` | `7` | Días que el especialista conserva acceso a la ficha después de cerrar una remisión como atendida. |
+| `FRACCION_ALTAS_12H` | `0.7` | Supuesto del escenario de ocupación del coordinador: fracción de altas en proceso que se completan en 12 h. |
+
+## 7. Qué depende de Neon
+
+Con `DATABASE_URL` apuntando a Neon, la API y los scripts usan la base
+compartida; todo lo demás (HAPI y su base, Orthanc, MongoDB, ml, nginx,
+cloudflared) corre en el compose. Para una ejecución autónoma desde un clon
+limpio, sin Neon, ver la sección 4: el PostgreSQL del compose recibe el
+esquema, los catálogos, los datos sintéticos y las migraciones `04`–`10`.

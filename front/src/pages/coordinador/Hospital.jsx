@@ -7,8 +7,8 @@ import { useSondeo } from "../../lib/hooks";
 import { cop, haceCuanto } from "../../lib/format";
 
 const RIESGO = {
-  colapso: { texto: "Colapso", fondo: "bg-coral-deep text-white", barra: "bg-coral-deep" },
-  alto: { texto: "Riesgo alto", fondo: "bg-coral-soft text-coral-ink", barra: "bg-coral-deep" },
+  colapso: { texto: "Saturada", fondo: "bg-coral-deep text-white", barra: "bg-coral-deep" },
+  alto: { texto: "Ocupación alta", fondo: "bg-coral-soft text-coral-ink", barra: "bg-coral-deep" },
   medio: { texto: "Vigilar", fondo: "bg-gold-soft text-gold-ink", barra: "bg-gold-deep" },
   bajo: { texto: "Estable", fondo: "bg-green-soft text-green-ink", barra: "bg-green-deep" },
 };
@@ -34,13 +34,13 @@ export default function Hospital() {
 
   return (
     <div className="space-y-8 pb-16">
-      <Encabezado titulo="Así va el hospital" subtitulo={`Capacidad, riesgo de colapso, dinero y operación · actualizado ${haceCuanto(d.ahora)}`} />
+      <Encabezado titulo="Así va el hospital" subtitulo={`Capacidad, ocupación proyectada, dinero y operación · actualizado ${haceCuanto(d.ahora)}`} />
 
       {enRiesgo.length > 0 && (
         <div role="alert" className="flex items-start gap-3 rounded-[28px] bg-coral-soft p-5">
           <AlertTriangle size={22} className="mt-0.5 shrink-0 text-coral-deep" aria-hidden="true" />
           <div>
-            <p className="font-semibold text-coral-ink">{enRiesgo.length === 1 ? "Un área está cerca del colapso" : `${enRiesgo.length} áreas están cerca del colapso`}</p>
+            <p className="font-semibold text-coral-ink">{enRiesgo.length === 1 ? "Un área va hacia la saturación" : `${enRiesgo.length} áreas van hacia la saturación`}</p>
             <p className="mt-0.5 text-sm text-coral-ink">
               {enRiesgo.map((a) => `${a.area} (${a.tipo_nombre}): ${a.pct_ocupacion} % hoy, ${a.pct_proyectado_12h} % en 12 h`).join(" · ")}.
               {" "}Considera habilitar camas, acelerar altas o diferir cirugías electivas que necesiten ese tipo de cama.
@@ -65,7 +65,7 @@ export default function Hospital() {
         <div className="mb-5 flex flex-wrap items-end justify-between gap-2">
           <div>
             <h2 id="t-areas" className="text-2xl font-semibold tracking-display">Capacidad por área</h2>
-            <p className="text-sm text-gray-strong">La proyección suma las cirugías de las próximas 12 h que necesitarán ese tipo de cama y resta las altas en proceso.</p>
+            <p className="text-sm text-gray-strong">Escenario con reglas configurables, no un modelo validado: suma las cirugías de las próximas 12 h que necesitarán ese tipo de cama y resta las altas en proceso que se espera completar ({Math.round((d.supuestos?.fraccion_altas_12h ?? 0.7) * 100)} %). Una cama en alta sigue ocupada hasta que el paciente sale.</p>
           </div>
           <Leyenda />
         </div>
@@ -165,9 +165,9 @@ function FilaArea({ a }) {
         <p className="mt-1.5 flex flex-wrap gap-x-3 text-xs text-gray-strong">
           <span><b className="text-ink">{a.pct_ocupacion} %</b> hoy</span>
           <span><b className="text-ink">{a.pct_proyectado_12h} %</b> en 12 h</span>
-          <span>{a.disponibles} libres · {a.en_limpieza} en limpieza · {a.en_alta} en alta</span>
+          <span>{a.disponibles} libres · {a.en_limpieza} en limpieza · {a.en_alta} en alta (aún ocupadas)</span>
           {a.demanda_12h > 0 && <span>{a.demanda_12h} cirugías la necesitarán</span>}
-          {a.costo_ocioso_hoy_cop > 0 && <span className="flex items-center gap-1"><Clock size={11} aria-hidden="true" />{millones(a.costo_ocioso_hoy_cop)} en camas sin usar</span>}
+          {a.costo_ocioso_hoy_cop > 0 && <span className="flex items-center gap-1"><Clock size={11} aria-hidden="true" />{millones(a.costo_ocioso_hoy_cop)} en camas sin usar (estimado)</span>}
         </p>
       </div>
       <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold md:justify-self-end ${r.fondo}`}>{r.texto}</span>

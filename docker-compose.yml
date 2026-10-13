@@ -215,6 +215,7 @@ services:
         # Se lee del .env de esta carpeta; si no existe, queda vacío.
         VITE_DEMO_PASSWORD: ${VITE_DEMO_PASSWORD:-}
         VITE_MINUTOS_ESCALAMIENTO: ${VITE_MINUTOS_ESCALAMIENTO:-5}
+        VITE_DATOS_DEMO: ${VITE_DATOS_DEMO:-true}
     container_name: hsr-front
     restart: unless-stopped
     depends_on:

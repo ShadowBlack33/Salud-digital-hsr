@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, Clock, Inbox, Loader2, Send, UserCheck } from "lucide-react";
+import { Check, CheckCheck, Clock, Inbox, Loader2, Send, UserCheck, X } from "lucide-react";
 import Encabezado from "../../components/Encabezado";
 import Insignia from "../../components/Insignia";
 import Esqueleto from "../../components/Esqueleto";
@@ -19,6 +19,7 @@ export default function Remisiones() {
   const [estado, setEstado] = useState({ cargando: true, lista: [], demo: false, error: null });
   const [nuevas, setNuevas] = useState(new Set());
   const [aceptando, setAceptando] = useState(null);
+  const [rechazo, setRechazo] = useState({ id: null, motivo: "" });   // formulario de rechazo abierto
 
   const vistas = useRef(null);   // ids ya mostrados: lo que no esté aquí es nuevo
 
@@ -45,6 +46,22 @@ export default function Remisiones() {
     } catch (err) { avisar(err.message, "error"); }
     finally { setAceptando(null); }
   };
+
+  const accion = async (r, fn, mensaje) => {
+    setAceptando(r.id);
+    try {
+      await fn();
+      avisar(mensaje);
+      setRechazo({ id: null, motivo: "" });
+      await cargar();
+    } catch (err) { avisar(err.message, "error"); await cargar(); }
+    finally { setAceptando(null); }
+  };
+  const rechazar = (r) => accion(r, () => S.rechazarRemision(r.id, rechazo.motivo.trim()),
+    "Remisión rechazada. Ya no tienes acceso a la ficha de este paciente.");
+  const atender = (r) => accion(r, () => S.atenderRemision(r.id),
+    "Remisión cerrada como atendida. Conservas el acceso a la ficha unos días más.");
+  const simulada = (r) => String(r.id).startsWith("sim-");
 
   const pendientes = estado.lista.filter((r) => r.estado === "pendiente");
   const resueltas = estado.lista.filter((r) => r.estado !== "pendiente");
@@ -85,6 +102,10 @@ export default function Remisiones() {
               <div className="mt-5 flex items-center justify-between gap-2">
                 <Insignia grupo="proceso" etiqueta="Pendiente" tamano="sm" />
                 {recibe && <Link to={`/app/pacientes/${r.paciente_id}`} className="ml-auto rounded-full px-3 py-2 text-sm font-medium text-metric-blue hover:bg-paper-white">Revisar ficha</Link>}
+                {recibe && !simulada(r) && rechazo.id !== r.id && (
+                  <button onClick={() => setRechazo({ id: r.id, motivo: "" })} disabled={aceptando === r.id}
+                          className="rounded-full px-3 py-2 text-sm font-medium text-coral-ink hover:bg-coral-soft">Rechazar</button>
+                )}
                 {recibe && (
                   <button onClick={() => aceptar(r)} disabled={aceptando === r.id}
                           className="flex items-center gap-1.5 rounded-full bg-charcoal px-4 py-2 text-sm font-semibold text-white transition hover:bg-ink disabled:opacity-50">
@@ -92,6 +113,19 @@ export default function Remisiones() {
                   </button>
                 )}
               </div>
+              {rechazo.id === r.id && (
+                <form className="mt-4 space-y-2" onSubmit={(e) => { e.preventDefault(); rechazar(r); }}>
+                  <label htmlFor={`rechazo-${r.id}`} className="text-xs font-medium">Motivo del rechazo (lo verá el médico remitente)</label>
+                  <textarea id={`rechazo-${r.id}`} rows={2} value={rechazo.motivo} autoFocus
+                            onChange={(e) => setRechazo({ id: r.id, motivo: e.target.value })}
+                            className="w-full rounded-2xl border border-cloud-card bg-paper-white p-3 text-sm" />
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setRechazo({ id: null, motivo: "" })} className="flex items-center gap-1 rounded-full px-3 py-2 text-sm"><X size={14} />Cancelar</button>
+                    <button type="submit" disabled={rechazo.motivo.trim().length < 5 || aceptando === r.id}
+                            className="rounded-full bg-coral-deep px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Confirmar rechazo</button>
+                  </div>
+                </form>
+              )}
             </article>
           ))}
         </section>
@@ -106,7 +140,14 @@ export default function Remisiones() {
                 <span>
                   <Link to={`/app/pacientes/${r.paciente_id}`} className="font-medium hover:underline">{r.paciente_nombre || "Paciente"}</Link>
                   <span className="block text-xs text-gray-strong">{recibe ? `De ${r.medico}` : `Para ${r.especialista}`} · {r.motivo} · {haceCuanto(r.created_at)}</span>
+                  {r.estado === "rechazada" && r.respuesta && <span className="block text-xs text-coral-ink">Motivo del rechazo: {r.respuesta}</span>}
                 </span>
+                {recibe && r.estado === "aceptada" && !simulada(r) && (
+                  <button onClick={() => atender(r)} disabled={aceptando === r.id}
+                          className="ml-auto flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-metric-blue hover:bg-cloud-card disabled:opacity-50">
+                    {aceptando === r.id ? <Loader2 size={13} className="anim-spin" /> : <CheckCheck size={13} />}Marcar atendida
+                  </button>
+                )}
                 <Insignia grupo={r.estado === "rechazada" ? "bloqueado" : "libre"} etiqueta={r.estado === "rechazada" ? "Rechazada" : r.estado === "atendida" ? "Atendida" : "Aceptada"} tamano="sm" />
               </li>
             ))}

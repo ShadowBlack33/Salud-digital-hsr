@@ -263,13 +263,25 @@ Reconocerlas explícitamente es parte del rigor del trabajo:
 4. **Sin SMART on FHIR.** La autorización del servidor FHIR se apoya en la
    API intermedia, no en OAuth2 con scopes FHIR nativos.
 5. **Blind index solo soporta igualdad exacta.** Ver sección 3.
-6. **Servidor HAPI FHIR sin autenticación propia** en la configuración de
-   desarrollo. En el Corte 2 queda expuesto en `/fhir` porque el contrato de
-   verificación exige que acepte un `POST` de `Observation` (R21); tiene
-   limitación de tasa, pero no autenticación. En producción debería ir
-   detrás de un gateway autenticado.
+6. **HAPI FHIR sin autenticación propia; la pone nginx.** Toda petición a
+   `/fhir` pasa antes por `auth_request` hacia la API
+   (`app/api/puerta_fhir.py`). Público solo `POST /fhir/Observation` (lo
+   exige R21) y `GET /fhir/metadata`; leer pide token con `fhir:read`,
+   escribir otros recursos pide `fhir:sync:write` (cuenta de integración) y
+   `DELETE` se rechaza siempre. El POST público tiene límite de tasa y de
+   tamaño (256 KB). Falta SMART on FHIR (punto 4).
 7. **Quick tunnel de Cloudflare.** La URL pública cambia si el contenedor
    `cloudflared` se reinicia. Un túnel con nombre daría una URL fija.
+8. **La llave primaria del paciente es su índice ciego.** Si se corrige un
+   documento mal digitado o se rota la clave HMAC, cambia la identidad y hay
+   que actualizar las tablas que la referencian. En producción: un UUID
+   interno como llave y el índice ciego solo como columna única de búsqueda.
+   No se migró a mitad del corte porque afecta nueve llaves foráneas.
+9. **El cobro es una referencia interna**, no un RIPS ni una factura
+   electrónica de venta (FEV) validada ante la DIAN.
+10. **Radiografías de cohorte externa.** Las imágenes del PACS son reales
+    (NIH ChestX-ray14) pero vinculadas a pacientes sintéticos para mostrar el
+    visor; no son exámenes de esos pacientes.
 
 ---
 

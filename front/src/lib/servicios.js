@@ -4,15 +4,17 @@
 // pantalla lo indica. Cuando la ruta real aparece, se usa sola, sin tocar nada.
 //
 // Solo cuenta como "ruta inexistente" el 404/405 genérico de FastAPI ("Not
-// Found" / "Method Not Allowed"). Un 404 propio de un endpoint real (por
+// Found" / "Method Not Allowed"), y solo si VITE_DATOS_DEMO no es "false"
+// (ver lib/demo.js). Un 404 propio de un endpoint real (por
 // ejemplo "Reporte no encontrado") se muestra como error normal.
 
 import { api, apiBlob } from "../api";
 import * as M from "./mocks";
 import { normalizarFactura } from "./facturacion";
+import { DATOS_DEMO } from "./demo";
 
-const rutaInexistente = (e) =>
-  (e?.status === 404 && e.message === "Not Found") || (e?.status === 405 && e.message === "Method Not Allowed");
+const rutaInexistente = (e) => DATOS_DEMO && (
+  (e?.status === 404 && e.message === "Not Found") || (e?.status === 405 && e.message === "Method Not Allowed"));
 
 /** GET con respaldo: devuelve { datos, demo }. */
 async function leer(ruta, respaldo) {
@@ -78,13 +80,16 @@ export const especialistas = () => leer("/especialistas", M.especialistas);
 export const remisiones = async () => {
   const r = await leer("/remisiones", M.remisiones);
   const datos = lista(r.datos, "remisiones");
-  return { ...r, datos: r.demo ? datos : [...M.remisionesSimuladas(), ...datos] };
+  return { ...r, datos: r.demo || !DATOS_DEMO ? datos : [...M.remisionesSimuladas(), ...datos] };
 };
 export const remitir = (datos) =>
   escribir("/remisiones", { method: "POST", json: datos }, () => M.remitir(datos));
 export const aceptarRemision = (id) => (String(id).startsWith("sim-")
   ? Promise.resolve({ datos: M.aceptar(id), demo: true })
   : escribir(`/remisiones/${id}/aceptar`, { method: "POST" }, () => M.aceptar(id)));
+// Rechazar (con motivo) y cerrar como atendida: solo existen en la API real.
+export const rechazarRemision = (id, motivo) => api(`/remisiones/${id}/rechazar`, { method: "POST", json: { motivo } });
+export const atenderRemision = (id, motivo) => api(`/remisiones/${id}/atender`, { method: "POST", json: { motivo } });
 
 // ------------------------------------------------------------------ contabilidad (R09)
 // La lista puede venir completa (y se filtra aquí) o ya filtrada y paginada

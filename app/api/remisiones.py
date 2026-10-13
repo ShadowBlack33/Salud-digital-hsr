@@ -4,10 +4,15 @@ Remisiones entre médicos (R08).
   POST /remisiones                 el médico remite a un especialista (devuelve id)
   GET  /remisiones                 las que envié o recibí (admin: todas)
   POST /remisiones/{id}/aceptar    el especialista destinatario la acepta
+  POST /remisiones/{id}/rechazar   ... o la rechaza con un motivo (pierde el acceso)
+  POST /remisiones/{id}/atender    la cierra como atendida (acceso por unos días más)
   GET  /especialistas              a quién se puede remitir
 
 Al remitir, el paciente pasa a contar como paciente del especialista (puede
-abrir su ficha e imágenes para revisarlo). Paciente y contable no tienen
+abrir su ficha e imágenes para revisarlo). El acceso se acaba si la rechaza, o
+REMISION_ACCESO_DIAS después de cerrarla como atendida (app/core/deps.py).
+Cada transición es atómica: el UPDATE exige el estado de origen, así dos
+clics simultáneos no la cambian dos veces. Paciente y contable no tienen
 ningún permiso sobre remisiones: reciben 403.
 """
 from __future__ import annotations
@@ -60,6 +65,7 @@ def _vista(db: Session, r: dict, yo: int | None) -> dict:
         "especialidad": esp.especialidad.nombre if esp and esp.especialidad else None,
         "motivo": r["motivo"], "prioridad": r["prioridad"], "estado": r["estado"],
         "created_at": r["created_at"], "aceptada_at": r["aceptada_at"],
+        "respuesta": r.get("respuesta"), "cerrada_at": r.get("cerrada_at"),
     }
 
 
@@ -160,3 +166,50 @@ def aceptar(remision_id: int, request: Request,
         pass
     db.commit()
     return _vista(db, dict(fila), yo)
+
+
+class Cierre(BaseModel):
+    motivo: str | None = Field(None, max_length=1000)
+
+
+def _transicion(db: Session, ctx: ContextoAcceso, request: Request, remision_id: int,
+                desde: str, hacia: str, respuesta: str | None) -> dict:
+    """Cambia el estado solo si sigue en `desde` y quien actúa es el destinatario."""
+    r = db.execute(text("SELECT * FROM remisiones WHERE id = :i"), {"i": remision_id}).mappings().first()
+    if r is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Remisión no encontrada")
+    yo = ctx.payload.get("personal_id")
+    if ctx.alcance != "all" and r["especialista_id"] != yo:
+        registrar(db, ctx.usuario, "remision", remision_id, "update", resultado="denegado", request=request)
+        db.commit()
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Solo el especialista destinatario puede cambiarla")
+    fila = db.execute(text("""
+        UPDATE remisiones SET estado = :hacia, respuesta = COALESCE(:resp, respuesta),
+               cerrada_at = :t, cerrada_por = :u
+        WHERE id = :i AND estado = :desde RETURNING *
+    """), {"hacia": hacia, "resp": respuesta, "t": datetime.now(timezone.utc), "u": ctx.usuario.id,
+           "i": remision_id, "desde": desde}).mappings().first()
+    if fila is None:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"La remisión está {r['estado']}: solo se puede pasar a {hacia} desde {desde}")
+    registrar(db, ctx.usuario, "remision", remision_id, "update",
+              valor_anterior={"estado": desde}, valor_nuevo={"estado": hacia}, request=request)
+    db.commit()
+    return _vista(db, dict(fila), yo)
+
+
+@router.post("/remisiones/{remision_id}/rechazar", summary="Rechazar una remisión recibida (con motivo)")
+def rechazar(remision_id: int, datos: Cierre, request: Request,
+             ctx: ContextoAcceso = Depends(RequierePermiso("remision", "update")),
+             db: Session = Depends(get_db)):
+    if not datos.motivo or len(datos.motivo.strip()) < 5:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indica el motivo del rechazo (mínimo 5 caracteres)")
+    return _transicion(db, ctx, request, remision_id, "pendiente", "rechazada", datos.motivo.strip())
+
+
+@router.post("/remisiones/{remision_id}/atender", summary="Cerrar como atendida una remisión aceptada")
+def atender(remision_id: int, request: Request, datos: Cierre | None = None,
+            ctx: ContextoAcceso = Depends(RequierePermiso("remision", "update")),
+            db: Session = Depends(get_db)):
+    nota = datos.motivo.strip() if datos and datos.motivo else None
+    return _transicion(db, ctx, request, remision_id, "aceptada", "atendida", nota)

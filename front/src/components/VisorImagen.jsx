@@ -57,6 +57,7 @@ export default function VisorImagen({ imagenes, indice, onCambiar, onCerrar }) {
           <div>
             <h2 className="text-xl font-semibold tracking-display">{img.description}</h2>
             <p className="mt-1 text-sm text-cloud-card/60">{img.modality || "—"} · {fechaDicom(img.date)} · {img.columns}×{img.rows} px</p>
+            {img.origen && <p className="mt-1 text-xs text-cloud-card/60">{img.origen}</p>}
           </div>
           <button onClick={onCerrar} aria-label="Cerrar visor" className="grid size-10 shrink-0 place-items-center rounded-full bg-white/10 transition hover:bg-white/20"><X size={18} /></button>
         </div>

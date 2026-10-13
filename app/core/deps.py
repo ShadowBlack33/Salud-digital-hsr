@@ -1,7 +1,8 @@
 """Dependencias compartidas: sesión de BD, usuario actual y guardas de permisos."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -67,6 +68,11 @@ def get_usuario_actual(
     if usuario is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED,
                             "Usuario inexistente o desactivado")
+    if payload.get("sid") is not None:
+        from app.models import Sesion
+        s = db.get(Sesion, payload["sid"])
+        if s is None or s.revocado_at is not None or s.usuario_id != usuario.id:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "La sesión fue cerrada. Inicia sesión de nuevo.")
     if usuario.bloqueado_hasta and usuario.bloqueado_hasta > datetime.now(timezone.utc):
         raise HTTPException(status.HTTP_423_LOCKED,
                             "Cuenta bloqueada temporalmente")
@@ -140,7 +146,7 @@ class ContextoAcceso:
 
     def pacientes_asignados_subq(self):
         """Subconsulta con los documento_bidx de los pacientes de este usuario."""
-        from sqlalchemy import or_, select, text, union
+        from sqlalchemy import and_, or_, select, text, union
         from app.models import Encuentro, Paciente
         personal_id = self.payload.get("personal_id")
         partes = [select(Paciente.documento_bidx).where(Paciente.created_by == self.usuario.id)]
@@ -151,10 +157,21 @@ class ContextoAcceso:
                     Encuentro.anestesiologo_id == personal_id)))
             if _hay_tabla_remisiones(self.db):
                 from sqlalchemy import String, column, table
-                rem = table("remisiones", column("paciente_id", String), column("especialista_id"), column("estado"))
-                partes.append(select(rem.c.paciente_id).where(
-                    rem.c.especialista_id == personal_id,
-                    rem.c.estado.in_(["pendiente", "aceptada", "atendida"])))
+                if _REMISIONES.get("cierre"):
+                    # Vigencia: pendiente o aceptada dan acceso; rechazada lo quita;
+                    # atendida lo conserva REMISION_ACCESO_DIAS después del cierre.
+                    rem = table("remisiones", column("paciente_id", String), column("especialista_id"),
+                                column("estado"), column("cerrada_at"))
+                    limite = datetime.now(timezone.utc) - timedelta(days=REMISION_ACCESO_DIAS)
+                    partes.append(select(rem.c.paciente_id).where(
+                        rem.c.especialista_id == personal_id,
+                        or_(rem.c.estado.in_(["pendiente", "aceptada"]),
+                            and_(rem.c.estado == "atendida", rem.c.cerrada_at > limite))))
+                else:   # base sin las columnas de cierre (migración 10 vieja)
+                    rem = table("remisiones", column("paciente_id", String), column("especialista_id"), column("estado"))
+                    partes.append(select(rem.c.paciente_id).where(
+                        rem.c.especialista_id == personal_id,
+                        rem.c.estado.in_(["pendiente", "aceptada", "atendida"])))
         return union(*partes).subquery()
 
     def es_paciente_asignado(self, paciente_id: str) -> bool:
@@ -220,6 +237,8 @@ class ContextoAcceso:
 
 
 _REMISIONES: dict[str, bool] = {}
+# Días que el especialista conserva acceso a la ficha después de atender la remisión.
+REMISION_ACCESO_DIAS = int(os.getenv("REMISION_ACCESO_DIAS", "7"))
 
 
 def _hay_tabla_remisiones(db) -> bool:
@@ -231,6 +250,9 @@ def _hay_tabla_remisiones(db) -> bool:
                 and db.execute(text("""SELECT COUNT(*) = 3 FROM information_schema.columns
                                        WHERE table_name = 'remisiones'
                                          AND column_name IN ('paciente_id','especialista_id','estado')""")).scalar()
+            _REMISIONES["cierre"] = bool(_REMISIONES["ok"]) and db.execute(text(
+                """SELECT COUNT(*) = 1 FROM information_schema.columns
+                   WHERE table_name = 'remisiones' AND column_name = 'cerrada_at'""")).scalar()
         except Exception:  # noqa: BLE001
             _REMISIONES["ok"] = False
     return bool(_REMISIONES["ok"])

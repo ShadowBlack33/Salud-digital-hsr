@@ -2,9 +2,10 @@
 -- 10 · Remisiones entre médicos (R08)
 --
 -- El médico remite un paciente a un especialista con un motivo; el
--- especialista lo ve en su bandeja y lo acepta. Desde que la remisión existe,
--- el paciente cuenta como "suyo" para el especialista (app/core/deps.py:
--- pacientes_asignados_subq), así puede revisarlo antes de aceptar.
+-- especialista lo ve en su bandeja y lo acepta o rechaza, y la cierra como
+-- atendida. Mientras está pendiente o aceptada, el paciente cuenta como "suyo"
+-- para el especialista (app/core/deps.py: pacientes_asignados_subq); al
+-- rechazarla pierde el acceso, y al atenderla lo conserva solo unos días.
 -- Un paciente o un contable no tienen ningún permiso sobre remisiones (403).
 --
 -- Se puede correr más de una vez.
@@ -28,6 +29,11 @@ CREATE TABLE IF NOT EXISTS remisiones (
     CONSTRAINT ck_rem_estado CHECK (estado IN ('pendiente','aceptada','rechazada','atendida')),
     CONSTRAINT ck_rem_prioridad CHECK (prioridad IN ('rutinaria','prioritaria','urgente'))
 );
+-- Cierre: rechazo o atención. Desde cerrada_at corre la vigencia del acceso
+-- del especialista a la ficha (REMISION_ACCESO_DIAS, 7 por defecto).
+ALTER TABLE remisiones ADD COLUMN IF NOT EXISTS cerrada_at  TIMESTAMPTZ;
+ALTER TABLE remisiones ADD COLUMN IF NOT EXISTS cerrada_por INT REFERENCES usuarios(id);
+
 CREATE INDEX IF NOT EXISTS idx_rem_especialista ON remisiones(especialista_id, estado);
 CREATE INDEX IF NOT EXISTS idx_rem_paciente ON remisiones(paciente_id);
 

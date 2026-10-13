@@ -266,8 +266,11 @@ r = client.get("/analitica/ocupacion", headers=h(tok_admin))
 check("Ocupación por tipo de cama -> 200", r.status_code == 200)
 
 r = client.get("/analitica/cancelaciones", headers=h(tok_admin))
-if r.status_code == 200 and r.json():
-    pct = float(r.json()[0].get("pct_cancelacion") or 0)
+# El mes más reciente con volumen suficiente (el mes en curso puede tener solo
+# las cirugías de la demo y dar 0 %).
+meses = [m for m in (r.json() if r.status_code == 200 else []) if (m.get("programadas") or 0) >= 20]
+if meses:
+    pct = float(meses[0].get("pct_cancelacion") or 0)
     check(f"Tasa de cancelación en rango realista ({pct} %)", 1.0 < pct < 12.0)
 
 r = client.get("/analitica/costo-ociosidad", headers=h(tok_admin))
@@ -493,6 +496,89 @@ if pac_m and yo_esp:
     codigos = a_la_vez(3, lambda: client.post(f"/remisiones/{rid2}/aceptar", headers=h(tok_e01)))
     check("Aceptar la misma remisión 3 veces a la vez -> 1 aceptada, 2 con 409",
           sorted(codigos) == [200, 409, 409], str(codigos))
+
+# ---------------------------------------------------------- 17. Cierre de remisiones y vigencia del acceso
+print("\n[17] Remisión rechazada o atendida: el acceso del especialista se cierra")
+ajenos = []
+if tok_m01 and tok_e01 and yo_esp:
+    mios = [x["paciente_id"] for x in client.get("/mis-pacientes", headers=h(tok_m01)).json().get("pacientes", [])]
+    ajenos = [p for p in mios if client.get(f"/pacientes/{p}", headers=h(tok_e01)).status_code != 200]
+if ajenos:
+    pac_r = ajenos[0]
+    rid3 = client.post("/remisiones", headers=h(tok_m01), json={"paciente_id": pac_r, "especialista_id": yo_esp,
+                                                                "motivo": "Prueba de rechazo", "prioridad": "rutinaria"}).json()["id"]
+    check("Con la remisión pendiente el especialista abre la ficha",
+          client.get(f"/pacientes/{pac_r}", headers=h(tok_e01)).status_code == 200)
+    check("Rechazar sin motivo -> 422",
+          client.post(f"/remisiones/{rid3}/rechazar", headers=h(tok_e01), json={}).status_code == 422)
+    check("El médico remitente no puede rechazarla -> 403",
+          client.post(f"/remisiones/{rid3}/rechazar", headers=h(tok_m01), json={"motivo": "no me toca"}).status_code == 403)
+    r = client.post(f"/remisiones/{rid3}/rechazar", headers=h(tok_e01), json={"motivo": "No corresponde a mi especialidad"})
+    check("El especialista la rechaza con motivo", r.status_code == 200 and r.json()["estado"] == "rechazada", r.text[:120])
+    check("Tras rechazarla pierde el acceso a la ficha",
+          client.get(f"/pacientes/{pac_r}", headers=h(tok_e01)).status_code in (403, 404))
+    check("No se puede aceptar una rechazada -> 409",
+          client.post(f"/remisiones/{rid3}/aceptar", headers=h(tok_e01)).status_code == 409)
+else:
+    print("  (sin paciente del médico ajeno al especialista: se omite el rechazo)")
+if pac_m and yo_esp:
+    r = client.post(f"/remisiones/{rid2}/atender", headers=h(tok_e01))
+    check("Cerrar como atendida una remisión aceptada", r.status_code == 200 and r.json()["estado"] == "atendida", r.text[:120])
+    check("Atenderla otra vez -> 409", client.post(f"/remisiones/{rid2}/atender", headers=h(tok_e01)).status_code == 409)
+
+# ---------------------------------------------------------- 18. Puerta del servidor FHIR
+print("\n[18] /fhir: qué se puede sin token")
+
+
+def puerta(metodo, ruta, token=None):
+    hd = {"X-Original-Method": metodo, "X-Original-URI": ruta}
+    if token:
+        hd["Authorization"] = f"Bearer {token}"
+    return client.get("/interno/puerta-fhir", headers=hd).status_code
+
+
+check("POST /fhir/Observation sin token pasa (R21)", puerta("POST", "/fhir/Observation") == 204)
+check("GET /fhir/metadata sin token pasa", puerta("GET", "/fhir/metadata") == 204)
+check("GET /fhir/Patient sin token -> 401", puerta("GET", "/fhir/Patient?identifier=1") == 401)
+check("GET /fhir/Patient con token clínico pasa", puerta("GET", "/fhir/Patient", tok_m01) == 204)
+check("Un paciente no lee FHIR -> 403", puerta("GET", "/fhir/Patient", tok_paciente) == 403)
+check("Un médico no escribe Patient en FHIR -> 403", puerta("POST", "/fhir/Patient", tok_m01) == 403)
+check("La cuenta de integración sí escribe", puerta("PUT", "/fhir/Patient/1", tok_integracion) == 204)
+check("DELETE nunca pasa, ni con integración -> 403", puerta("DELETE", "/fhir/Patient/1", tok_integracion) == 403)
+check("PUT /fhir/Observation/1 sin token -> 401", puerta("PUT", "/fhir/Observation/1") == 401)
+
+# ---------------------------------------------------------- 19. Sesiones y auditoría
+print("\n[19] Cierre de sesión y auditoría sin datos sensibles")
+r = client.post("/auth/login", json={"username": "medico02", "password": PASSWORD})
+if r.status_code == 200:
+    acc, ref = r.json()["access_token"], r.json()["refresh_token"]
+    check("Con sesión abierta el token sirve", client.get("/auth/yo", headers=h(acc)).status_code == 200)
+    client.post("/auth/logout", headers=h(acc), json={"refresh_token": ref})
+    check("Tras cerrar sesión el access token deja de servir de inmediato -> 401",
+          client.get("/auth/yo", headers=h(acc)).status_code == 401)
+    check("Tras cerrar sesión el refresh token no renueva -> 401",
+          client.post("/auth/refresh", json={"refresh_token": ref}).status_code == 401)
+r = client.post("/auth/login", json={"username": "medico02", "password": PASSWORD})
+if r.status_code == 200:
+    acc, ref = r.json()["access_token"], r.json()["refresh_token"]
+    nuevo = client.post("/auth/refresh", json={"refresh_token": ref})
+    check("Al renovar, el access token anterior queda revocado -> 401",
+          nuevo.status_code == 200 and client.get("/auth/yo", headers=h(acc)).status_code == 401)
+    check("... y el nuevo sí sirve", client.get("/auth/yo", headers=h(nuevo.json()["access_token"])).status_code == 200)
+
+from app.services.auditoria import _sanear  # noqa: E402
+s_ = _sanear({"username": "x", "password": "Secreta#1", "nombre": "Ana", "detalle": {"documento": "123"},
+              "valor_texto": "dolor torácico", "nota": "z" * 500, "motivo": "y" * 500})
+check("La auditoría nunca guarda contraseña, nombre, documento ni texto clínico",
+      s_["password"] == s_["nombre"] == s_["detalle"]["documento"] == s_["valor_texto"] == "<protegido>"
+      and s_["username"] == "x")
+check("Los textos largos se cortan en la auditoría", len(s_["motivo"]) <= 201)
+with SessionLocal() as s_db:
+    filas = s_db.execute(text("SELECT valor_nuevo::text FROM log_auditoria WHERE valor_nuevo IS NOT NULL "
+                              "ORDER BY id DESC LIMIT 300")).scalars().all()
+check("Las últimas 300 entradas de auditoría no tienen contraseñas ni tokens",
+      not any('"password"' in f and "<protegido>" not in f for f in filas)
+      and not any("eyJ" in f for f in filas))
 
 # ---------------------------------------------------------- resumen
 print("\n" + "=" * 70)

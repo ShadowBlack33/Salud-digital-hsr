@@ -12,6 +12,8 @@ La coordinación quirúrgica (programar y mover cirugías) está en cirugias.py.
 """
 from __future__ import annotations
 
+import os
+
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
@@ -283,15 +285,23 @@ def mis_cirugias(ctx: ContextoAcceso = Depends(RequierePermiso("encuentro", "rea
     return {"ahora": ahora.isoformat(), "cirugias": salida}
 
 
+# Supuesto del escenario de ocupación: fracción de las altas en proceso que se
+# completan en las próximas 12 h. Regla configurable, no un dato medido.
+FRACCION_ALTAS_12H = float(os.getenv("FRACCION_ALTAS_12H", "0.7"))
+
+
 # ============================================================ TABLERO DEL HOSPITAL
 @router.get("/analitica/hospital", summary="Cómo va el hospital: capacidad, riesgo, dinero, IA")
 def tablero_hospital(ctx: ContextoAcceso = Depends(RequierePermiso("analitica", "read")),
                      db: Session = Depends(get_db)):
     """
     Lo que mira el coordinador del hospital. Todo es agregado: no aparece
-    ningún paciente. El riesgo de colapso de cada área combina la ocupación
-    actual con las altas en proceso, las camas que se liberan y las cirugías
-    de las próximas 12 horas que van a necesitar cama de ese tipo.
+    ningún paciente. La "ocupación proyectada" de cada área es un escenario
+    con reglas configurables (no un modelo validado): ocupación actual + las
+    cirugías de las próximas 12 horas que necesitan cama de ese tipo - la
+    fracción de altas en proceso que se espera completar (FRACCION_ALTAS_12H).
+    Una cama en alta en proceso sigue ocupada hasta que el paciente sale.
+    Bandas: >= 100 % saturada, >= 90 % alta, >= 80 % vigilar.
     """
     ahora = datetime.now(timezone.utc)
 
@@ -329,10 +339,12 @@ def tablero_hospital(ctx: ContextoAcceso = Depends(RequierePermiso("analitica", 
 
     for a in areas:
         utiles = max(a["total"] - a["fuera_servicio"], 1)
-        a["pct_ocupacion"] = round(100 * (a["ocupadas"] + a["reservadas"]) / utiles, 1)
+        # La cama en alta en proceso todavía tiene paciente: cuenta como ocupada.
+        ocupadas_hoy = a["ocupadas"] + a["reservadas"] + a["en_alta"]
+        a["pct_ocupacion"] = round(100 * ocupadas_hoy / utiles, 1)
         a["demanda_12h"] = round(demanda.get(a["tipo_cama"], 0) / areas_por_tipo[a["tipo_cama"]])
-        # Proyección: lo ocupado + lo que llega - lo que sale (altas en proceso).
-        proyectadas = a["ocupadas"] + a["reservadas"] + a["demanda_12h"] - a["en_alta"]
+        # Escenario: lo ocupado + lo que llega - las altas que se espera completar.
+        proyectadas = ocupadas_hoy + a["demanda_12h"] - a["en_alta"] * FRACCION_ALTAS_12H
         a["pct_proyectado_12h"] = round(100 * proyectadas / utiles, 1)
         p = max(a["pct_ocupacion"], a["pct_proyectado_12h"])
         a["riesgo"] = "colapso" if p >= 100 else "alto" if p >= 90 else "medio" if p >= 80 else "bajo"
@@ -433,6 +445,12 @@ def tablero_hospital(ctx: ContextoAcceso = Depends(RequierePermiso("analitica", 
     ocupadas = sum(a["ocupadas"] + a["reservadas"] for a in areas)
     return {
         "ahora": ahora.isoformat(),
+        "supuestos": {
+            "tipo": "escenario con reglas configurables, no modelo validado",
+            "fraccion_altas_12h": FRACCION_ALTAS_12H,
+            "bandas_pct": {"saturada": 100, "alta": 90, "vigilar": 80},
+            "costo_ocioso": "costo día de la cama / 24 × horas libres; proxy, no pérdida contable",
+        },
         "resumen": {
             "camas_utiles": total_camas, "camas_ocupadas": ocupadas,
             "pct_ocupacion": round(100 * ocupadas / total_camas, 1),

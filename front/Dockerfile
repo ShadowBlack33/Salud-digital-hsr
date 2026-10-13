@@ -13,14 +13,17 @@ COPY . .
 #                          rellenan también la contraseña. Queda visible en el JS
 #                          publicado: úsala solo con datos sintéticos y en la demo.
 #   VITE_OCULTAR_CUENTAS_DEMO=true  oculta por completo el bloque de cuentas de demostración.
+#   VITE_DATOS_DEMO=false  sin datos de ejemplo cuando una ruta no existe (ver src/lib/demo.js).
 ARG VITE_API_BASE=http://localhost:8000
 ARG VITE_DEMO_PASSWORD=
 ARG VITE_OCULTAR_CUENTAS_DEMO=false
 ARG VITE_MINUTOS_ESCALAMIENTO=5
+ARG VITE_DATOS_DEMO=true
 ENV VITE_API_BASE=$VITE_API_BASE \
     VITE_DEMO_PASSWORD=$VITE_DEMO_PASSWORD \
     VITE_OCULTAR_CUENTAS_DEMO=$VITE_OCULTAR_CUENTAS_DEMO \
-    VITE_MINUTOS_ESCALAMIENTO=$VITE_MINUTOS_ESCALAMIENTO
+    VITE_MINUTOS_ESCALAMIENTO=$VITE_MINUTOS_ESCALAMIENTO \
+    VITE_DATOS_DEMO=$VITE_DATOS_DEMO
 RUN npm run build
 
 FROM nginx:1.27-alpine

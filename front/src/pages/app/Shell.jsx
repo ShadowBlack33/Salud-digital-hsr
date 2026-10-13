@@ -7,6 +7,7 @@ import Campana from "../../components/Campana";
 import EnVivo from "../../components/EnVivo";
 import BannerAlertas from "../../components/BannerAlertas";
 import PanelDemostracion from "../../components/PanelDemostracion";
+import { DATOS_DEMO } from "../../lib/demo";
 import ConexionCaida from "../../components/ConexionCaida";
 import BuscadorRapido from "../../components/BuscadorRapido";
 import LimiteError from "../../components/LimiteError";
@@ -81,7 +82,7 @@ export default function Shell() {
         <BannerAlertas />
         <LimiteError clave={pathname}><Suspense fallback={<Esqueleto filas={4} alto="h-16" />}><Outlet /></Suspense></LimiteError>
       </main>
-      <PanelDemostracion />
+      {DATOS_DEMO && <PanelDemostracion />}
       <BuscadorRapido />
       </ProveedorTiempoReal>
     </ProveedorAvisos>
