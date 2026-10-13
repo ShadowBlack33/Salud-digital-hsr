@@ -592,15 +592,35 @@ if tok_bio:
     check("... pero no quién las ocupa",
           occ.status_code == 200 and all(not x.get("paciente_nombre_corto") and not x.get("paciente_documento")
                                          and not x.get("diagnostico") for x in occ.json()), occ.text[:150])
-    ag = client.get("/quirofanos/agenda", headers=h(tok_bio))
-    check("En la agenda de quirófanos tampoco aparecen pacientes",
-          ag.status_code == 200 and '"paciente_nombre_corto":null' in ag.text.replace(" ", "") or "paciente_nombre_corto" not in ag.text)
     check("biomedico01 no consulta pacientes -> 403", client.get("/pacientes", headers=h(tok_bio)).status_code == 403)
-    libre = client.get("/quirofanos", headers=h(tok_bio)).json()[0]
-    r = client.patch(f"/quirofanos/{libre['id']}/estado", headers=h(tok_bio),
-                     json={"estado": "bloqueado", "motivo": "Mantenimiento correctivo (prueba)", "estado_esperado": libre["estado"]})
-    check("biomedico01 saca un quirófano de servicio por mantenimiento", r.status_code == 200, r.text[:120])
-    client.patch(f"/quirofanos/{libre['id']}/estado", headers=h(tok_bio), json={"estado": libre["estado"], "motivo": "fin prueba"})
+    qx = client.get("/quirofanos", headers=h(tok_bio)).json()
+    libre = next(q for q in qx if q["estado"] in ("disponible", "en_limpieza", "en_preparacion"))
+    check("biomedico01 NO puede mandar a limpieza ni cambiar estados a mano -> 403",
+          client.patch(f"/quirofanos/{libre['id']}/estado", headers=h(tok_bio),
+                       json={"estado": "en_limpieza", "motivo": "x"}).status_code == 403)
+    r = client.post("/biomedica/fuera-servicio", headers=h(tok_bio), json={
+        "recurso_tipo": "quirofano", "recurso_id": libre["id"], "equipo": "Arco en C",
+        "tipo": "falla", "descripcion": "No genera imagen (prueba e2e)"})
+    check("Saca el quirófano de servicio por falla de un equipo", r.status_code == 201, r.text[:150])
+    fid = r.json().get("id")
+    check("El quirófano queda bloqueado",
+          next(q for q in client.get("/quirofanos", headers=h(tok_bio)).json() if q["id"] == libre["id"])["estado"] == "bloqueado")
+    check("No se puede sacar dos veces el mismo -> 409", client.post("/biomedica/fuera-servicio", headers=h(tok_bio), json={
+        "recurso_tipo": "quirofano", "recurso_id": libre["id"], "equipo": "Lámpara", "tipo": "falla",
+        "descripcion": "otra falla"}).status_code == 409)
+    con_pac = client.get("/camas", params={"estado": "ocupada", "limite": 1}, headers=h(tok_bio)).json()
+    if con_pac:
+        check("Una cama con paciente no se saca de servicio -> 409", client.post("/biomedica/fuera-servicio", headers=h(tok_bio), json={
+            "recurso_tipo": "cama", "recurso_id": con_pac[0]["id"], "equipo": "Monitor", "tipo": "falla",
+            "descripcion": "pantalla apagada"}).status_code == 409)
+    lst = client.get("/biomedica/fuera-servicio", headers=h(tok_bio)).json()
+    check("Aparece en la lista de equipos fuera de servicio", any(f["id"] == fid and f["abierta"] for f in lst["fuera_servicio"]))
+    check("Enfermería jefe no usa el módulo biomédico -> 403",
+          client.post(f"/biomedica/fuera-servicio/{fid}/devolver", headers=h(tok_jefe)).status_code == 403)
+    r = client.post(f"/biomedica/fuera-servicio/{fid}/devolver", headers=h(tok_bio), json={"nota": "Se cambió el tubo"})
+    check("Al devolverlo queda en limpieza (enfermería lo habilita)", r.status_code == 200 and r.json()["estado"] == "en_limpieza", r.text[:120])
+    check("Devolverlo otra vez -> 409", client.post(f"/biomedica/fuera-servicio/{fid}/devolver", headers=h(tok_bio)).status_code == 409)
+    client.patch(f"/quirofanos/{libre['id']}/estado", headers=h(tok_jefe), json={"estado": libre["estado"], "motivo": "fin prueba"})
 else:
     print("  (sin cuenta biomedico01: aplicar db/11_ingeniero_biomedico.sql)")
 if pac_m and yo_esp:

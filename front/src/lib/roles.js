@@ -23,6 +23,7 @@ export function rutaInicio(u) {
   if (esEspecialista(u)) return "/app/remisiones";
   if (esContable(u)) return "/app/facturacion";
   if (esPaciente(u)) return "/app/mi-salud";
+  if (esBiomedico(u)) return "/app/equipos";
   if (programaCirugias(u)) return "/app/cirugias";
   if (puede(u, "cama", "read")) return "/app/mando";
   if (puede(u, "paciente", "read")) return "/app/pacientes";
@@ -41,7 +42,7 @@ export function menu(u) {
   if (esContable(u)) return [["/app/facturacion", "Facturación", "facturacion"]];
   if (esPaciente(u)) return [["/app/mi-salud", "Mi salud", "salud"]];
   // Ingeniería biomédica: estado de camas y quirófanos, sin datos de pacientes.
-  if (esBiomedico(u)) return [["/app/mando", "Camas y quirófanos", "mando"]];
+  if (esBiomedico(u)) return [["/app/equipos", "Equipos", "equipos"], ["/app/mando", "Camas y quirófanos", "mando"]];
   // Enfermería jefe y los perfiles operativos del Corte 1.
   const items = [];
   if (programaCirugias(u)) items.push(["/app/cirugias", "Cirugías", "cirugias"]);

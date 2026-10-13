@@ -1,6 +1,6 @@
 import { Suspense, useEffect } from "react";
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Activity, CalendarClock, Clock, HeartPulse, LayoutDashboard, LogOut, Receipt, Search, Send, Shield, Users } from "lucide-react";
+import { Activity, CalendarClock, Clock, HeartPulse, LayoutDashboard, LogOut, Receipt, Search, Send, Shield, Users, Wrench } from "lucide-react";
 import Logo from "../../components/Logo";
 import { ProveedorAvisos } from "../../components/Avisos";
 import Campana from "../../components/Campana";
@@ -18,7 +18,7 @@ import { puede } from "../../api";
 import { menu } from "../../lib/roles";
 import { ProveedorTiempoReal } from "../../lib/tiempoReal";
 
-const ICONOS = { admin: Shield, turno: Clock, remisiones: Send, facturacion: Receipt, salud: HeartPulse, mando: LayoutDashboard, pacientes: Users, cirugias: CalendarClock, hospital: Activity };
+const ICONOS = { admin: Shield, turno: Clock, remisiones: Send, facturacion: Receipt, salud: HeartPulse, mando: LayoutDashboard, pacientes: Users, cirugias: CalendarClock, hospital: Activity, equipos: Wrench };
 
 const enlace = ({ isActive }) =>
   `flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition ${isActive ? "bg-charcoal text-white" : "text-ink hover:bg-cloud-card"}`;

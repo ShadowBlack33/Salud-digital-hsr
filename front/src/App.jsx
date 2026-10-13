@@ -27,6 +27,7 @@ const MisPacientes = lazy(() => import("./pages/clinico/MisPacientes"));
 const MisCirugias = lazy(() => import("./pages/especialista/MisCirugias"));
 const Cirugias = lazy(() => import("./pages/cirugias/CoordinacionQuirurgica"));
 const Hospital = lazy(() => import("./pages/coordinador/Hospital"));
+const Equipos = lazy(() => import("./pages/biomedica/Equipos"));
 
 /** Solo deja pasar con sesión iniciada; si no, manda al login y vuelve después. */
 function RequiereSesion({ children }) {
@@ -53,6 +54,7 @@ export default function App() {
         <Route path="/app" element={<RequiereSesion><Shell /></RequiereSesion>}>
           <Route index element={<Inicio />} />
           <Route path="mando" element={<Permitido si={(u) => puede(u, "cama", "read") && !esCoordinador(u)}><Comando /></Permitido>} />
+          <Route path="equipos" element={<Permitido si={(u) => puede(u, "equipo", "update")}><Equipos /></Permitido>} />
           <Route path="hospital" element={<Permitido si={(u) => esCoordinador(u) || esAdmin(u)}><Hospital /></Permitido>} />
           <Route path="cirugias" element={<Permitido si={programaCirugias}><Cirugias /></Permitido>} />
           <Route path="mis-pacientes" element={<Permitido si={esClinico}><MisPacientes /></Permitido>} />
