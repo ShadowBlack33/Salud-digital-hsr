@@ -100,11 +100,15 @@ services:
       interval: 10s
       retries: 5
 
-  # MongoDB para la contabilidad (R09). Sin puerto publicado: solo la API le habla.
+  # MongoDB para la contabilidad (R09). El puerto se publica solo en 127.0.0.1
+  # (este PC, para MongoDB Compass); el túnel no lo expone: hacia afuera solo
+  # la API le habla.
   mongo:
     image: mongo:7
     container_name: hsr-mongo
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:27017:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: hsr
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-cambiar_en_produccion}

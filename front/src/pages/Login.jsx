@@ -9,7 +9,9 @@ import { horaConSegundos } from "../lib/format";
 const CUENTAS = [
   { usuario: "admin", rol: "Administrador", detalle: "Usuarios, desbloqueos y auditoría" },
   { usuario: "coordinador", rol: "Coordinador del hospital", detalle: "Capacidad, ocupación proyectada y dinero" },
-  { usuario: "jefe01", rol: "Enfermera jefe", detalle: "Programa y mueve cirugías" },
+  { usuario: "jefe01", rol: "Enfermera jefe · Cirugía", detalle: "Programa y mueve cirugías" },
+  { usuario: "jefe_urg", rol: "Enfermero jefe · Urgencias", detalle: "Asigna camas de urgencias y pide traslados" },
+  { usuario: "jefe_uci", rol: "Enfermera jefe · UCI", detalle: "Recibe traslados y asigna camas de UCI" },
   { usuario: "medico01", rol: "Médico general", detalle: "Sus pacientes, críticos e IA" },
   { usuario: "especialista01", rol: "Especialista", detalle: "Remisiones y sus cirugías" },
   { usuario: "contable01", rol: "Contable", detalle: "Facturación, sin datos clínicos" },

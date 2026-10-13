@@ -237,7 +237,7 @@ check("Listar camas -> 200", r.status_code == 200, r.text[:100])
 
 r = client.patch("/camas/1/estado", json={"estado": "en_limpieza",
                                           "motivo": "Prueba e2e"},
-                 headers=h(tok_jefe))
+                 headers=h(tok_admin))
 check("Cambiar estado de cama -> 200", r.status_code == 200, r.text[:120])
 if r.status_code == 200:
     check("Devuelve el código FHIR operationalStatus 'H'",
@@ -485,12 +485,12 @@ if creadas:
 libres = client.get("/camas", params={"estado": "disponible", "limite": 1}, headers=h(tok_jefe)).json()
 cid = libres[0]["id"] if libres else 1
 if not libres:
-    client.patch(f"/camas/{cid}/estado", headers=h(tok_jefe), json={"estado": "disponible", "motivo": "preparar prueba"})
-codigos = a_la_vez(4, lambda: client.patch(f"/camas/{cid}/estado", headers=h(tok_jefe), json={
+    client.patch(f"/camas/{cid}/estado", headers=h(tok_admin), json={"estado": "disponible", "motivo": "preparar prueba"})
+codigos = a_la_vez(4, lambda: client.patch(f"/camas/{cid}/estado", headers=h(tok_admin), json={
     "estado": "reservada", "motivo": "Prueba concurrencia", "estado_esperado": "disponible"}))
 check("4 personas reservan la misma cama libre a la vez -> 1 lo logra, 3 con 409",
       sorted(codigos) == [200, 409, 409, 409], str(codigos))
-client.patch(f"/camas/{cid}/estado", headers=h(tok_jefe), json={"estado": "disponible", "motivo": "fin prueba"})
+client.patch(f"/camas/{cid}/estado", headers=h(tok_admin), json={"estado": "disponible", "motivo": "fin prueba"})
 
 if pac_m and yo_esp:
     r = client.post("/remisiones", headers=h(tok_m01), json={"paciente_id": pac_m, "especialista_id": yo_esp,
@@ -613,6 +613,150 @@ if r.status_code == 200:
           not any("documento" in x["ruta"] or any(c.isdigit() for c in x["ruta"].split(" ")[-1]) for x in r.json()["api"]["rutas"]))
 for quien in ("medico01", "coordinador", "contable01"):
     check(f"{quien} no ve el rendimiento -> 403", client.get("/admin/rendimiento", headers=h(login(quien))).status_code == 403)
+
+# ---------------------------------------------------------- 22. Camas por área, traslados y alta médica
+print("\n[22] Cada jefe asigna camas de su área, traslados entre áreas y alta médica")
+tok_urg, tok_uci, tok_p5 = login("jefe_urg"), login("jefe_uci"), login("jefe_piso5")
+pac = client.get("/pacientes/buscar", params={"documento": DOC_PRUEBA}, headers=h(tok_admin))
+pid_prueba = pac.json().get("paciente_id") if pac.status_code == 200 else None
+
+
+def cama_libre(servicio_codigo, tipo=None):
+    with SessionLocal() as s_db:
+        return s_db.execute(text("""
+            SELECT c.id FROM camas c JOIN servicios s ON s.id = c.servicio_id JOIN tipos_cama t ON t.id = c.tipo_cama_id
+            WHERE c.activo AND c.estado = 'disponible' AND s.codigo = :s AND (:t IS NULL OR t.codigo = :t)
+              AND NOT EXISTS (SELECT 1 FROM encuentros e WHERE e.cama_id = c.id AND e.activo AND e.tipo = 'cirugia'
+                              AND e.estado IN ('planned','in-progress'))
+            ORDER BY c.id LIMIT 1"""), {"s": servicio_codigo, "t": tipo}).scalar()
+
+
+def asegurar_cama_libre(servicio_codigo):
+    """Si el área está llena (la simulación la mantiene así), libera una cama en limpieza."""
+    c = cama_libre(servicio_codigo)
+    if c:
+        return c
+    with SessionLocal() as s_db:
+        c = s_db.execute(text("""SELECT c.id FROM camas c JOIN servicios s ON s.id = c.servicio_id
+            WHERE c.activo AND s.codigo = :s AND c.estado IN ('en_limpieza', 'bloqueada')
+              AND NOT EXISTS (SELECT 1 FROM encuentros e WHERE e.cama_id = c.id AND e.activo
+                              AND e.estado IN ('planned','arrived','triaged','in-progress','onleave'))
+            ORDER BY c.id LIMIT 1"""),
+            {"s": servicio_codigo}).scalar()
+    if c:
+        client.patch(f"/camas/{c}/estado", headers=h(tok_admin), json={"estado": "disponible", "motivo": "preparar prueba"})
+    return cama_libre(servicio_codigo)
+
+
+def nueva_urgencia():
+    return client.post("/encuentros", headers=h(tok_admin), json={"paciente_id": pid_prueba, "tipo": "urgencias",
+                       "origen": "urgencia", "nivel_triage": 2, "prioridad_clinica": 2}).json()["id"]
+
+
+if pid_prueba and tok_urg and tok_uci:
+    # El turno rota: para la prueba, jefe_urg y jefe_uci cubren el turno de su área.
+    for t_ in (tok_urg, tok_uci):
+        client.post("/areas/turno/cubrir", headers=h(t_), json={"motivo": "Prueba e2e"})
+    areas_ = {a["codigo"]: a for a in client.get("/areas", headers=h(tok_urg)).json()["areas"]}
+    check("Las áreas muestran sus camas libres", "UCI_ADU" in areas_ and "disponibles" in areas_["UCI_ADU"])
+    uid = nueva_urgencia()
+    check("El jefe de Urgencias ve la urgencia que espera cama",
+          any(x["encuentro_id"] == uid for x in client.get("/camas/pendientes", headers=h(tok_urg)).json()["pendientes"]))
+    check("El jefe de UCI no la ve en sus pendientes (no es de su área)",
+          not any(x["encuentro_id"] == uid for x in client.get("/camas/pendientes", headers=h(tok_uci)).json()["pendientes"]))
+    check("Un médico no asigna camas -> 403", client.get("/camas/pendientes", headers=h(tok_m01)).status_code == 403)
+    c_uci, c_urg = asegurar_cama_libre("UCI_ADU"), asegurar_cama_libre("URG")
+    check("El jefe de Urgencias no asigna camas de UCI -> 403",
+          client.post(f"/camas/{c_uci}/asignar", headers=h(tok_urg), json={"encuentro_id": uid}).status_code == 403)
+    r = client.post(f"/camas/{c_urg}/asignar", headers=h(tok_urg), json={"encuentro_id": uid})
+    check("El jefe de Urgencias asigna una cama de su área", r.status_code == 200 and r.json()["estado"] == "ocupada", r.text[:150])
+    check("La misma cama otra vez -> 409",
+          client.post(f"/camas/{c_urg}/asignar", headers=h(tok_urg), json={"documento": DOC_PRUEBA}).status_code == 409)
+    r = client.post("/traslados", headers=h(tok_urg), json={"paciente_id": pid_prueba, "servicio_destino_id": areas_["UCI_ADU"]["id"],
+                                                          "motivo": "Deterioro respiratorio, requiere UCI", "prioridad": "urgente"})
+    check("Urgencias solicita el traslado a UCI", r.status_code == 201 and r.json()["estado"] == "pendiente", r.text[:150])
+    tid = r.json().get("id")
+    check("Un segundo traslado del mismo paciente -> 409",
+          client.post("/traslados", headers=h(tok_urg), json={"paciente_id": pid_prueba, "servicio_destino_id": areas_["HOSP_2"]["id"],
+                                                             "motivo": "duplicado"}).status_code == 409)
+    check("La solicitud le llega al jefe de UCI",
+          any(t["id"] == tid and t["entrante"] for t in client.get("/traslados", headers=h(tok_uci)).json()["traslados"]))
+    check("El jefe del piso 5 no puede aceptarla -> 403",
+          client.post(f"/traslados/{tid}/aceptar", headers=h(tok_p5), json={"cama_id": c_uci}).status_code == 403)
+    r = client.post(f"/traslados/{tid}/aceptar", headers=h(tok_uci), json={"cama_id": c_uci})
+    check("UCI acepta y elige la cama", r.status_code == 200 and r.json()["estado"] == "aceptado", r.text[:150])
+    with SessionLocal() as s_db:
+        est = dict(s_db.execute(text("SELECT id, estado FROM camas WHERE id IN (:a, :b)"), {"a": c_urg, "b": c_uci}).fetchall())
+    check("La cama de Urgencias queda en limpieza y la de UCI ocupada",
+          est.get(c_urg) == "en_limpieza" and est.get(c_uci) == "ocupada", str(est))
+    check("Aceptarla otra vez -> 409",
+          client.post(f"/traslados/{tid}/aceptar", headers=h(tok_uci), json={"cama_id": c_uci}).status_code == 409)
+    check("Un enfermero no da altas -> 403",
+          client.post(f"/pacientes/{pid_prueba}/alta", headers=h(tok_uci),
+                      json={"tipo_egreso": "mejoria", "motivo": "Paciente estable"}).status_code == 403)
+    check("Un médico que no lo atiende no le da el alta",
+          client.post(f"/pacientes/{pid_prueba}/alta", headers=h(tok_m01),
+                      json={"tipo_egreso": "mejoria", "motivo": "Paciente estable"}).status_code in (403, 404))
+    check("Alta sin motivo -> 422",
+          client.post(f"/pacientes/{pid_prueba}/alta", headers=h(tok_admin), json={"tipo_egreso": "mejoria"}).status_code == 422)
+    r = client.post(f"/pacientes/{pid_prueba}/alta", headers=h(tok_admin),
+                    json={"tipo_egreso": "mejoria", "motivo": "Estable 48 h, tolera vía oral, sin oxígeno"})
+    check("Alta médica con motivo -> la cama queda en proceso de alta",
+          r.status_code == 200 and r.json()["estado_cama"] == "en_proceso_alta", r.text[:150])
+    check("Enfermería confirma la salida y la cama pasa a limpieza",
+          client.patch(f"/camas/{c_uci}/estado", headers=h(tok_uci),
+                       json={"estado": "en_limpieza", "motivo": "Salió", "estado_esperado": "en_proceso_alta"}).status_code == 200)
+    uid2 = nueva_urgencia()
+    r = client.post("/traslados", headers=h(tok_urg), json={"paciente_id": pid_prueba, "servicio_destino_id": areas_["UCI_ADU"]["id"],
+                                                          "motivo": "Valoración por UCI"})
+    t2 = r.json().get("id")
+    check("UCI rechaza sin motivo -> 422", client.post(f"/traslados/{t2}/rechazar", headers=h(tok_uci), json={}).status_code == 422)
+    check("UCI rechaza con motivo", client.post(f"/traslados/{t2}/rechazar", headers=h(tok_uci),
+                                                json={"motivo": "Sin camas con ventilador"}).json().get("estado") == "rechazado")
+    r = client.post("/traslados", headers=h(tok_urg), json={"paciente_id": pid_prueba, "servicio_destino_id": areas_["HOSP_2"]["id"],
+                                                          "motivo": "Hospitalización general"})
+    check("Urgencias puede retirar su solicitud",
+          client.post(f"/traslados/{r.json()['id']}/cancelar", headers=h(tok_urg)).json().get("estado") == "cancelado")
+    client.post(f"/pacientes/{pid_prueba}/alta", headers=h(tok_admin), json={"tipo_egreso": "otro", "motivo": "Fin de la prueba e2e"})
+    for c in (c_urg, c_uci):
+        client.patch(f"/camas/{c}/estado", headers=h(tok_admin), json={"estado": "disponible", "motivo": "fin prueba"})
+    procs = client.get("/cirugias/catalogos", headers=h(tok_jefe)).json()["procedimientos"]
+    uci = next((p for p in procs if (p.get("cama_requerida") or "").startswith("Unidad de Cuidados Intensivos")), None)
+    general = cama_libre("HOSP_2", "GENERAL")
+    if uci and general:
+        cx = client.post("/encuentros", headers=h(tok_admin), json={"paciente_id": pid_prueba, "tipo": "cirugia",
+                                                                    "procedimiento_id": uci["id"]}).json()["id"]
+        check("Paciente de cirugía que necesita UCI en cama general -> 422",
+              client.post(f"/camas/{general}/asignar", headers=h(tok_admin), json={"encuentro_id": cx}).status_code == 422)
+else:
+    print("  (faltan las cuentas por área: aplicar db/11_areas_traslados.sql)")
+
+# ---------------------------------------------------------- 23. Tablero del área y turnos
+print("\n[23] Tablero del área y turnos de los jefes")
+tok_uci2 = login("jefe_uci2")
+if tok_uci and tok_uci2:
+    client.post("/areas/turno/cubrir", headers=h(tok_uci), json={"motivo": "Prueba e2e"})
+    tb = client.get("/areas/tablero", headers=h(tok_uci))
+    j = tb.json() if tb.status_code == 200 else {}
+    check("El jefe de UCI ve el tablero de su área con camas y turno",
+          tb.status_code == 200 and j["area"]["codigo"] == "UCI_ADU" and j["camas"] and j["turno"]["soy_yo"], tb.text[:150])
+    check("Todas las camas del tablero son de su área", all(c["cama_codigo"].startswith("UCI") for c in j.get("camas", [])))
+    urg_id = next(a["id"] for a in client.get("/areas", headers=h(tok_uci)).json()["areas"] if a["codigo"] == "URG")
+    check("No puede abrir el tablero de otra área -> 403",
+          client.get("/areas/tablero", params={"servicio_id": urg_id}, headers=h(tok_uci)).status_code == 403)
+    tb2 = client.get("/areas/tablero", headers=h(tok_uci2)).json()
+    check("Otro jefe de UCI que no está de turno ve el área en solo lectura", tb2["turno"]["puedo_operar"] is False)
+    libre = next((c for c in tb2["camas"] if c["estado_cama"] in ("disponible", "en_limpieza")), None)
+    if libre:
+        r = client.patch(f"/camas/{libre['cama_id']}/estado", headers=h(tok_uci2),
+                         json={"estado": libre["estado_cama"], "motivo": "x"})
+        check("... y si intenta operar recibe 403 'no estás de turno'", r.status_code == 403 and "turno" in r.text, r.text[:120])
+    r = client.post("/areas/turno/cubrir", headers=h(tok_uci2), json={"motivo": "Relevo por incapacidad (prueba)"})
+    check("Puede cubrir el turno con motivo", r.status_code == 200 and r.json()["de_turno"] == "jefe_uci2", r.text[:120])
+    check("Ahora el que no está de turno es el primero",
+          client.get("/areas/tablero", headers=h(tok_uci)).json()["turno"]["puedo_operar"] is False)
+    check("Cubrir sin motivo -> 422", client.post("/areas/turno/cubrir", headers=h(tok_uci), json={}).status_code == 422)
+    check("Un médico no ve tableros de área -> 403", client.get("/areas/tablero", headers=h(tok_m01)).status_code == 403)
 
 # ---------------------------------------------------------- resumen
 print("\n" + "=" * 70)

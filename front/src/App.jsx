@@ -28,6 +28,7 @@ const MisCirugias = lazy(() => import("./pages/especialista/MisCirugias"));
 const Cirugias = lazy(() => import("./pages/cirugias/CoordinacionQuirurgica"));
 const Hospital = lazy(() => import("./pages/coordinador/Hospital"));
 const Rendimiento = lazy(() => import("./pages/admin/Rendimiento"));
+const MiArea = lazy(() => import("./pages/enfermeria/MiArea"));
 
 /** Solo deja pasar con sesión iniciada; si no, manda al login y vuelve después. */
 function RequiereSesion({ children }) {
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="turno" element={<Permitido si={esMedico}><MiTurno /></Permitido>} />
           <Route path="remisiones" element={<Permitido si={(u) => esClinico(u) || esAdmin(u)}><Remisiones /></Permitido>} />
           <Route path="facturacion" element={<Permitido si={(u) => esContable(u) || esAdmin(u)}><Facturacion /></Permitido>} />
+          <Route path="mi-area" element={<Permitido si={(u) => esAdmin(u) || (u?.rol === "enfermero_jefe" && u?.area?.con_camas)}><MiArea /></Permitido>} />
           <Route path="rendimiento" element={<Permitido si={esAdmin}><Rendimiento /></Permitido>} />
           <Route path="admin" element={<Permitido si={esAdmin}><AdminPanel /></Permitido>} />
           <Route path="mi-salud" element={<Permitido si={esPaciente}><MiSalud /></Permitido>} />

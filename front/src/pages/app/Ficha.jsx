@@ -7,6 +7,7 @@ import ErrorEstado from "../../components/ErrorEstado";
 import PestanaIA from "../../components/ficha/PestanaIA";
 import PestanaRemitir from "../../components/ficha/PestanaRemitir";
 import PestanaHistoria from "../../components/ficha/PestanaHistoria";
+import AltaMedica from "../../components/ficha/AltaMedica";
 import { esClinico, esPaciente } from "../../lib/roles";
 import * as S from "../../lib/servicios";
 import { ESTADO_CIRUGIA, TIPO_ENCUENTRO, valorClinico } from "../../lib/clinico";
@@ -86,7 +87,7 @@ export default function Ficha() {
           </div>
         </div>
 
-        {esClinico(usuario) ? <AtencionActual a={atencion} /> : (
+        {esClinico(usuario) ? <AtencionActual a={atencion} pacienteId={id} onCambio={() => S.misPacientes().then((r) => setAtencion(r.pacientes.find((x) => x.paciente_id === id) || null)).catch(() => {})} /> : (
         <div className="rounded-3xl bg-paper-white p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-strong">Estancia actual</p>
           {estancia ? (
@@ -134,7 +135,7 @@ export default function Ficha() {
 }
 
 /** Lo que el médico necesita ver arriba: dónde está, críticos y cirugía. */
-function AtencionActual({ a }) {
+function AtencionActual({ a, pacienteId, onCambio }) {
   const e = a?.encuentro, cx = a?.cirugia;
   return (
     <div className="rounded-3xl bg-paper-white p-5">
@@ -154,6 +155,9 @@ function AtencionActual({ a }) {
               {cx.estado === "planned" && cx.hora_programada_inicio ? ` · ${hora(cx.hora_programada_inicio)}` : ""}
               {" · "}{cx.mi_papel === "cirujano" ? "usted opera" : cx.mi_papel === "anestesiologo" ? "usted anestesia" : `cirujano: ${cx.cirujano || "sin asignar"}`}
             </Dato>
+          )}
+          {e && ["hospitalizacion", "urgencias"].includes(e.tipo) && e.estado !== "finished" && (
+            <div className="pt-1"><AltaMedica pacienteId={pacienteId} onListo={onCambio} /></div>
           )}
           {a.criticos.length > 0 && (
             <Dato etiqueta="Críticos">

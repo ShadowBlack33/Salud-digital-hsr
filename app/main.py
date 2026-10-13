@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import admin, auth, cirugias, clinico, imaging, pacientes, perfiles, puerta_fhir, recursos, remisiones, usuarios
+from app.api import admin, asignacion, auth, cirugias, clinico, imaging, pacientes, perfiles, puerta_fhir, recursos, remisiones, usuarios
 from app.core.config import get_settings
 from app.services import metricas
 
@@ -113,6 +113,7 @@ async def error_no_controlado(request: Request, exc: Exception):
 app.include_router(auth.router)
 app.include_router(pacientes.router)
 app.include_router(clinico.router)
+app.include_router(asignacion.router)
 app.include_router(recursos.router)
 app.include_router(recursos.fhir_router)
 app.include_router(recursos.audit_router)
@@ -167,7 +168,6 @@ def salud():
 def _estado_mongo() -> str:
     """MongoDB (contabilidad, R09). Con pymongo hace ping; sin él, revisa que el puerto responda."""
     import os
-    from urllib.parse import urlparse
     url = os.getenv("MONGO_URL")
     if not url:
         return "sin configurar"
@@ -178,11 +178,13 @@ def _estado_mongo() -> str:
         return "ok"
     except ImportError:
         import socket
-        u = urlparse(url)
+        # Host y puerto después de la última "@": una contraseña con # / ? : rompe urlparse.
+        resto = url.rsplit("@", 1)[-1].split("/", 1)[0].split("?", 1)[0]
+        host, _, puerto = resto.partition(":")
         try:
-            with socket.create_connection((u.hostname, u.port or 27017), timeout=1.5):
+            with socket.create_connection((host, int(puerto or 27017)), timeout=2):
                 return "ok (contenedor arriba; módulo de contabilidad pendiente)"
-        except OSError:
+        except (OSError, ValueError):
             return "no disponible"
     except Exception:  # noqa: BLE001
         return "no disponible"

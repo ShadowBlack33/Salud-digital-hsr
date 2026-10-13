@@ -203,6 +203,11 @@ def cambiar_estado_cama(cama_id: int, datos: CambioEstado, request: Request,
     if c is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cama no encontrada")
     _verificar_concurrencia(c, datos, f"la cama {c.codigo}")
+    from app.api.asignacion import _exigir_area, _mi_area
+    from app.services.turnos import exigir_turno
+    area = _mi_area(db, ctx)
+    _exigir_area(area, c.servicio_id, f"La cama {c.codigo}")
+    exigir_turno(db, ctx, area)
 
     anterior = c.estado
     _registrar_evento(db, "cama", c, datos.estado, ctx.usuario, datos.motivo)

@@ -5,6 +5,8 @@ import Insignia from "./Insignia";
 import Dato from "./Dato";
 import AccionesEstado from "./AccionesEstado";
 import { useAvisos } from "./Avisos";
+import { AsignarAqui } from "./AsignarCama";
+import { SolicitarTraslado } from "./Traslados";
 import { api, puede } from "../api";
 import { CAMA, CAMA_CON_PACIENTE, infoCama } from "../lib/estados";
 import { cop, duracion, edadLegible, enmascarar, hora, minutosDesde } from "../lib/format";
@@ -14,7 +16,7 @@ const SEXO = { M: "Masculino", F: "Femenino", O: "Otro" };
 const MUEVEN_PACIENTE = ["disponible", "en_limpieza", "bloqueada", "contaminada", "aislamiento"];
 
 /** Panel lateral de una cama: ocupante, tiempos, costo y cambio de estado. */
-export default function DrawerCama({ cama, ahora, usuario, onCerrar, onCambio }) {
+export default function DrawerCama({ cama, ahora, usuario, onCerrar, onCambio, deMiArea = true, areaCama = null }) {
   const navegar = useNavigate();
   const { avisar } = useAvisos();
   if (!cama) return <Panel abierto={false} />;
@@ -83,8 +85,17 @@ export default function DrawerCama({ cama, ahora, usuario, onCerrar, onCambio })
               <Stethoscope size={16} aria-hidden="true" />Ver ficha e imágenes<ArrowRight size={16} aria-hidden="true" />
             </button>
           )}
+          {cama.estado_cama === "en_proceso_alta" && (
+            <p className="mt-3 rounded-2xl bg-gold-soft p-3 text-sm text-gold-ink">El médico dio el alta. Cuando el paciente salga, inicia la limpieza.</p>
+          )}
+          {puedeCambiar && deMiArea && cama.estado_cama === "ocupada" && (
+            <SolicitarTraslado pacienteId={cama.paciente_id} areaActual={areaCama} onListo={onCambio} />
+          )}
         </section>
       )}
+
+      {puedeCambiar && deMiArea && cama.estado_cama === "disponible" && !destinoDeCirugia && <AsignarAqui key={cama.cama_id} cama={cama} onCambio={onCambio} />}
+      {puedeCambiar && !deMiArea && <p className="mt-6 rounded-3xl bg-cloud-card p-5 text-sm text-gray-strong">Esta cama es de otra área: la asigna su enfermero(a) jefe. Si necesitas un cupo aquí, solicita un traslado.</p>}
 
       {!conPaciente && (
         <p className="mt-6 rounded-3xl bg-cloud-card p-5 text-sm text-gray-strong">

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -253,8 +254,17 @@ def cambiar_password(datos: CambioPasswordRequest, request: Request,
 
 
 @router.get("/yo", summary="Información de la sesión actual")
-def yo(usuario: Usuario = Depends(get_usuario_actual)):
+def yo(usuario: Usuario = Depends(get_usuario_actual), db: Session = Depends(get_db)):
+    # Área a cargo (enfermería jefe, migración 11) y si tiene camas: decide si ve "Mi área".
+    area = None
+    try:
+        area = db.execute(text("""
+            SELECT s.id, s.nombre, EXISTS (SELECT 1 FROM camas c WHERE c.servicio_id = s.id AND c.activo) AS con_camas
+            FROM usuarios u JOIN servicios s ON s.id = u.servicio_id WHERE u.id = :u"""), {"u": usuario.id}).mappings().first()
+    except Exception:  # noqa: BLE001 -- base sin la columna servicio_id
+        db.rollback()
     return {
+        "area": dict(area) if area else None,
         "id": usuario.id,
         "username": usuario.username,
         "rol": usuario.rol.codigo,
