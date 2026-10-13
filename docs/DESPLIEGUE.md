@@ -64,6 +64,7 @@ Solo Carlos las aplica, en orden, después de revisarlas:
 python scripts/aplicar_sql.py db/08_roles_corte2.sql
 python scripts/aplicar_sql.py db/09_perfiles.sql
 python scripts/aplicar_sql.py db/10_remisiones.sql
+python scripts/aplicar_sql.py db/11_ingeniero_biomedico.sql
 python scripts/corregir_nombres.py        # nombres que no coincidían con el sexo
 ```
 
@@ -73,6 +74,10 @@ motivo, y luego la cierra como atendida. Agrega `cerrada_at`/`cerrada_por`:
 al rechazar, el especialista pierde el acceso a la ficha; al atender, lo
 conserva `REMISION_ACCESO_DIAS` (7). Se puede correr más de una vez, también
 sobre una base que ya tenía la versión anterior de la tabla.
+
+`11` crea el perfil `ingeniero_biomedico` (cuenta `biomedico01`): ve camas y
+quirófanos y los saca de servicio por mantenimiento, sin ver pacientes
+(Res. 4816/2008 tecnovigilancia, Res. 1995/1999 art. 14).
 
 `08` crea los roles `medico`, `especialista` y `contable` y las cuentas
 `medico01`, `especialista01`, `contable01` y `bloqueo_prueba` (misma contraseña
@@ -121,6 +126,7 @@ python scripts/aplicar_sql.py db/07_tipo_documento_por_edad.sql
 python scripts/aplicar_sql.py db/08_roles_corte2.sql
 python scripts/aplicar_sql.py db/09_perfiles.sql
 python scripts/aplicar_sql.py db/10_remisiones.sql
+python scripts/aplicar_sql.py db/11_ingeniero_biomedico.sql
 ```
 
 `05_cedula_como_llave.sql` **no** se aplica: era la migración de una base

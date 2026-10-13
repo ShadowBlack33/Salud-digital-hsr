@@ -285,6 +285,42 @@ def auditoria_a_fhir(log) -> dict:
     }
 
 
+# Remisión (R08) -> ServiceRequest. Res. 866/2021 incluye la referencia y
+# contrarreferencia entre los datos clínicos relevantes para interoperar.
+SYS_REMISION = "http://hsanrafael.co/fhir/remision"
+ESTADO_REMISION = {"pendiente": "active", "aceptada": "active",
+                   "atendida": "completed", "rechazada": "revoked"}
+PRIORIDAD_REMISION = {"rutinaria": "routine", "prioritaria": "urgent", "urgente": "asap"}
+
+
+def remision_a_fhir(r: dict, fhir_patient_id: str | None = None,
+                    medico: str | None = None, especialista: str | None = None,
+                    especialidad: str | None = None) -> dict:
+    """Solo referencias y el motivo: ni nombre ni documento del paciente."""
+    sujeto = ({"reference": f"Patient/{fhir_patient_id}"} if fhir_patient_id
+              else {"identifier": {"system": SYS_HOSPITAL, "value": r["paciente_id"]}})
+    recurso = {
+        "resourceType": "ServiceRequest",
+        "identifier": [{"system": SYS_REMISION, "value": str(r["id"])}],
+        "status": ESTADO_REMISION.get(r["estado"], "unknown"),
+        "intent": "order",
+        "category": [{"coding": [{"system": SYS_SNOMED, "code": "3457005",
+                                  "display": "Patient referral"}]}],
+        "priority": PRIORIDAD_REMISION.get(r["prioridad"], "routine"),
+        "code": {"text": f"Remisión a {especialidad}" if especialidad else "Remisión a especialista"},
+        "subject": sujeto,
+        "authoredOn": _fecha(r["created_at"]),
+        "requester": {"identifier": {"system": f"{SYS_HOSPITAL}/personal", "value": str(r["medico_id"])},
+                      **({"display": medico} if medico else {})},
+        "performer": [{"identifier": {"system": f"{SYS_HOSPITAL}/personal", "value": str(r["especialista_id"])},
+                       **({"display": especialista} if especialista else {})}],
+        "reasonCode": [{"text": r["motivo"][:500]}],
+    }
+    if r.get("respuesta"):
+        recurso["note"] = [{"text": r["respuesta"][:500]}]
+    return recurso
+
+
 # ==========================================================================
 # Cliente HAPI FHIR
 # ==========================================================================

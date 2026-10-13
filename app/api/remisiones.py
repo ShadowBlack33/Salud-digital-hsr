@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from app.core.crypto import descifrar
 from app.core.deps import ContextoAcceso, RequierePermiso, get_db
 from app.models import Paciente, Personal
+from app.services import fhir as fhir_svc
 from app.services import reactores
 from app.services.auditoria import registrar
 
@@ -69,6 +70,47 @@ def _vista(db: Session, r: dict, yo: int | None) -> dict:
     }
 
 
+def _publicar_fhir(remision_id: int) -> None:
+    """
+    Refleja la remisión en HAPI como ServiceRequest (actualización condicional
+    por identificador: crea o actualiza). Corre después de responder; si HAPI
+    no está disponible, la remisión sigue válida y se puede reintentar.
+    """
+    import httpx
+    from app.core.deps import SessionLocal
+    try:
+        with SessionLocal() as db:
+            r = db.execute(text("SELECT * FROM remisiones WHERE id = :i"), {"i": remision_id}).mappings().first()
+            if r is None:
+                return
+            p = db.get(Paciente, r["paciente_id"])
+            esp = db.get(Personal, r["especialista_id"])
+            recurso = fhir_svc.remision_a_fhir(
+                dict(r), p.fhir_patient_id if p else None, _nombre_personal(db, r["medico_id"]),
+                _nombre_personal(db, r["especialista_id"]),
+                esp.especialidad.nombre if esp and esp.especialidad else None)
+        c = fhir_svc.ClienteFHIR()
+        httpx.put(f"{c.base}/ServiceRequest", params={"identifier": f"{fhir_svc.SYS_REMISION}|{remision_id}"},
+                  json=recurso, headers=c._headers(), timeout=c.timeout)
+    except Exception:  # noqa: BLE001 -- FHIR caído no tumba la remisión
+        pass
+
+
+@router.get("/remisiones/{remision_id}/fhir", summary="La remisión como ServiceRequest FHIR")
+def remision_fhir(remision_id: int, ctx: ContextoAcceso = Depends(RequierePermiso("remision", "read")),
+                  db: Session = Depends(get_db)):
+    r = db.execute(text("SELECT * FROM remisiones WHERE id = :i"), {"i": remision_id}).mappings().first()
+    yo = ctx.payload.get("personal_id")
+    if r is None or (ctx.alcance != "all" and yo not in (r["medico_id"], r["especialista_id"])
+                     and r["remitido_por"] != ctx.usuario.id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Remisión no encontrada")
+    p = db.get(Paciente, r["paciente_id"])
+    esp = db.get(Personal, r["especialista_id"])
+    return fhir_svc.remision_a_fhir(dict(r), p.fhir_patient_id if p else None,
+                                    _nombre_personal(db, r["medico_id"]), _nombre_personal(db, r["especialista_id"]),
+                                    esp.especialidad.nombre if esp and esp.especialidad else None)
+
+
 @router.get("/especialistas", summary="Especialistas a los que se puede remitir")
 def especialistas(ctx: ContextoAcceso = Depends(RequierePermiso("remision", "create")),
                   db: Session = Depends(get_db)):
@@ -101,7 +143,7 @@ def especialistas(ctx: ContextoAcceso = Depends(RequierePermiso("remision", "cre
 
 
 @router.post("/remisiones", status_code=status.HTTP_201_CREATED, summary="Remitir un paciente")
-def remitir(datos: RemisionCrear, request: Request,
+def remitir(datos: RemisionCrear, request: Request, tareas: BackgroundTasks,
             ctx: ContextoAcceso = Depends(RequierePermiso("remision", "create")),
             db: Session = Depends(get_db)):
     p = db.get(Paciente, datos.paciente_id)
@@ -126,6 +168,7 @@ def remitir(datos: RemisionCrear, request: Request,
     except Exception:  # noqa: BLE001 -- un aviso que falla no tumba la remisión
         pass
     db.commit()
+    tareas.add_task(_publicar_fhir, fila["id"])
     return {"id": fila["id"], "estado": "pendiente", **_vista(db, dict(fila), yo)}
 
 
@@ -145,7 +188,7 @@ def listar(ctx: ContextoAcceso = Depends(RequierePermiso("remision", "read")),
 
 
 @router.post("/remisiones/{remision_id}/aceptar", summary="Aceptar una remisión recibida")
-def aceptar(remision_id: int, request: Request,
+def aceptar(remision_id: int, request: Request, tareas: BackgroundTasks,
             ctx: ContextoAcceso = Depends(RequierePermiso("remision", "update")),
             db: Session = Depends(get_db)):
     r = db.execute(text("SELECT * FROM remisiones WHERE id = :i"), {"i": remision_id}).mappings().first()
@@ -171,6 +214,7 @@ def aceptar(remision_id: int, request: Request,
     except Exception:  # noqa: BLE001
         pass
     db.commit()
+    tareas.add_task(_publicar_fhir, remision_id)
     return _vista(db, dict(fila), yo)
 
 
@@ -178,8 +222,8 @@ class Cierre(BaseModel):
     motivo: str | None = Field(None, max_length=1000)
 
 
-def _transicion(db: Session, ctx: ContextoAcceso, request: Request, remision_id: int,
-                desde: str, hacia: str, respuesta: str | None) -> dict:
+def _transicion(db: Session, ctx: ContextoAcceso, request: Request, tareas: BackgroundTasks,
+                remision_id: int, desde: str, hacia: str, respuesta: str | None) -> dict:
     """Cambia el estado solo si sigue en `desde` y quien actúa es el destinatario."""
     r = db.execute(text("SELECT * FROM remisiones WHERE id = :i"), {"i": remision_id}).mappings().first()
     if r is None:
@@ -201,21 +245,22 @@ def _transicion(db: Session, ctx: ContextoAcceso, request: Request, remision_id:
     registrar(db, ctx.usuario, "remision", remision_id, "update",
               valor_anterior={"estado": desde}, valor_nuevo={"estado": hacia}, request=request)
     db.commit()
+    tareas.add_task(_publicar_fhir, remision_id)
     return _vista(db, dict(fila), yo)
 
 
 @router.post("/remisiones/{remision_id}/rechazar", summary="Rechazar una remisión recibida (con motivo)")
-def rechazar(remision_id: int, datos: Cierre, request: Request,
+def rechazar(remision_id: int, datos: Cierre, request: Request, tareas: BackgroundTasks,
              ctx: ContextoAcceso = Depends(RequierePermiso("remision", "update")),
              db: Session = Depends(get_db)):
     if not datos.motivo or len(datos.motivo.strip()) < 5:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indica el motivo del rechazo (mínimo 5 caracteres)")
-    return _transicion(db, ctx, request, remision_id, "pendiente", "rechazada", datos.motivo.strip())
+    return _transicion(db, ctx, request, tareas, remision_id, "pendiente", "rechazada", datos.motivo.strip())
 
 
 @router.post("/remisiones/{remision_id}/atender", summary="Cerrar como atendida una remisión aceptada")
-def atender(remision_id: int, request: Request, datos: Cierre | None = None,
+def atender(remision_id: int, request: Request, tareas: BackgroundTasks, datos: Cierre | None = None,
             ctx: ContextoAcceso = Depends(RequierePermiso("remision", "update")),
             db: Session = Depends(get_db)):
     nota = datos.motivo.strip() if datos and datos.motivo else None
-    return _transicion(db, ctx, request, remision_id, "aceptada", "atendida", nota)
+    return _transicion(db, ctx, request, tareas, remision_id, "aceptada", "atendida", nota)

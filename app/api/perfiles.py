@@ -443,8 +443,26 @@ def tablero_hospital(ctx: ContextoAcceso = Depends(RequierePermiso("analitica", 
 
     total_camas = sum(a["total"] - a["fuera_servicio"] for a in areas) or 1
     ocupadas = sum(a["ocupadas"] + a["reservadas"] for a in areas)
+    # Indicador P.2.15 de la Res. 256/2016: cirugías canceladas por causas
+    # atribuibles a la institución / cirugías programadas x 100. Se toma el mes
+    # más reciente con volumen suficiente (el mes en curso puede estar empezando).
+    canc = db.execute(text("""
+        SELECT mes, programadas, canceladas, por_prestador, pct_cancelacion
+        FROM v_indicador_cancelacion WHERE programadas >= 20 ORDER BY mes DESC LIMIT 1
+    """)).mappings().first()
+    cancelacion = None
+    if canc:
+        cancelacion = {
+            "mes": canc["mes"].date().isoformat() if canc["mes"] else None,
+            "programadas": canc["programadas"], "canceladas": canc["canceladas"],
+            "pct_total": float(canc["pct_cancelacion"] or 0),
+            "pct_institucion": round(100 * (canc["por_prestador"] or 0) / canc["programadas"], 2),
+            "norma": "Res. 256/2016, indicador P.2.15",
+        }
+
     return {
         "ahora": ahora.isoformat(),
+        "cancelacion_cirugia": cancelacion,
         "supuestos": {
             "tipo": "escenario con reglas configurables, no modelo validado",
             "fraccion_altas_12h": FRACCION_ALTAS_12H,

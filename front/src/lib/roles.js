@@ -12,6 +12,7 @@ export const esContable = (u) => u?.rol === "contable";
 export const esPaciente = (u) => u?.rol === "paciente";
 export const esCoordinador = (u) => u?.rol === "coordinador";
 export const esJefeEnfermeria = (u) => u?.rol === "enfermero_jefe";
+export const esBiomedico = (u) => u?.rol === "ingeniero_biomedico";
 export const programaCirugias = (u) => puede(u, "agenda", "update");
 
 /** Ruta de inicio de cada perfil. */
@@ -39,6 +40,8 @@ export function menu(u) {
                                  ["/app/mis-cirugias", "Mis cirugías", "cirugias"]];
   if (esContable(u)) return [["/app/facturacion", "Facturación", "facturacion"]];
   if (esPaciente(u)) return [["/app/mi-salud", "Mi salud", "salud"]];
+  // Ingeniería biomédica: estado de camas y quirófanos, sin datos de pacientes.
+  if (esBiomedico(u)) return [["/app/mando", "Camas y quirófanos", "mando"]];
   // Enfermería jefe y los perfiles operativos del Corte 1.
   const items = [];
   if (programaCirugias(u)) items.push(["/app/cirugias", "Cirugías", "cirugias"]);

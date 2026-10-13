@@ -266,7 +266,8 @@ Reconocerlas explícitamente es parte del rigor del trabajo:
 6. **HAPI FHIR sin autenticación propia; la pone nginx.** Toda petición a
    `/fhir` pasa antes por `auth_request` hacia la API
    (`app/api/puerta_fhir.py`). Público solo `POST /fhir/Observation` (lo
-   exige R21) y `GET /fhir/metadata`; leer pide token con `fhir:read`,
+   exige R21), `GET /fhir/metadata` y la búsqueda exacta
+   `GET /fhir/Patient?identifier=<valor>` (R15; listar o leer por id sigue cerrado); leer pide token con `fhir:read`,
    escribir otros recursos pide `fhir:sync:write` (cuenta de integración) y
    `DELETE` se rechaza siempre. El POST público tiene límite de tasa y de
    tamaño (256 KB). Falta SMART on FHIR (punto 4).

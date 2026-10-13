@@ -119,7 +119,7 @@ function Hero() {
           El centro de comando en tiempo real para camas, quirófanos y urgencias
         </h1>
         <p className="anim-rise mx-auto mt-7 max-w-2xl text-lg leading-relaxed text-gray-strong [animation-delay:160ms]">
-          Un solo tablero para saber qué cama está libre, qué quirófano va retrasado y quién ocupa cada espacio, sin depender de llamadas. Pensado para reducir las cancelaciones que se pueden evitar.
+          Un solo sistema para saber qué cama está libre y qué quirófano va retrasado, remitir pacientes entre médicos y que cada perfil vea solo lo que le corresponde, sin depender de llamadas. Pensado para reducir las cancelaciones que se pueden evitar.
         </p>
         <div className="anim-rise mt-9 flex flex-wrap items-center justify-center gap-3 [animation-delay:240ms]">
           <Link to="/login" className="inline-flex items-center gap-2 rounded-full bg-charcoal px-8 py-4 text-[15px] font-semibold text-white transition hover:-translate-y-0.5 hover:bg-ink">
@@ -270,9 +270,9 @@ function Cifra({ meta, etiqueta, activo }) {
 function Arquitectura() {
   const [ref, visible] = useAparicion(0.25);
   const columnas = [
-    { icono: Lock, titulo: "Datos protegidos", puntos: ["Cédula, nombre y teléfono cifrados con AES-256-GCM", "Búsqueda por documento sin descifrar la base (índice ciego)", "Auditoría que no se puede editar y bloqueo tras 3 intentos fallidos"] },
-    { icono: Database, titulo: "Estándares clínicos", puntos: ["HL7 FHIR R4 sobre un servidor HAPI", "CIE-10 para diagnósticos y CUPS para procedimientos", "14 roles con permisos en dos niveles"] },
-    { icono: ScanLine, titulo: "Imágenes y tiempo real", puntos: ["Servidor PACS Orthanc con imágenes DICOM", "Visor con brillo, contraste y zoom", "Tablero que se actualiza solo cada 15 segundos"] },
+    { icono: Lock, titulo: "Datos protegidos", puntos: ["Cédula, nombre y teléfono cifrados con AES-256-GCM", "Búsqueda por documento sin descifrar la base (índice ciego)", "Auditoría inalterable y sin datos sensibles; bloqueo tras 3 intentos", "Cerrar sesión invalida el acceso al instante"] },
+    { icono: Database, titulo: "Estándares e interoperabilidad", puntos: ["HL7 FHIR R4 sobre HAPI, con acceso controlado desde afuera", "CIE-10, CUPS, LOINC y SNOMED CT", "Remisiones publicadas como ServiceRequest", "Cancelación de cirugía según la Res. 256/2016"] },
+    { icono: ScanLine, titulo: "Operación sin choques", puntos: ["Cada perfil ve solo lo suyo: médico, especialista, paciente, contable, coordinación, enfermería jefe e ingeniería biomédica", "Dos personas nunca reservan la misma cama o quirófano", "PACS Orthanc con radiografías reales (NIH) y visor propio"] },
   ];
   return (
     <section id="arquitectura" ref={ref} className="mx-auto max-w-6xl scroll-mt-24 px-6 pb-24">
@@ -285,7 +285,7 @@ function Arquitectura() {
           <Cifra meta={300} etiqueta="camas, en 5 tipos de cuidado" activo={visible} />
           <Cifra meta={13} etiqueta="quirófanos con capacidades propias" activo={visible} />
           <Cifra meta={14} etiqueta="roles de usuario" activo={visible} />
-          <Cifra meta={63} etiqueta="pruebas automáticas de extremo a extremo" activo={visible} />
+          <Cifra meta={124} etiqueta="pruebas automáticas de extremo a extremo" activo={visible} />
         </div>
         <ul className="mt-14 grid gap-4 lg:grid-cols-3">
           {columnas.map(({ icono: Icono, titulo, puntos }) => (

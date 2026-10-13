@@ -13,6 +13,7 @@ const CUENTAS = [
   { usuario: "medico01", rol: "Médico general", detalle: "Sus pacientes, críticos e IA" },
   { usuario: "especialista01", rol: "Especialista", detalle: "Remisiones y sus cirugías" },
   { usuario: "contable01", rol: "Contable", detalle: "Facturación, sin datos clínicos" },
+  { usuario: "biomedico01", rol: "Ingeniería biomédica", detalle: "Camas y quirófanos fuera de servicio, sin pacientes" },
   { usuario: "paciente_demo", rol: "Paciente", detalle: "Su salud y lo que se le cobra" },
 ];
 const CLAVE_DEMO = import.meta.env.VITE_DEMO_PASSWORD || "";

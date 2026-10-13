@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, BedDouble, Brain, Clock, HeartPulse, Scissors, Siren, TrendingDown, TrendingUp, Wallet } from "lucide-react";
+import { Activity, AlertTriangle, BedDouble, CalendarX, Brain, Clock, HeartPulse, Scissors, Siren, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import Encabezado from "../../components/Encabezado";
 import Esqueleto from "../../components/Esqueleto";
 import ErrorEstado from "../../components/ErrorEstado";
@@ -49,7 +49,7 @@ export default function Hospital() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Kpi icono={BedDouble} etiqueta="Ocupación de camas" valor={`${d.resumen.pct_ocupacion} %`}
              detalle={`${d.resumen.camas_ocupadas} de ${d.resumen.camas_utiles} camas útiles`} alerta={d.resumen.pct_ocupacion >= 90} />
         <Kpi icono={Scissors} etiqueta="Quirófanos en uso" valor={`${usoQx} %`}
@@ -59,6 +59,11 @@ export default function Hospital() {
              alerta={(d.urgencias.triage_1_2 ?? 0) > 0} />
         <Kpi icono={TrendingDown} etiqueta="Pérdida por camas ociosas hoy" valor={millones(perdidaHoy)}
              detalle="Horas de cama disponible × costo día" tono="text-coral-deep" />
+        {d.cancelacion_cirugia && (
+          <Kpi icono={CalendarX} etiqueta="Cancelación de cirugía" valor={`${d.cancelacion_cirugia.pct_institucion} %`}
+               detalle={`Atribuible al hospital (Res. 256/2016, P.2.15) · ${d.cancelacion_cirugia.canceladas} de ${d.cancelacion_cirugia.programadas} canceladas en total (${d.cancelacion_cirugia.pct_total} %), mes ${d.cancelacion_cirugia.mes?.slice(0, 7)}`}
+               alerta={d.cancelacion_cirugia.pct_institucion >= 5} />
+        )}
       </div>
 
       <section aria-labelledby="t-areas" className="rounded-[32px] bg-cloud-card p-6 sm:p-7">

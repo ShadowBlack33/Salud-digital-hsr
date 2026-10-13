@@ -182,6 +182,13 @@ def ocupacion_camas(ctx: ContextoAcceso = Depends(RequierePermiso("cama", "read"
                 item["medico_nombre"] = nombre_medico[m.id]
                 item["medico_especialidad"] = m.especialidad.nombre if m.especialidad else None
         resultado.append(item)
+    if ctx.alcance_paciente() is None:
+        # Perfiles no clínicos (p. ej. ingeniería biomédica) ven el estado de la
+        # cama, nunca quién la ocupa (Res. 1995/1999 art. 14).
+        for item in resultado:
+            for k in list(item):
+                if k.startswith("paciente") or k in ("diagnostico", "procedimiento", "medico_nombre"):
+                    item[k] = None
     return resultado
 
 
@@ -235,6 +242,7 @@ def agenda_quirofanos(ctx: ContextoAcceso = Depends(RequierePermiso("quirofano",
     """
     from app.core.crypto import descifrar
 
+    ve_pacientes = ctx.alcance_paciente() is not None
     ahora = datetime.now(timezone.utc)
     quirofanos = db.query(Quirofano).filter(Quirofano.activo.is_(True)) \
         .order_by(Quirofano.id).all()
@@ -286,7 +294,7 @@ def agenda_quirofanos(ctx: ContextoAcceso = Depends(RequierePermiso("quirofano",
                          f"{descifrar(m.apellido_cifrado, 'personal.apellido')}") if m else None,
             "paciente_nombre_corto": _nombre_corto(
                 descifrar(p.nombre_cifrado, "pacientes.nombre"),
-                descifrar(p.apellido_cifrado, "pacientes.apellido")) if p else None,
+                descifrar(p.apellido_cifrado, "pacientes.apellido")) if p and ve_pacientes else None,
             "cama_destino": f["cama_destino"],
             "cama_destino_estado": f["cama_destino_estado"],
         }

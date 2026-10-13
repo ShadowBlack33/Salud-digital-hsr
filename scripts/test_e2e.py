@@ -539,7 +539,10 @@ def puerta(metodo, ruta, token=None):
 
 check("POST /fhir/Observation sin token pasa (R21)", puerta("POST", "/fhir/Observation") == 204)
 check("GET /fhir/metadata sin token pasa", puerta("GET", "/fhir/metadata") == 204)
-check("GET /fhir/Patient sin token -> 401", puerta("GET", "/fhir/Patient?identifier=1") == 401)
+check("GET /fhir/Patient (listar) sin token -> 401", puerta("GET", "/fhir/Patient?_count=5") == 401)
+check("Búsqueda exacta por identificador sin token pasa (R15)", puerta("GET", "/fhir/Patient?identifier=123456") == 204)
+check("Identificador con otros parámetros sin token -> 401", puerta("GET", "/fhir/Patient?identifier=1&_count=50") == 401)
+check("Leer Patient/{id} sin token -> 401", puerta("GET", "/fhir/Patient/1") == 401)
 check("GET /fhir/Patient con token clínico pasa", puerta("GET", "/fhir/Patient", tok_m01) == 204)
 check("Un paciente no lee FHIR -> 403", puerta("GET", "/fhir/Patient", tok_paciente) == 403)
 check("Un médico no escribe Patient en FHIR -> 403", puerta("POST", "/fhir/Patient", tok_m01) == 403)
@@ -579,6 +582,40 @@ with SessionLocal() as s_db:
 check("Las últimas 300 entradas de auditoría no tienen contraseñas ni tokens",
       not any('"password"' in f and "<protegido>" not in f for f in filas)
       and not any("eyJ" in f for f in filas))
+
+# ---------------------------------------------------------- 20. Ingeniería biomédica, ServiceRequest y Res. 256
+print("\n[20] Ingeniería biomédica sin datos clínicos, remisión en FHIR e indicador de cancelación")
+tok_bio = login("biomedico01")
+if tok_bio:
+    check("biomedico01 ve el estado de las camas", client.get("/camas", headers=h(tok_bio)).status_code == 200)
+    occ = client.get("/camas/ocupacion?solo_ocupadas=true", headers=h(tok_bio))
+    check("... pero no quién las ocupa",
+          occ.status_code == 200 and all(not x.get("paciente_nombre_corto") and not x.get("paciente_documento")
+                                         and not x.get("diagnostico") for x in occ.json()), occ.text[:150])
+    ag = client.get("/quirofanos/agenda", headers=h(tok_bio))
+    check("En la agenda de quirófanos tampoco aparecen pacientes",
+          ag.status_code == 200 and '"paciente_nombre_corto":null' in ag.text.replace(" ", "") or "paciente_nombre_corto" not in ag.text)
+    check("biomedico01 no consulta pacientes -> 403", client.get("/pacientes", headers=h(tok_bio)).status_code == 403)
+    libre = client.get("/quirofanos", headers=h(tok_bio)).json()[0]
+    r = client.patch(f"/quirofanos/{libre['id']}/estado", headers=h(tok_bio),
+                     json={"estado": "bloqueado", "motivo": "Mantenimiento correctivo (prueba)", "estado_esperado": libre["estado"]})
+    check("biomedico01 saca un quirófano de servicio por mantenimiento", r.status_code == 200, r.text[:120])
+    client.patch(f"/quirofanos/{libre['id']}/estado", headers=h(tok_bio), json={"estado": libre["estado"], "motivo": "fin prueba"})
+else:
+    print("  (sin cuenta biomedico01: aplicar db/11_ingeniero_biomedico.sql)")
+if pac_m and yo_esp:
+    r = client.get(f"/remisiones/{rid2}/fhir", headers=h(tok_m01))
+    j = r.json() if r.status_code == 200 else {}
+    check("La remisión se expresa como ServiceRequest FHIR",
+          j.get("resourceType") == "ServiceRequest" and j.get("status") == "completed" and "subject" in j, r.text[:150])
+    check("El ServiceRequest no lleva nombre ni documento del paciente",
+          not any(k in r.text for k in ("documento", "pacientes.nombre")))
+    check("Un contable no ve la remisión en FHIR -> 403",
+          client.get(f"/remisiones/{rid2}/fhir", headers=h(login("contable01"))).status_code == 403)
+r = client.get("/analitica/hospital", headers=h(tok_coord))
+c = r.json().get("cancelacion_cirugia") if r.status_code == 200 else None
+check("El tablero trae el indicador de cancelación (Res. 256/2016)",
+      c is not None and 0 <= c["pct_institucion"] <= c["pct_total"], str(c)[:150])
 
 # ---------------------------------------------------------- resumen
 print("\n" + "=" * 70)
