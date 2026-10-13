@@ -71,6 +71,7 @@ def list_images(paciente_documento_bidx: str) -> list[dict]:
     for instance_id in ids:
         t = orthanc("GET", f"/instances/{instance_id}/simplified-tags").json()
         images.append({
+            "id": instance_id,   # el contrato del tester pide `id` o `url`
             "instance_id": instance_id,
             "description": t.get("SeriesDescription") or t.get("StudyDescription") or "Imagen",
             "modality": t.get("Modality"),

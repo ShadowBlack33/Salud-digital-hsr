@@ -214,3 +214,37 @@ Las distribuciones están calibradas con literatura real, no elegidas al azar:
   complejidad de Popayán. *Rev. Fac. Med.*, 67(1), 17–21.
 - HL7 FHIR R4 — https://hl7.org/fhir/R4/
 - Ley 1581 de 2012 · Ley 2015 de 2020 · Resolución 3100 de 2019
+
+
+## Arquitectura
+
+```mermaid
+flowchart LR
+  U[Navegador] -->|HTTPS| CF[cloudflared]
+  CF --> NG[front · nginx]
+  NG -->|/api| API[API FastAPI]
+  NG -->|/api/eventos SSE| API
+  NG -->|/fhir| FHIR[HAPI FHIR]
+  API --> PG[(PostgreSQL / Neon)]
+  API --> MG[(MongoDB · contabilidad)]
+  API --> OR[Orthanc · PACS]
+  API --> ML[ml · modelo de IA]
+  FHIR -->|Subscription rest-hook| API
+  JR[jornada] --> PG
+  JR --> OR
+```
+
+## Eventos
+
+```mermaid
+flowchart LR
+  R[Médico remite] --> N1[Notificación + SSE al especialista]
+  A[Especialista acepta] --> N2[Notificación al médico]
+  AP[Clínico aprueba reporte IA] --> F[Factura automática en MongoDB con reporte_id]
+  B[3 intentos fallidos] --> N3[Bloqueo + aviso al admin]
+  C[IA marca caso crítico] --> AL[Alerta activa por SSE] --> E{¿Reconocida a tiempo?}
+  E -- no --> ES[Escala al admin]
+  O[Observation nueva en FHIR] --> N4[Aviso al médico responsable + auditoría]
+```
+
+El detalle de cada evento está en `docs/EVENTOS.md`. Pasos de despliegue: `docs/DESPLIEGUE.md`.
