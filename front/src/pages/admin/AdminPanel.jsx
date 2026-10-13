@@ -6,6 +6,7 @@ import Insignia from "../../components/Insignia";
 import CampoClave, { claveValida } from "../../components/CampoClave";
 import { useAvisos } from "../../components/Avisos";
 import * as S from "../../lib/servicios";
+import { api } from "../../api";
 import { useEventos, useTiempoReal } from "../../lib/tiempoReal";
 import { useSondeo } from "../../lib/hooks";
 import { salud } from "../../api";
@@ -55,21 +56,19 @@ export default function AdminPanel() {
 
 const tarjeta = "rounded-[28px] bg-paper-white p-6 shadow-lift";
 
-const esHoy = (iso) => iso && new Date(iso).toDateString() === new Date().toDateString();
-
-/** Indicadores del día sacados de la auditoría (R13). Se recalculan con cada evento. */
+/** Indicadores de las últimas 24 h, contados en el servidor sobre toda la auditoría (R13). */
 function ResumenHoy({ bloqueadas }) {
-  const [registros, setRegistros] = useState(null);
-  const cargar = useCallback(() => S.auditoria({ limite: 500 }).then((l) => setRegistros(l.filter((r) => esHoy(r.timestamp)))).catch(() => setRegistros([])), []);
+  const [seg, setSeg] = useState(null);
+  const cargar = useCallback(() => api("/admin/rendimiento").then((d) => setSeg(d.seguridad)).catch(() => setSeg({})), []);
   useEffect(() => { cargar(); }, [cargar]);
   useEventos((ev) => { if (!ev.local) cargar(); });
 
-  const contar = (f) => (registros ? registros.filter(f).length : "—");
+  const v = (k) => (seg ? seg[k] ?? 0 : "—");
   const tarjetas = [
-    ["Logins fallidos hoy", contar((r) => r.operacion === "login" && r.resultado === "denegado"), KeyRound, "text-gold-deep"],
+    ["Logins fallidos (24 h)", v("logins_fallidos"), KeyRound, "text-gold-deep"],
     ["Cuentas bloqueadas ahora", bloqueadas, Lock, "text-coral-deep"],
-    ["Accesos denegados hoy", contar((r) => r.resultado === "denegado"), Ban, "text-coral-deep"],
-    ["Eventos FHIR recibidos hoy", contar((r) => r.operacion === "fhir_evento"), Activity, "text-sleep-lilac"],
+    ["Accesos denegados (24 h)", v("accesos_denegados"), Ban, "text-coral-deep"],
+    ["Eventos FHIR recibidos (24 h)", v("eventos_fhir"), Activity, "text-sleep-lilac"],
   ];
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Resumen de hoy">

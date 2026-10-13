@@ -32,7 +32,10 @@ def rendimiento(ctx: ContextoAcceso = Depends(RequierePermiso("auditoria", "read
     seg = dict(db.execute(text("""
         SELECT COUNT(*) FILTER (WHERE operacion = 'login' AND resultado = 'exito')            AS logins_ok,
                COUNT(*) FILTER (WHERE operacion IN ('login', 'login_fallido') AND resultado <> 'exito') AS logins_fallidos,
-               COUNT(*) FILTER (WHERE resultado = 'denegado')                                AS accesos_denegados,
+               COUNT(*) FILTER (WHERE resultado = 'denegado' AND operacion NOT IN ('login', 'login_fallido'))
+                                                                                             AS accesos_denegados,
+               COUNT(*) FILTER (WHERE operacion = 'fhir_evento' OR entidad_tipo = 'fhir_evento'
+                                   OR endpoint LIKE '%/fhir/notificacion%')                  AS eventos_fhir,
                COUNT(*)                                                                      AS eventos
         FROM log_auditoria WHERE timestamp > NOW() - INTERVAL '24 hours'
     """)).mappings().first())

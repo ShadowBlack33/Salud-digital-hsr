@@ -45,12 +45,14 @@ export default function Shell() {
         <nav aria-label="Principal" className="flex items-center justify-between gap-3 rounded-[32px] bg-paper-white/85 py-2.5 pl-4 pr-3 shadow-lift backdrop-blur-xl">
           <Link to="/app" aria-label="Ir a mi inicio" className="shrink-0"><span className="hidden sm:block"><Logo /></span><span className="sm:hidden"><Logo compacto /></span></Link>
 
-          <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+          <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
             {items.map(([ruta, texto, icono]) => {
               const Icono = ICONOS[icono];
+              // Con muchos módulos (admin) solo íconos; el nombre sale al pasar el mouse.
+              const etiqueta = items.length > 5 ? "sr-only" : "hidden lg:inline";
               return (
                 <NavLink key={ruta} to={ruta} className={enlace} title={texto}>
-                  <Icono size={16} aria-hidden="true" /><span className="hidden lg:inline">{texto}</span>
+                  <Icono size={16} aria-hidden="true" /><span className={etiqueta}>{texto}</span>
                 </NavLink>
               );
             })}
