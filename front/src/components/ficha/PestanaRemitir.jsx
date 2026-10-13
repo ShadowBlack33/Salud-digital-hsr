@@ -45,7 +45,7 @@ export default function PestanaRemitir({ pacienteId }) {
       <label className="block text-sm font-medium">Especialista
         <select required value={datos.especialista_id} onChange={(e) => setDatos((d) => ({ ...d, especialista_id: e.target.value }))} className={entrada}>
           <option value="" disabled>Elige un especialista</option>
-          {especialistas.lista.map((e) => <option key={e.id} value={e.id}>{e.especialidad ? `${e.especialidad} · ` : ""}{e.nombre}{e.activo_reciente ? " (en línea)" : ""}</option>)}
+          {especialistas.lista.map((e) => <option key={e.id} value={e.id}>{e.especialidad ? `${e.especialidad} · ` : ""}{e.nombre}{e.usuario ? ` · cuenta ${e.usuario}` : ""}{e.conectado ? " (conectado)" : ""}</option>)}
         </select>
       </label>
       <fieldset className="text-sm font-medium">

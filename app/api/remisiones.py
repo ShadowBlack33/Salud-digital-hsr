@@ -17,7 +17,7 @@ ningún permiso sobre remisiones: reciben 403.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -73,7 +73,8 @@ def _vista(db: Session, r: dict, yo: int | None) -> dict:
 def especialistas(ctx: ContextoAcceso = Depends(RequierePermiso("remision", "create")),
                   db: Session = Depends(get_db)):
     filas = db.execute(text("""
-        SELECT p.id, COUNT(u.id) > 0 AS con_cuenta, MAX(u.ultimo_acceso) AS ultimo_acceso
+        SELECT p.id, COUNT(u.id) > 0 AS con_cuenta, MAX(u.ultimo_acceso) AS ultimo_acceso,
+               MIN(u.username) AS usuario
         FROM personal p
         LEFT JOIN usuarios u ON u.personal_id = p.id AND u.activo
              AND u.rol_id = (SELECT id FROM roles WHERE codigo = 'especialista')
@@ -85,12 +86,17 @@ def especialistas(ctx: ContextoAcceso = Depends(RequierePermiso("remision", "cre
         m = db.get(Personal, f["id"])
         salida.append({"id": m.id, "nombre": _nombre_personal(db, m.id),
                        "especialidad": m.especialidad.nombre if m.especialidad else None,
-                       "en_linea": bool(f["con_cuenta"]), "_ultimo": f["ultimo_acceso"]})
+                       "en_linea": bool(f["con_cuenta"]), "_ultimo": f["ultimo_acceso"],
+                       # Cuenta con la que ese especialista entra (para saber a quién remitir en la demo).
+                       "usuario": f["usuario"]})
     # Primero los que entraron al sistema hace poco (pueden aceptarla ya).
     salida.sort(key=lambda e: (e["_ultimo"] is None, -(e["_ultimo"].timestamp() if e["_ultimo"] else 0),
                                e["especialidad"] or "", e["nombre"]))
+    hace_un_rato = datetime.now(timezone.utc) - timedelta(minutes=30)
     for e in salida:
-        e["activo_reciente"] = e.pop("_ultimo") is not None
+        ultimo = e.pop("_ultimo")
+        e["activo_reciente"] = ultimo is not None
+        e["conectado"] = bool(ultimo and ultimo > hace_un_rato)   # entró en los últimos 30 min
     return salida
 
 
