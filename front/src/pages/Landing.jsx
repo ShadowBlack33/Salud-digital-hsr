@@ -285,7 +285,7 @@ function Arquitectura() {
           <Cifra meta={300} etiqueta="camas, en 5 tipos de cuidado" activo={visible} />
           <Cifra meta={13} etiqueta="quirófanos con capacidades propias" activo={visible} />
           <Cifra meta={14} etiqueta="roles de usuario" activo={visible} />
-          <Cifra meta={158} etiqueta="pruebas automáticas de extremo a extremo" activo={visible} />
+          <Cifra meta={164} etiqueta="pruebas automáticas de extremo a extremo" activo={visible} />
         </div>
         <ul className="mt-14 grid gap-4 lg:grid-cols-3">
           {columnas.map(({ icono: Icono, titulo, puntos }) => (

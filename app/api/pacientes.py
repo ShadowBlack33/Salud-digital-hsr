@@ -173,6 +173,53 @@ def listar(ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "read")),
     return [_a_respuesta(p, enmascarar_doc=True) for p in pacientes]
 
 
+# Nombres descifrados en memoria del proceso (nunca en la base ni en disco):
+# buscar por nombre no exige descifrar miles de registros en cada tecla.
+_NOMBRES: dict[str, tuple[str, str]] = {}
+
+
+def _sin_tildes(t: str) -> str:
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn")
+
+
+@router.get("/sugerir", summary="Buscar pacientes por nombre o documento (autocompletar)")
+def sugerir(q: str = Query(..., min_length=3, max_length=60),
+            ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "read")),
+            db: Session = Depends(get_db)):
+    """
+    Nombres y documentos están cifrados (AES-GCM), así que la base no puede
+    buscar con LIKE. Si se escriben solo dígitos, se busca el documento exacto
+    con el índice ciego; si no, se comparan las palabras con los nombres
+    descifrados en memoria, solo entre los pacientes que el usuario puede ver.
+    Devuelve 10 como máximo, con el documento enmascarado.
+    """
+    texto = q.strip()
+    base = ctx.filtrar_query(db.query(Paciente).filter(Paciente.activo.is_(True)), Paciente)
+    if texto.isdigit():
+        p = base.filter(Paciente.documento_bidx == blind_index(texto, "pacientes.documento")).first()
+        candidatos = [p] if p else []
+    else:
+        palabras = _sin_tildes(texto).split()
+        candidatos = []
+        for p in base.all():
+            if p.documento_bidx not in _NOMBRES:
+                nombre = f"{descifrar(p.nombre_cifrado, 'pacientes.nombre') or ''} {descifrar(p.apellido_cifrado, 'pacientes.apellido') or ''}".strip()
+                _NOMBRES[p.documento_bidx] = (_sin_tildes(nombre), nombre)
+            if all(w in _NOMBRES[p.documento_bidx][0] for w in palabras):
+                candidatos.append(p)
+                if len(candidatos) >= 10:
+                    break
+    salida = []
+    for p in candidatos:
+        nombre = _NOMBRES.get(p.documento_bidx, (None, None))[1] or \
+            f"{descifrar(p.nombre_cifrado, 'pacientes.nombre')} {descifrar(p.apellido_cifrado, 'pacientes.apellido')}"
+        salida.append({"paciente_id": p.documento_bidx, "nombre": nombre, "tipo_documento": p.tipo_documento,
+                       "documento": enmascarar(descifrar(p.documento_cifrado, "pacientes.documento")),
+                       "fecha_nacimiento": p.fecha_nacimiento, "sexo": p.sexo})
+    return salida
+
+
 @router.get("/buscar", response_model=PacienteRespuesta,
             summary="Buscar por documento (usa blind index)")
 def buscar(documento: str,
@@ -218,6 +265,7 @@ def actualizar(paciente_id: str, datos: PacienteActualizar, request: Request,
     Soft edit: el valor anterior de cada campo modificado se conserva
     en historial_cambios en vez de sobrescribirse.
     """
+    _NOMBRES.pop(paciente_id, None)   # el nombre pudo cambiar
     p = db.query(Paciente).filter(Paciente.documento_bidx == paciente_id,
                                   Paciente.activo.is_(True)).first()
     if p is None:

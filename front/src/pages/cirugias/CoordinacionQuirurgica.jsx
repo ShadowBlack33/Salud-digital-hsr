@@ -4,6 +4,7 @@ import Encabezado from "../../components/Encabezado";
 import Esqueleto from "../../components/Esqueleto";
 import ErrorEstado from "../../components/ErrorEstado";
 import Insignia from "../../components/Insignia";
+import BuscarPaciente from "../../components/BuscarPaciente";
 import Panel from "../../components/Panel";
 import { useAvisos } from "../../components/Avisos";
 import * as S from "../../lib/servicios";
@@ -195,6 +196,7 @@ function useEnvio(onListo) {
 }
 
 function Programar({ catalogos, urgencia, onCerrar, onListo }) {
+  const [paciente, setPaciente] = useState(null);
   const [f, setF] = useState({ documento: "", procedimiento_id: "", quirofano_id: "", hora: enMediaHora(), cirujano_id: "", anestesiologo_id: "", origen: urgencia ? "urgencia" : "electiva", motivo: "" });
   const { enviando, error, choques, setChoques, enviar } = useEnvio(onListo);
   const campo = (k) => (e) => { setF((x) => ({ ...x, [k]: e.target.value })); setChoques(null); };
@@ -208,7 +210,7 @@ function Programar({ catalogos, urgencia, onCerrar, onListo }) {
   }, [catalogos]);
 
   const mandar = (desplazar) => enviar(() => S.programarCirugia({
-    documento: f.documento.trim(), procedimiento_id: Number(f.procedimiento_id), quirofano_id: Number(f.quirofano_id),
+    paciente_id: paciente?.paciente_id, procedimiento_id: Number(f.procedimiento_id), quirofano_id: Number(f.quirofano_id),
     hora_inicio: new Date(f.hora).toISOString(), cirujano_id: f.cirujano_id ? Number(f.cirujano_id) : null,
     anestesiologo_id: f.anestesiologo_id ? Number(f.anestesiologo_id) : null, origen: f.origen,
     prioridad: f.origen === "urgencia" ? 1 : 3, desplazar, motivo: f.motivo || null,
@@ -219,9 +221,7 @@ function Programar({ catalogos, urgencia, onCerrar, onListo }) {
            subtitulo={urgencia ? "Busca la primera sala apta; si está ocupada, puedes correr las siguientes." : "La sala debe tener el equipo que pide el procedimiento."}>
       {!catalogos ? <Esqueleto filas={5} /> : (
         <form id="f-programar" onSubmit={(e) => { e.preventDefault(); mandar(false); }} className="space-y-4">
-          <label className="block text-sm">Documento del paciente
-            <input required inputMode="numeric" value={f.documento} onChange={(e) => setF((x) => ({ ...x, documento: e.target.value.replace(/\D/g, "") }))} className={`${entrada} mt-1`} placeholder="Se busca cifrado (índice ciego)" />
-          </label>
+          <BuscarPaciente valor={paciente} onElegir={(p) => { setPaciente(p); setChoques(null); }} id="paciente-cirugia" />
           <label className="block text-sm">Procedimiento
             <select required value={f.procedimiento_id} onChange={campo("procedimiento_id")} className={`${entrada} mt-1`}>
               <option value="">Elige…</option>
@@ -269,9 +269,9 @@ function Programar({ catalogos, urgencia, onCerrar, onListo }) {
           </label>
           {choques && <Choques choques={choques} enviando={enviando} onCorrer={() => mandar(true)} />}
           {error && <p role="alert" className="text-sm text-coral-ink">{error}</p>}
-          <button type="submit" disabled={enviando}
+          <button type="submit" disabled={enviando || !paciente}
                   className="flex w-full items-center justify-center gap-2 rounded-full bg-charcoal px-5 py-3 text-sm font-semibold text-white transition hover:bg-ink disabled:opacity-50">
-            {enviando && <Loader2 size={15} className="anim-spin" />}Programar
+            {enviando && <Loader2 size={15} className="anim-spin" />}{paciente ? "Programar" : "Elige el paciente"}
           </button>
         </form>
       )}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { BedDouble, Loader2, Scissors, Siren, UserPlus } from "lucide-react";
 import { SolicitarTraslado } from "./Traslados";
+import BuscarPaciente from "./BuscarPaciente";
 import { api } from "../api";
 import { useAvisos } from "./Avisos";
 import { duracion } from "../lib/format";
@@ -62,7 +63,7 @@ export function EsperandoCama({ pendientes, miArea, soloLectura = false }) {
 export function AsignarAqui({ cama, onCambio }) {
   const { avisar } = useAvisos();
   const pend = usePendientesCama(true);
-  const [documento, setDocumento] = useState("");
+  const [ingreso, setIngreso] = useState(null);
   const [enviando, setEnviando] = useState(null);
   const compatibles = pend.lista.filter((p) => !p.tipo_cama_requerida || p.tipo_cama_requerida === cama.tipo_cama);
   const otros = pend.lista.length - compatibles.length;
@@ -72,7 +73,7 @@ export function AsignarAqui({ cama, onCambio }) {
     try {
       const r = await api(`/camas/${cama.cama_id}/asignar`, { method: "POST", json: cuerpo });
       avisar(r.estado === "reservada" ? `Cama ${r.cama} reservada: el paciente sigue en quirófano` : `Cama ${r.cama} asignada`);
-      setDocumento("");
+      setIngreso(null);
       await onCambio();
     } catch (e) { avisar(e.message, "error"); pend.recargar(); await onCambio(); }
     finally { setEnviando(null); }
@@ -99,14 +100,15 @@ export function AsignarAqui({ cama, onCambio }) {
           ))}
         </ul>
       )}
-      <form className="mt-4 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (documento) asignar({ documento, motivo: "Ingreso directo" }, "doc"); }}>
-        <label htmlFor="doc-ingreso" className="sr-only">Documento del paciente</label>
-        <input id="doc-ingreso" inputMode="numeric" value={documento} onChange={(e) => setDocumento(e.target.value.replace(/\D/g, ""))}
-               placeholder="Ingreso directo: documento" className="min-w-0 flex-1 rounded-full border border-paper-white bg-paper-white px-4 py-2 text-sm" />
-        <button type="submit" disabled={!documento || !!enviando} className="rounded-full bg-paper-white px-4 py-2 text-sm font-semibold disabled:opacity-50">
-          {enviando === "doc" ? <Loader2 size={14} className="anim-spin" /> : "Asignar"}
-        </button>
-      </form>
+      <div className="mt-4 space-y-2">
+        <BuscarPaciente valor={ingreso} onElegir={setIngreso} id={`ingreso-${cama.cama_id}`} etiqueta="Ingreso directo (paciente que no viene de urgencias ni de cirugía)" />
+        {ingreso && (
+          <button onClick={() => asignar({ paciente_id: ingreso.paciente_id, motivo: "Ingreso directo" }, "doc")} disabled={!!enviando}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-full bg-charcoal px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            {enviando === "doc" ? <Loader2 size={14} className="anim-spin" /> : <UserPlus size={14} />}Asignar a {ingreso.nombre.split(" ")[0]}
+          </button>
+        )}
+      </div>
     </section>
   );
 }

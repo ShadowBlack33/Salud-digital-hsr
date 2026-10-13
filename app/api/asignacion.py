@@ -226,13 +226,14 @@ def pendientes(ctx: ContextoAcceso = Depends(RequierePermiso("cama", "update")),
 class Asignacion(BaseModel):
     encuentro_id: int | None = Field(None, description="Urgencia o cirugía pendiente")
     documento: str | None = Field(None, description="Ingreso directo: documento del paciente")
+    paciente_id: str | None = Field(None, description="Ingreso directo: paciente elegido en el buscador")
     motivo: str | None = Field(None, max_length=300)
 
 
 @router.post("/camas/{cama_id}/asignar", summary="Asignar una cama de mi área a un paciente")
 def asignar(cama_id: int, datos: Asignacion, request: Request,
             ctx: ContextoAcceso = Depends(RequierePermiso("cama", "update")), db: Session = Depends(get_db)):
-    if not datos.encuentro_id and not datos.documento:
+    if not datos.encuentro_id and not datos.documento and not datos.paciente_id:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Elige un paciente pendiente o escribe un documento")
     area = _mi_area(db, ctx)
     cama = _cama_libre(db, cama_id, area, excluir_cirugia=datos.encuentro_id)
@@ -249,7 +250,7 @@ def asignar(cama_id: int, datos: Asignacion, request: Request,
             raise HTTPException(status.HTTP_409_CONFLICT, "Esa cirugía ya tiene cama de recuperación")
         paciente_id, origen = org.paciente_id, org
     else:
-        p = db.get(Paciente, blind_index(datos.documento.strip(), "pacientes.documento"))
+        p = db.get(Paciente, datos.paciente_id or blind_index(datos.documento.strip(), "pacientes.documento"))
         if p is None or not p.activo:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay un paciente con ese documento")
         paciente_id = p.documento_bidx

@@ -758,6 +758,21 @@ if tok_uci and tok_uci2:
     check("Cubrir sin motivo -> 422", client.post("/areas/turno/cubrir", headers=h(tok_uci), json={}).status_code == 422)
     check("Un médico no ve tableros de área -> 403", client.get("/areas/tablero", headers=h(tok_m01)).status_code == 403)
 
+# ---------------------------------------------------------- 24. Buscar paciente por nombre
+print("\n[24] Buscar paciente por nombre o documento (nombres cifrados)")
+r = client.get("/pacientes/sugerir", params={"q": "prueba delgado"}, headers=h(tok_admin))
+check("Por nombre encuentra pacientes que coinciden (sin importar tildes ni mayúsculas)",
+      r.status_code == 200 and r.json() and all("prueba delgado" in x["nombre"].lower() for x in r.json()), r.text[:150])
+check("El documento sale enmascarado", r.status_code == 200 and all("*" in (x["documento"] or "*") for x in r.json()))
+r = client.get("/pacientes/sugerir", params={"q": DOC_PRUEBA}, headers=h(tok_admin))
+check("Por documento exacto (índice ciego)", r.status_code == 200 and len(r.json()) == 1, r.text[:120])
+check("Menos de 3 letras -> 422", client.get("/pacientes/sugerir", params={"q": "ab"}, headers=h(tok_admin)).status_code == 422)
+check("Un contable no busca pacientes -> 403",
+      client.get("/pacientes/sugerir", params={"q": "prueba"}, headers=h(login("contable01"))).status_code == 403)
+r = client.get("/pacientes/sugerir", params={"q": "prueba delgado"}, headers=h(tok_m01))
+check("Un médico solo encuentra a sus propios pacientes",
+      r.status_code == 200 and not any(x["paciente_id"] == pid_prueba for x in r.json()), r.text[:120])
+
 # ---------------------------------------------------------- resumen
 print("\n" + "=" * 70)
 print(f"RESULTADO:  {ok} pruebas superadas, {fallos} fallidas")
