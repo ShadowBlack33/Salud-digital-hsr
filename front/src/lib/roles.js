@@ -12,7 +12,6 @@ export const esContable = (u) => u?.rol === "contable";
 export const esPaciente = (u) => u?.rol === "paciente";
 export const esCoordinador = (u) => u?.rol === "coordinador";
 export const esJefeEnfermeria = (u) => u?.rol === "enfermero_jefe";
-export const esBiomedico = (u) => u?.rol === "ingeniero_biomedico";
 export const programaCirugias = (u) => puede(u, "agenda", "update");
 
 /** Ruta de inicio de cada perfil. */
@@ -23,7 +22,6 @@ export function rutaInicio(u) {
   if (esEspecialista(u)) return "/app/remisiones";
   if (esContable(u)) return "/app/facturacion";
   if (esPaciente(u)) return "/app/mi-salud";
-  if (esBiomedico(u)) return "/app/equipos";
   if (programaCirugias(u)) return "/app/cirugias";
   if (puede(u, "cama", "read")) return "/app/mando";
   if (puede(u, "paciente", "read")) return "/app/pacientes";
@@ -32,8 +30,12 @@ export function rutaInicio(u) {
 
 /** Entradas del menú: [ruta, etiqueta, clave de ícono]. */
 export function menu(u) {
-  if (esAdmin(u)) return [["/app/admin", "Administración", "admin"], ["/app/pacientes", "Pacientes", "pacientes"],
-                          ["/app/facturacion", "Facturación", "facturacion"]];
+  // El admin ve todo el sistema: administración y auditoría, rendimiento, y las
+  // pantallas de cada perfil (la API ya le da alcance total).
+  if (esAdmin(u)) return [["/app/admin", "Admin", "admin"], ["/app/rendimiento", "Rendimiento", "rendimiento"],
+                          ["/app/hospital", "Hospital", "hospital"], ["/app/cirugias", "Cirugías", "cirugias"],
+                          ["/app/mando", "Mando", "mando"], ["/app/pacientes", "Pacientes", "pacientes"],
+                          ["/app/remisiones", "Remisiones", "remisiones"], ["/app/facturacion", "Facturación", "facturacion"]];
   if (esCoordinador(u)) return [["/app/hospital", "Hospital", "hospital"]];
   if (esMedico(u)) return [["/app/turno", "Mi turno", "turno"], ["/app/mis-pacientes", "Mis pacientes", "pacientes"],
                            ["/app/remisiones", "Remisiones", "remisiones"]];
@@ -41,8 +43,6 @@ export function menu(u) {
                                  ["/app/mis-cirugias", "Mis cirugías", "cirugias"]];
   if (esContable(u)) return [["/app/facturacion", "Facturación", "facturacion"]];
   if (esPaciente(u)) return [["/app/mi-salud", "Mi salud", "salud"]];
-  // Ingeniería biomédica: estado de camas y quirófanos, sin datos de pacientes.
-  if (esBiomedico(u)) return [["/app/equipos", "Equipos", "equipos"], ["/app/mando", "Camas y quirófanos", "mando"]];
   // Enfermería jefe y los perfiles operativos del Corte 1.
   const items = [];
   if (programaCirugias(u)) items.push(["/app/cirugias", "Cirugías", "cirugias"]);

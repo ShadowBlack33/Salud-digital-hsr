@@ -266,9 +266,12 @@ r = client.get("/analitica/ocupacion", headers=h(tok_admin))
 check("Ocupación por tipo de cama -> 200", r.status_code == 200)
 
 r = client.get("/analitica/cancelaciones", headers=h(tok_admin))
-# El mes más reciente con volumen suficiente (el mes en curso puede tener solo
-# las cirugías de la demo y dar 0 %).
-meses = [m for m in (r.json() if r.status_code == 200 else []) if (m.get("programadas") or 0) >= 20]
+# El último mes cerrado con volumen suficiente (el mes en curso está incompleto
+# y puede tener solo cirugías de la demo o de la simulación).
+from datetime import date as _date  # noqa: E402
+_mes_actual = _date.today().strftime("%Y-%m")
+meses = [m for m in (r.json() if r.status_code == 200 else [])
+         if (m.get("programadas") or 0) >= 20 and not str(m.get("mes", "")).startswith(_mes_actual)]
 if meses:
     pct = float(meses[0].get("pct_cancelacion") or 0)
     check(f"Tasa de cancelación en rango realista ({pct} %)", 1.0 < pct < 12.0)
@@ -583,46 +586,8 @@ check("Las últimas 300 entradas de auditoría no tienen contraseñas ni tokens"
       not any('"password"' in f and "<protegido>" not in f for f in filas)
       and not any("eyJ" in f for f in filas))
 
-# ---------------------------------------------------------- 20. Ingeniería biomédica, ServiceRequest y Res. 256
-print("\n[20] Ingeniería biomédica sin datos clínicos, remisión en FHIR e indicador de cancelación")
-tok_bio = login("biomedico01")
-if tok_bio:
-    check("biomedico01 ve el estado de las camas", client.get("/camas", headers=h(tok_bio)).status_code == 200)
-    occ = client.get("/camas/ocupacion?solo_ocupadas=true", headers=h(tok_bio))
-    check("... pero no quién las ocupa",
-          occ.status_code == 200 and all(not x.get("paciente_nombre_corto") and not x.get("paciente_documento")
-                                         and not x.get("diagnostico") for x in occ.json()), occ.text[:150])
-    check("biomedico01 no consulta pacientes -> 403", client.get("/pacientes", headers=h(tok_bio)).status_code == 403)
-    qx = client.get("/quirofanos", headers=h(tok_bio)).json()
-    libre = next(q for q in qx if q["estado"] in ("disponible", "en_limpieza", "en_preparacion"))
-    check("biomedico01 NO puede mandar a limpieza ni cambiar estados a mano -> 403",
-          client.patch(f"/quirofanos/{libre['id']}/estado", headers=h(tok_bio),
-                       json={"estado": "en_limpieza", "motivo": "x"}).status_code == 403)
-    r = client.post("/biomedica/fuera-servicio", headers=h(tok_bio), json={
-        "recurso_tipo": "quirofano", "recurso_id": libre["id"], "equipo": "Arco en C",
-        "tipo": "falla", "descripcion": "No genera imagen (prueba e2e)"})
-    check("Saca el quirófano de servicio por falla de un equipo", r.status_code == 201, r.text[:150])
-    fid = r.json().get("id")
-    check("El quirófano queda bloqueado",
-          next(q for q in client.get("/quirofanos", headers=h(tok_bio)).json() if q["id"] == libre["id"])["estado"] == "bloqueado")
-    check("No se puede sacar dos veces el mismo -> 409", client.post("/biomedica/fuera-servicio", headers=h(tok_bio), json={
-        "recurso_tipo": "quirofano", "recurso_id": libre["id"], "equipo": "Lámpara", "tipo": "falla",
-        "descripcion": "otra falla"}).status_code == 409)
-    con_pac = client.get("/camas", params={"estado": "ocupada", "limite": 1}, headers=h(tok_bio)).json()
-    if con_pac:
-        check("Una cama con paciente no se saca de servicio -> 409", client.post("/biomedica/fuera-servicio", headers=h(tok_bio), json={
-            "recurso_tipo": "cama", "recurso_id": con_pac[0]["id"], "equipo": "Monitor", "tipo": "falla",
-            "descripcion": "pantalla apagada"}).status_code == 409)
-    lst = client.get("/biomedica/fuera-servicio", headers=h(tok_bio)).json()
-    check("Aparece en la lista de equipos fuera de servicio", any(f["id"] == fid and f["abierta"] for f in lst["fuera_servicio"]))
-    check("Enfermería jefe no usa el módulo biomédico -> 403",
-          client.post(f"/biomedica/fuera-servicio/{fid}/devolver", headers=h(tok_jefe)).status_code == 403)
-    r = client.post(f"/biomedica/fuera-servicio/{fid}/devolver", headers=h(tok_bio), json={"nota": "Se cambió el tubo"})
-    check("Al devolverlo queda en limpieza (enfermería lo habilita)", r.status_code == 200 and r.json()["estado"] == "en_limpieza", r.text[:120])
-    check("Devolverlo otra vez -> 409", client.post(f"/biomedica/fuera-servicio/{fid}/devolver", headers=h(tok_bio)).status_code == 409)
-    client.patch(f"/quirofanos/{libre['id']}/estado", headers=h(tok_jefe), json={"estado": libre["estado"], "motivo": "fin prueba"})
-else:
-    print("  (sin cuenta biomedico01: aplicar db/11_ingeniero_biomedico.sql)")
+# ---------------------------------------------------------- 20. ServiceRequest y Res. 256
+print("\n[20] Remisión en FHIR e indicador de cancelación")
 if pac_m and yo_esp:
     r = client.get(f"/remisiones/{rid2}/fhir", headers=h(tok_m01))
     j = r.json() if r.status_code == 200 else {}
@@ -636,6 +601,18 @@ r = client.get("/analitica/hospital", headers=h(tok_coord))
 c = r.json().get("cancelacion_cirugia") if r.status_code == 200 else None
 check("El tablero trae el indicador de cancelación (Res. 256/2016)",
       c is not None and 0 <= c["pct_institucion"] <= c["pct_total"], str(c)[:150])
+
+# ---------------------------------------------------------- 21. Rendimiento (admin)
+print("\n[21] El admin ve cómo funciona el sistema")
+r = client.get("/admin/rendimiento", headers=h(tok_admin))
+check("Rendimiento -> 200 con API, seguridad, uso e IA",
+      r.status_code == 200 and {"api", "seguridad", "uso_por_perfil", "ia"} <= set(r.json()), r.text[:150])
+if r.status_code == 200:
+    check("Mide peticiones y latencia de la API", r.json()["api"]["ultima_hora"]["peticiones"] > 0)
+    check("No expone identificadores de pacientes en las rutas medidas",
+          not any("documento" in x["ruta"] or any(c.isdigit() for c in x["ruta"].split(" ")[-1]) for x in r.json()["api"]["rutas"]))
+for quien in ("medico01", "coordinador", "contable01"):
+    check(f"{quien} no ve el rendimiento -> 403", client.get("/admin/rendimiento", headers=h(login(quien))).status_code == 403)
 
 # ---------------------------------------------------------- resumen
 print("\n" + "=" * 70)

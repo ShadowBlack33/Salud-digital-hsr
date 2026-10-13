@@ -27,7 +27,7 @@ const MisPacientes = lazy(() => import("./pages/clinico/MisPacientes"));
 const MisCirugias = lazy(() => import("./pages/especialista/MisCirugias"));
 const Cirugias = lazy(() => import("./pages/cirugias/CoordinacionQuirurgica"));
 const Hospital = lazy(() => import("./pages/coordinador/Hospital"));
-const Equipos = lazy(() => import("./pages/biomedica/Equipos"));
+const Rendimiento = lazy(() => import("./pages/admin/Rendimiento"));
 
 /** Solo deja pasar con sesión iniciada; si no, manda al login y vuelve después. */
 function RequiereSesion({ children }) {
@@ -54,14 +54,14 @@ export default function App() {
         <Route path="/app" element={<RequiereSesion><Shell /></RequiereSesion>}>
           <Route index element={<Inicio />} />
           <Route path="mando" element={<Permitido si={(u) => puede(u, "cama", "read") && !esCoordinador(u)}><Comando /></Permitido>} />
-          <Route path="equipos" element={<Permitido si={(u) => puede(u, "equipo", "update")}><Equipos /></Permitido>} />
           <Route path="hospital" element={<Permitido si={(u) => esCoordinador(u) || esAdmin(u)}><Hospital /></Permitido>} />
           <Route path="cirugias" element={<Permitido si={programaCirugias}><Cirugias /></Permitido>} />
           <Route path="mis-pacientes" element={<Permitido si={esClinico}><MisPacientes /></Permitido>} />
           <Route path="mis-cirugias" element={<Permitido si={(u) => esEspecialista(u) || esMedico(u)}><MisCirugias /></Permitido>} />
           <Route path="turno" element={<Permitido si={esMedico}><MiTurno /></Permitido>} />
-          <Route path="remisiones" element={<Permitido si={esClinico}><Remisiones /></Permitido>} />
+          <Route path="remisiones" element={<Permitido si={(u) => esClinico(u) || esAdmin(u)}><Remisiones /></Permitido>} />
           <Route path="facturacion" element={<Permitido si={(u) => esContable(u) || esAdmin(u)}><Facturacion /></Permitido>} />
+          <Route path="rendimiento" element={<Permitido si={esAdmin}><Rendimiento /></Permitido>} />
           <Route path="admin" element={<Permitido si={esAdmin}><AdminPanel /></Permitido>} />
           <Route path="mi-salud" element={<Permitido si={esPaciente}><MiSalud /></Permitido>} />
           <Route path="sin-pantalla" element={<ErrorEstado status={403} titulo="Tu rol aún no tiene pantallas" detalle="Tu cuenta está activa, pero este rol no tiene vistas en el sistema todavía. Habla con el administrador." accion={false} />} />

@@ -183,7 +183,7 @@ def ocupacion_camas(ctx: ContextoAcceso = Depends(RequierePermiso("cama", "read"
                 item["medico_especialidad"] = m.especialidad.nombre if m.especialidad else None
         resultado.append(item)
     if ctx.alcance_paciente() is None:
-        # Perfiles no clínicos (p. ej. ingeniería biomédica) ven el estado de la
+        # Perfiles sin permiso sobre pacientes ven el estado de la
         # cama, nunca quién la ocupa (Res. 1995/1999 art. 14).
         for item in resultado:
             for k in list(item):

@@ -64,7 +64,7 @@ Solo Carlos las aplica, en orden, después de revisarlas:
 python scripts/aplicar_sql.py db/08_roles_corte2.sql
 python scripts/aplicar_sql.py db/09_perfiles.sql
 python scripts/aplicar_sql.py db/10_remisiones.sql
-python scripts/aplicar_sql.py db/11_ingeniero_biomedico.sql
+python scripts/aplicar_sql.py db/11_quitar_biomedico.sql
 python scripts/corregir_nombres.py        # nombres que no coincidían con el sexo
 ```
 
@@ -75,12 +75,9 @@ al rechazar, el especialista pierde el acceso a la ficha; al atender, lo
 conserva `REMISION_ACCESO_DIAS` (7). Se puede correr más de una vez, también
 sobre una base que ya tenía la versión anterior de la tabla.
 
-`11` crea el perfil `ingeniero_biomedico` (cuenta `biomedico01`) y la tabla
-`fuera_servicio`. Su única acción: cuando un equipo falla o entra a
-mantenimiento, sacar de servicio la cama o el quirófano donde está (equipo,
-tipo, descripción) y devolverlo cuando quede reparado; vuelve "en limpieza" y
-enfermería lo habilita. No cambia otros estados ni ve pacientes
-(Res. 4816/2008 tecnovigilancia, Res. 3100/2019 mantenimiento, Res. 1995/1999 art. 14).
+`11` deshace el perfil de ingeniería biomédica que se probó y se descartó
+(desactiva `biomedico01`, borra sus permisos y la tabla `fuera_servicio`).
+Se puede correr aunque nunca se haya creado.
 
 `08` crea los roles `medico`, `especialista` y `contable` y las cuentas
 `medico01`, `especialista01`, `contable01` y `bloqueo_prueba` (misma contraseña
@@ -129,7 +126,6 @@ python scripts/aplicar_sql.py db/07_tipo_documento_por_edad.sql
 python scripts/aplicar_sql.py db/08_roles_corte2.sql
 python scripts/aplicar_sql.py db/09_perfiles.sql
 python scripts/aplicar_sql.py db/10_remisiones.sql
-python scripts/aplicar_sql.py db/11_ingeniero_biomedico.sql
 ```
 
 `05_cedula_como_llave.sql` **no** se aplica: era la migración de una base

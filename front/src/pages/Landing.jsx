@@ -272,7 +272,7 @@ function Arquitectura() {
   const columnas = [
     { icono: Lock, titulo: "Datos protegidos", puntos: ["Cédula, nombre y teléfono cifrados con AES-256-GCM", "Búsqueda por documento sin descifrar la base (índice ciego)", "Auditoría inalterable y sin datos sensibles; bloqueo tras 3 intentos", "Cerrar sesión invalida el acceso al instante"] },
     { icono: Database, titulo: "Estándares e interoperabilidad", puntos: ["HL7 FHIR R4 sobre HAPI, con acceso controlado desde afuera", "CIE-10, CUPS, LOINC y SNOMED CT", "Remisiones publicadas como ServiceRequest", "Cancelación de cirugía según la Res. 256/2016"] },
-    { icono: ScanLine, titulo: "Operación sin choques", puntos: ["Cada perfil ve solo lo suyo: médico, especialista, paciente, contable, coordinación, enfermería jefe e ingeniería biomédica", "Dos personas nunca reservan la misma cama o quirófano", "PACS Orthanc con radiografías reales (NIH) y visor propio"] },
+    { icono: ScanLine, titulo: "Operación sin choques", puntos: ["Cada perfil ve solo lo suyo: médico, especialista, paciente, contable, coordinación y enfermería jefe", "Dos personas nunca reservan la misma cama o quirófano", "PACS Orthanc con radiografías reales (NIH) y visor propio"] },
   ];
   return (
     <section id="arquitectura" ref={ref} className="mx-auto max-w-6xl scroll-mt-24 px-6 pb-24">
@@ -285,7 +285,7 @@ function Arquitectura() {
           <Cifra meta={300} etiqueta="camas, en 5 tipos de cuidado" activo={visible} />
           <Cifra meta={13} etiqueta="quirófanos con capacidades propias" activo={visible} />
           <Cifra meta={14} etiqueta="roles de usuario" activo={visible} />
-          <Cifra meta={131} etiqueta="pruebas automáticas de extremo a extremo" activo={visible} />
+          <Cifra meta={126} etiqueta="pruebas automáticas de extremo a extremo" activo={visible} />
         </div>
         <ul className="mt-14 grid gap-4 lg:grid-cols-3">
           {columnas.map(({ icono: Icono, titulo, puntos }) => (

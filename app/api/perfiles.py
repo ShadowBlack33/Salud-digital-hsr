@@ -444,11 +444,12 @@ def tablero_hospital(ctx: ContextoAcceso = Depends(RequierePermiso("analitica", 
     total_camas = sum(a["total"] - a["fuera_servicio"] for a in areas) or 1
     ocupadas = sum(a["ocupadas"] + a["reservadas"] for a in areas)
     # Indicador P.2.15 de la Res. 256/2016: cirugías canceladas por causas
-    # atribuibles a la institución / cirugías programadas x 100. Se toma el mes
-    # más reciente con volumen suficiente (el mes en curso puede estar empezando).
+    # atribuibles a la institución / cirugías programadas x 100. Se reporta el
+    # último mes cerrado, como se reporta el indicador (el mes en curso está incompleto).
     canc = db.execute(text("""
         SELECT mes, programadas, canceladas, por_prestador, pct_cancelacion
-        FROM v_indicador_cancelacion WHERE programadas >= 20 ORDER BY mes DESC LIMIT 1
+        FROM v_indicador_cancelacion
+        WHERE mes < DATE_TRUNC('month', NOW()) AND programadas >= 20 ORDER BY mes DESC LIMIT 1
     """)).mappings().first()
     cancelacion = None
     if canc:
