@@ -7,7 +7,7 @@ import ErrorEstado from "../../components/ErrorEstado";
 import PestanaIA from "../../components/ficha/PestanaIA";
 import PestanaRemitir from "../../components/ficha/PestanaRemitir";
 import PestanaHistoria from "../../components/ficha/PestanaHistoria";
-import { esClinico, esMedico, esPaciente } from "../../lib/roles";
+import { esClinico, esPaciente } from "../../lib/roles";
 import * as S from "../../lib/servicios";
 import { ESTADO_CIRUGIA, TIPO_ENCUENTRO, valorClinico } from "../../lib/clinico";
 import Dato from "../../components/Dato";
@@ -107,7 +107,7 @@ export default function Ficha() {
         // Pestañas según el rol: la API vuelve a validar cada acción.
         const pestanas = [["historia", "Historia"], ["imagenes", "Imágenes"]];
         if (esClinico(usuario)) pestanas.push(["ia", "Análisis de IA"]);
-        if (esMedico(usuario)) pestanas.push(["remitir", "Remitir"]);
+        if (esClinico(usuario)) pestanas.push(["remitir", "Remitir"]);
         const verPDF = esClinico(usuario) || esPaciente(usuario);
         return (
           <>

@@ -106,8 +106,11 @@ export function aceptar(id) {
   if (r) r.estado = "aceptada";
   return r;
 }
+// Remisiones que llegan desde el panel de demostración: se muestran junto a
+// las reales (id "sim-…") para ensayar el aviso en vivo sin tocar la base.
+export const remisionesSimuladas = () => db.remisiones.filter((r) => String(r.id).startsWith("sim-"));
 export function agregarRemision(motivo) {
-  const r = { id: nuevoId(), paciente_id: "demo-2", paciente_nombre: "Martha Lucía Gómez Varela", medico: "Dra. Sofía Restrepo",
+  const r = { id: `sim-${nuevoId()}`, paciente_id: "demo-2", paciente_nombre: "Martha Lucía Gómez Varela", medico: "Dra. Sofía Restrepo",
               especialista: "Usted", motivo, estado: "pendiente", created_at: ahora() };
   db.remisiones = [r, ...db.remisiones];
   return r;

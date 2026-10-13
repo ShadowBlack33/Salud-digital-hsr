@@ -65,5 +65,5 @@ jobs:
           $P -f db/02_seed_catalogos.sql
           python scripts/generar_datos.py --meses 1 --pacientes 200 --salida /tmp/03.sql
           $P -f /tmp/03.sql
-          for f in db/04_*.sql db/06_*.sql db/07_*.sql db/08_*.sql db/09_*.sql; do $P -f "$f"; done
+          for f in db/04_*.sql db/06_*.sql db/07_*.sql db/08_*.sql db/09_*.sql db/10_*.sql; do $P -f "$f"; done
       - run: python scripts/test_e2e.py

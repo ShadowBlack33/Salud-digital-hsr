@@ -121,7 +121,17 @@ def descargar_muestra(cantidad: int) -> tuple[Path, Path]:
 # ------------------------------------------------------------------ pacientes
 def candidatos(cur) -> list[dict]:
     cur.execute("""
-        WITH demo AS (
+        WITH portal AS (
+            -- El paciente de la cuenta paciente_demo: así su portal muestra una radiografía.
+            SELECT paciente_id, -2 AS orden FROM usuarios WHERE username = 'paciente_demo' AND paciente_id IS NOT NULL
+        ), criticos AS (
+            -- Pacientes de la demo con valores críticos: los primeros que abre el médico.
+            SELECT DISTINCT o.paciente_id, -1 AS orden
+            FROM observaciones o JOIN encuentros e ON e.id = o.encuentro_id
+            JOIN usuarios u ON u.personal_id = e.medico_responsable_id
+            WHERE o.es_critico AND o.activo AND u.username IN ('medico01', 'especialista01')
+              AND o.fecha_hora > NOW() - INTERVAL '3 days'
+        ), demo AS (
             SELECT DISTINCT e.paciente_id, 0 AS orden
             FROM encuentros e JOIN usuarios u ON u.personal_id IN (e.medico_responsable_id, e.anestesiologo_id)
             WHERE u.username IN ('medico01', 'especialista01') AND e.activo
@@ -130,7 +140,7 @@ def candidatos(cur) -> list[dict]:
             FROM encuentros e WHERE e.activo AND e.tipo IN ('hospitalizacion', 'urgencias')
               AND e.estado = 'in-progress'
         ), todos AS (
-            SELECT paciente_id, MIN(orden) AS orden FROM (SELECT * FROM demo UNION ALL SELECT * FROM hosp) x
+            SELECT paciente_id, MIN(orden) AS orden FROM (SELECT * FROM portal UNION ALL SELECT * FROM criticos UNION ALL SELECT * FROM demo UNION ALL SELECT * FROM hosp) x
             GROUP BY paciente_id
         )
         SELECT p.documento_bidx, p.nombre_cifrado, p.apellido_cifrado, p.fecha_nacimiento, p.sexo, t.orden
@@ -152,9 +162,14 @@ def elegir(pacientes: list[dict], info: dict, usados: set) -> dict | None:
               and (not info["sexo"] or p["sexo"] == info["sexo"])]
     if not libres:
         return None
+    # Los de la demo (portal del paciente y casos críticos) reciben imagen
+    # aunque la edad no se parezca tanto.
+    urgentes = [p for p in libres if p["orden"] < 0]
+    if urgentes:
+        return urgentes[0]
     if info["edad"]:
         cercanos = [p for p in libres if abs(edad(p["fecha_nacimiento"]) - info["edad"]) <= 15]
-        prioritarios = [p for p in cercanos if p["orden"] == 0] or cercanos
+        prioritarios = [p for p in cercanos if p["orden"] <= 0] or cercanos
         if prioritarios:
             return prioritarios[0]
     return libres[0]
@@ -215,7 +230,7 @@ def main() -> None:
         nombre = f"{descifrar(bytes(p['nombre_cifrado']), 'pacientes.nombre')} " \
                  f"{descifrar(bytes(p['apellido_cifrado']), 'pacientes.apellido')}"
         print(f"{codigo} ({info['sexo']}, {info['edad']} a) -> {nombre} "
-              f"({p['sexo']}, {edad(p['fecha_nacimiento'])} a){' · demo' if p['orden'] == 0 else ''}: {hallazgo}")
+              f"({p['sexo']}, {edad(p['fecha_nacimiento'])} a){' · portal del paciente' if p['orden'] == -2 else ' · caso crítico de la demo' if p['orden'] == -1 else ' · demo' if p['orden'] == 0 else ''}: {hallazgo}")
         if a.simular:
             continue
 

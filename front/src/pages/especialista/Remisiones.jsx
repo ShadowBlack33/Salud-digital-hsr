@@ -76,12 +76,15 @@ export default function Remisiones() {
                 </span>
                 <span className="flex items-center gap-1 text-gray-strong"><Clock size={12} aria-hidden="true" />{haceCuanto(r.created_at)}</span>
               </div>
-              <h2 className="text-lg font-semibold leading-snug">
+              <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold leading-snug">
                 <Link to={`/app/pacientes/${r.paciente_id}`} className="hover:underline">{r.paciente_nombre || "Paciente"}</Link>
+                {r.prioridad === "urgente" && <span className="rounded-full bg-coral-deep px-2 py-0.5 text-[11px] font-semibold text-white">Urgente</span>}
               </h2>
+              {!recibe && r.especialidad && <p className="text-xs text-gray-strong">{r.especialidad}</p>}
               <p className="mt-1 flex-1 text-sm text-gray-strong">{r.motivo}</p>
-              <div className="mt-5 flex items-center justify-between">
+              <div className="mt-5 flex items-center justify-between gap-2">
                 <Insignia grupo="proceso" etiqueta="Pendiente" tamano="sm" />
+                {recibe && <Link to={`/app/pacientes/${r.paciente_id}`} className="ml-auto rounded-full px-3 py-2 text-sm font-medium text-metric-blue hover:bg-paper-white">Revisar ficha</Link>}
                 {recibe && (
                   <button onClick={() => aceptar(r)} disabled={aceptando === r.id}
                           className="flex items-center gap-1.5 rounded-full bg-charcoal px-4 py-2 text-sm font-semibold text-white transition hover:bg-ink disabled:opacity-50">
@@ -96,15 +99,15 @@ export default function Remisiones() {
 
       {resueltas.length > 0 && (
         <section aria-label="Atendidas" className="rounded-[28px] bg-paper-white p-6 shadow-lift">
-          <h2 className="mb-2 text-lg font-semibold">Atendidas</h2>
+          <h2 className="mb-2 text-lg font-semibold">Resueltas</h2>
           <ul className="divide-y divide-cloud-card">
             {resueltas.map((r) => (
               <li key={r.id} className="flex items-center justify-between gap-3 py-3 text-sm">
                 <span>
-                  <span className="font-medium">{r.paciente_nombre || "Paciente"}</span>
-                  <span className="block text-xs text-gray-strong">{recibe ? r.medico : r.especialista} · {haceCuanto(r.created_at)}</span>
+                  <Link to={`/app/pacientes/${r.paciente_id}`} className="font-medium hover:underline">{r.paciente_nombre || "Paciente"}</Link>
+                  <span className="block text-xs text-gray-strong">{recibe ? `De ${r.medico}` : `Para ${r.especialista}`} · {r.motivo} · {haceCuanto(r.created_at)}</span>
                 </span>
-                <Insignia grupo="libre" etiqueta="Aceptada" tamano="sm" />
+                <Insignia grupo={r.estado === "rechazada" ? "bloqueado" : "libre"} etiqueta={r.estado === "rechazada" ? "Rechazada" : r.estado === "atendida" ? "Atendida" : "Aceptada"} tamano="sm" />
               </li>
             ))}
           </ul>

@@ -115,3 +115,26 @@ def dicomize(png_bytes: bytes, paciente, descripcion: str, modalidad: str = "OT"
         },
     }
     return orthanc("POST", "/tools/create-dicom", json=body).json()["ID"]
+
+
+_CACHE_CON_IMAGENES: dict = {"t": 0.0, "ids": set()}
+
+
+def pacientes_con_imagenes() -> set[str]:
+    """documento_bidx de los pacientes con algún estudio en el PACS.
+
+    Una sola consulta a Orthanc (no una por paciente), guardada 60 s. Si el
+    PACS no responde devuelve un conjunto vacío: la lista de pacientes no
+    debe caerse por eso.
+    """
+    import time
+    if time.monotonic() - _CACHE_CON_IMAGENES["t"] < 60:
+        return _CACHE_CON_IMAGENES["ids"]
+    try:
+        r = httpx.post(settings.orthanc_url + "/tools/find", auth=_auth(), timeout=4,
+                       json={"Level": "Patient", "Query": {}, "Expand": True})
+        ids = {p.get("MainDicomTags", {}).get("PatientID") for p in r.json()} if r.status_code == 200 else set()
+    except (httpx.HTTPError, ValueError):
+        ids = set()
+    _CACHE_CON_IMAGENES.update(t=time.monotonic(), ids={i for i in ids if i})
+    return _CACHE_CON_IMAGENES["ids"]

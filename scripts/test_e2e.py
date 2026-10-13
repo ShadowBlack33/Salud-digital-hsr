@@ -411,6 +411,31 @@ check("El paciente ve qué se le cobra a él y a su entidad",
 check("Un médico no puede abrir 'mi cuenta' de paciente -> 403",
       client.get("/mi-cuenta", headers=h(tok_m01)).status_code == 403)
 
+# ---------------------------------------------------------- 15. Remisiones (R08)
+print("\n[15] Remisión del médico al especialista")
+tok_e01 = login("especialista01")
+r = client.get("/mis-pacientes", headers=h(tok_m01))
+pac_m = r.json()["pacientes"][0]["paciente_id"] if r.status_code == 200 and r.json()["pacientes"] else None
+esp = client.get("/especialistas", headers=h(tok_m01))
+check("El médico ve la lista de especialistas", esp.status_code == 200 and len(esp.json()) > 0)
+yo_esp = client.get("/auth/yo", headers=h(tok_e01)).json().get("personal_id")
+if pac_m and yo_esp:
+    r = client.post("/remisiones", headers=h(tok_m01), json={"paciente_id": pac_m, "especialista_id": yo_esp,
+                                                             "motivo": "Prueba e2e de remisión", "prioridad": "urgente"})
+    check("El médico remite -> 201 con id", r.status_code == 201 and "id" in r.json(), r.text[:120])
+    rid = r.json().get("id")
+    check("El especialista ya puede abrir la ficha del remitido",
+          client.get(f"/pacientes/{pac_m}", headers=h(tok_e01)).status_code == 200)
+    check("La remisión aparece en la bandeja del especialista",
+          any(x["id"] == rid for x in client.get("/remisiones", headers=h(tok_e01)).json()["remisiones"]))
+    check("El médico remitente no puede aceptarla -> 403",
+          client.post(f"/remisiones/{rid}/aceptar", headers=h(tok_m01)).status_code == 403)
+    r = client.post(f"/remisiones/{rid}/aceptar", headers=h(tok_e01))
+    check("El especialista la acepta", r.status_code == 200 and r.json()["estado"] == "aceptada", r.text[:120])
+for quien, tok in (("paciente", tok_paciente), ("contable", login("contable01"))):
+    check(f"Un {quien} no puede remitir -> 403",
+          client.post("/remisiones", headers=h(tok), json={"paciente_id": "x", "especialista_id": 1, "motivo": "xxxxxx"}).status_code == 403)
+
 # ---------------------------------------------------------- resumen
 print("\n" + "=" * 70)
 print(f"RESULTADO:  {ok} pruebas superadas, {fallos} fallidas")

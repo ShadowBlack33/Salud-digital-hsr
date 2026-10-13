@@ -231,6 +231,45 @@ def main() -> None:
               prioridad_clinica=4, medico_responsable_id=esp["personal_id"],
               hora_programada_inicio=cuando, hora_real_inicio=cuando, hora_real_fin=cuando + timedelta(minutes=30))
 
+    # ---------------------------------------------------------------- portal del paciente
+    # paciente_demo: lo vio medico01 en consulta, tuvo valoración preanestésica
+    # (con signos vitales) y tiene una colecistectomía mañana con especialista01.
+    cur.execute("SELECT paciente_id FROM usuarios WHERE username = 'paciente_demo'")
+    fila = cur.fetchone()
+    if fila and fila["paciente_id"]:
+        pd_ = fila["paciente_id"]
+        cur.execute("SELECT id FROM personal WHERE tipo_personal = 'anestesiologo' AND activo ORDER BY id LIMIT 1")
+        anest = cur.fetchone()["id"]
+        cur.execute("""SELECT cp.id, cp.duracion_estimada_min AS dur FROM catalogo_procedimientos cp
+                       WHERE cp.especialidad_id = %s AND NOT cp.requiere_arco_c ORDER BY (cp.nombre ILIKE 'Colecist%%') DESC, cp.id LIMIT 1""",
+                    (esp["especialidad_id"],))
+        proc = cur.fetchone()
+        cuando = ahora - timedelta(days=12)
+        encuentro(paciente_id=pd_, tipo="consulta_externa", estado="finished", origen="electiva", prioridad_clinica=4,
+                  medico_responsable_id=med["personal_id"], hora_programada_inicio=cuando, hora_real_inicio=cuando,
+                  hora_real_fin=cuando + timedelta(minutes=20), diagnostico_cie10_id=dx.get("K80"))
+        cuando = ahora - timedelta(days=2)
+        pre = encuentro(paciente_id=pd_, tipo="consulta_externa", estado="finished", origen="electiva", prioridad_clinica=3,
+                        medico_responsable_id=anest, hora_programada_inicio=cuando, hora_real_inicio=cuando,
+                        hora_real_fin=cuando + timedelta(minutes=30), diagnostico_cie10_id=dx.get("K80"))
+        for c, v in (("8867-4", 76), ("8480-6", 128), ("8462-4", 79), ("59408-5", 97), ("8310-5", 36.6), ("9279-1", 16)):
+            cur.execute("""INSERT INTO observaciones (encuentro_id, paciente_id, categoria, codigo_loinc, display_loinc,
+                               valor_numerico, valor_texto, unidad_ucum, es_critico, fecha_hora, registrado_por)
+                           VALUES (%s, %s, 'vital-signs', %s, %s, %s, %s, %s, FALSE, %s, %s)""",
+                        (pre, pd_, c, c, v, MARCA, {"8867-4": "/min", "8480-6": "mm[Hg]", "8462-4": "mm[Hg]",
+                                                    "59408-5": "%", "8310-5": "Cel", "9279-1": "/min"}[c], cuando, anest))
+        if proc:
+            local = datetime.now(timezone(timedelta(hours=-5)))   # Colombia, sin horario de verano
+            manana = (local + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+            cur.execute("SELECT id FROM quirofanos WHERE codigo = 'QX-09'")
+            qx = cur.fetchone()
+            encuentro(paciente_id=pd_, tipo="cirugia", estado="planned", origen="electiva", prioridad_clinica=3,
+                      procedimiento_id=proc["id"], quirofano_id=qx["id"] if qx else None,
+                      medico_responsable_id=esp["personal_id"], anestesiologo_id=anest,
+                      hora_programada_inicio=manana, hora_programada_fin=manana + timedelta(minutes=proc["dur"]),
+                      diagnostico_cie10_id=dx.get("K80"))
+        resumen.append("paciente_demo · consulta, valoración preanestésica y cirugía programada para mañana")
+
     conn.commit()
     conn.close()
     print("Casos de demostración creados:")

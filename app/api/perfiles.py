@@ -142,6 +142,19 @@ def mis_pacientes(ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "rea
             "valor": float(o["valor_numerico"]) if o["valor_numerico"] is not None else o["valor_texto"],
             "unidad": o["unidad_ucum"], "fecha": o["fecha_hora"]})
 
+    # Remisiones de estos pacientes que me llegaron (o que yo envié).
+    remisiones: dict[str, dict] = {}
+    if yo is not None and db.execute(text("SELECT to_regclass('public.remisiones') IS NOT NULL")).scalar():
+        for r in db.execute(text("""
+            SELECT DISTINCT ON (paciente_id) paciente_id, id, medico_id, especialista_id, motivo, prioridad, estado, created_at
+            FROM remisiones WHERE paciente_id = ANY(:ids) AND (especialista_id = :yo OR medico_id = :yo)
+            ORDER BY paciente_id, created_at DESC
+        """), {"ids": ids, "yo": yo}).mappings():
+            remisiones[r["paciente_id"]] = dict(r)
+
+    from app.services import pacs
+    con_imagenes = pacs.pacientes_con_imagenes()
+
     resultado = []
     for pid in ids:
         p = pacientes.get(pid)
@@ -149,10 +162,14 @@ def mis_pacientes(ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "rea
             continue
         d, act, cx = por_pac[pid], por_pac[pid]["activo"], por_pac[pid]["cirugia"]
         e_ = eps.get(p.eps_id) or {}
-        vinculo = "registrado" if p.created_by == ctx.usuario.id else "a_cargo"
+        vinculo = "registrado" if p.created_by == ctx.usuario.id else None
         if yo is not None and any(x["paciente_id"] == pid and yo in (x["medico_responsable_id"], x["anestesiologo_id"])
                                   for x in encuentros):
             vinculo = "a_cargo"
+        rem = remisiones.get(pid)
+        if rem and rem["especialista_id"] == yo and vinculo != "a_cargo":
+            vinculo = "remitido"
+        vinculo = vinculo or "a_cargo"
         resultado.append({
             "paciente_id": pid,
             "nombre": descifrar(p.nombre_cifrado, "pacientes.nombre"),
@@ -178,13 +195,19 @@ def mis_pacientes(ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "rea
                 "mi_papel": ("cirujano" if yo is not None and cx["medico_responsable_id"] == yo else
                              "anestesiologo" if yo is not None and cx["anestesiologo_id"] == yo else None)},
             "criticos": crit.get(pid, []),
+            "tiene_imagenes": pid in con_imagenes,
+            "remision": rem and {
+                "id": rem["id"], "estado": rem["estado"], "prioridad": rem["prioridad"], "motivo": rem["motivo"],
+                "fecha": rem["created_at"], "recibida": rem["especialista_id"] == yo,
+                "de": nombres(rem["medico_id"]) if rem["especialista_id"] == yo else None,
+                "para": nombres(rem["especialista_id"]) if rem["especialista_id"] != yo else None},
             "ultima_atencion": d["ultimo"] and (d["ultimo"]["hora_real_fin"] or d["ultimo"]["hora_real_inicio"]
                                                 or d["ultimo"]["created_at"]),
         })
 
     # Primero lo urgente: críticos, en cirugía, hospitalizados; luego el resto.
     def prioridad(x):
-        return (0 if x["criticos"] else 1,
+        return (0 if x["criticos"] or (x["remision"] and x["remision"]["recibida"] and x["remision"]["estado"] == "pendiente") else 1,
                 0 if x["cirugia"] and x["cirugia"]["estado"] == "in-progress" else 1,
                 0 if x["encuentro"] else 1,
                 -(x["ultima_atencion"].timestamp() if x["ultima_atencion"] else 0))
@@ -517,4 +540,117 @@ def mi_cuenta(ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "read"))
                     "a_cargo_paciente": sum(s["a_cargo_paciente"] for s in servicios),
                     "a_cargo_entidad": sum(s["a_cargo_entidad"] for s in servicios)},
         "nota": "Valores de referencia del caso de estudio. El valor oficial es el de la factura emitida.",
+    }
+
+
+# ================================================================ MI RESUMEN (paciente)
+LOINC_PACIENTE = {
+    "8867-4": ("Frecuencia cardiaca", "latidos/min"), "8480-6": ("Presión sistólica", "mmHg"),
+    "8462-4": ("Presión diastólica", "mmHg"), "59408-5": ("Oxígeno en sangre", "%"),
+    "9279-1": ("Respiraciones", "por min"), "8310-5": ("Temperatura", "°C"),
+}
+TIPO_CAMA_SENCILLO = {"UCI": "Cuidados intensivos", "UCIN": "Cuidados intensivos neonatales",
+                      "INTERMEDIA": "Cuidados intermedios", "GENERAL": "Hospitalización",
+                      "OBSERV_URG": "Observación de urgencias"}
+
+
+@router.get("/mi-resumen", summary="Portal del paciente: dónde estoy, qué sigue y quién me atiende")
+def mi_resumen(ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "read")),
+               db: Session = Depends(get_db)):
+    """Solo para la cuenta del propio paciente (alcance 'self'), en lenguaje sencillo."""
+    from fastapi import HTTPException, status
+    if ctx.alcance != "self":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Esta vista es solo para el paciente")
+    pid = ctx.payload.get("paciente_id")
+    p = db.get(Paciente, pid) if pid else None
+    if p is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
+    nombres = Nombres(db)
+    ahora = datetime.now(timezone.utc)
+
+    encuentros = db.execute(text("""
+        SELECT e.id, e.tipo, e.estado, e.origen, e.hora_programada_inicio, e.hora_real_inicio, e.hora_real_fin,
+               e.created_at, e.medico_responsable_id, e.anestesiologo_id,
+               cp.nombre AS procedimiento, cp.duracion_estimada_min, tcr.codigo AS cama_recuperacion,
+               dx.descripcion AS diagnostico, c.codigo AS cama, tc.codigo AS tipo_cama, s.nombre AS servicio,
+               q.codigo AS quirofano
+        FROM encuentros e
+        LEFT JOIN catalogo_procedimientos cp ON cp.id = e.procedimiento_id
+        LEFT JOIN tipos_cama tcr ON tcr.id = cp.tipo_cama_requerida_id
+        LEFT JOIN diagnosticos_cie10 dx ON dx.id = e.diagnostico_cie10_id
+        LEFT JOIN camas c ON c.id = e.cama_id
+        LEFT JOIN tipos_cama tc ON tc.id = c.tipo_cama_id
+        LEFT JOIN servicios s ON s.id = c.servicio_id
+        LEFT JOIN quirofanos q ON q.id = e.quirofano_id
+        WHERE e.activo AND e.paciente_id = :pid AND e.estado <> 'cancelled'
+        ORDER BY COALESCE(e.hora_real_inicio, e.hora_programada_inicio, e.created_at) DESC
+        LIMIT 40
+    """), {"pid": pid}).mappings().all()
+
+    actual = next((e for e in encuentros if e["estado"] in ACTIVOS and e["tipo"] in ("hospitalizacion", "urgencias")
+                   and e["hora_real_inicio"]), None)
+    cirugias = sorted([e for e in encuentros if e["tipo"] == "cirugia" and e["estado"] in ("planned", "in-progress")],
+                      key=lambda e: e["hora_programada_inicio"] or ahora)
+    cx = cirugias[0] if cirugias else None
+
+    equipo: dict[int, dict] = {}
+    recientes = [e for e in encuentros if e["estado"] in ACTIVOS
+                 or (e["hora_real_inicio"] or e["created_at"]) > ahora - timedelta(days=30)]
+    for e in recientes:
+        for campo, funcion in (("medico_responsable_id", "cirujano" if e["tipo"] == "cirugia" else "médico tratante"),
+                               ("anestesiologo_id", "anestesiólogo")):
+            mid = e[campo]
+            if mid and mid not in equipo and len(equipo) < 6:
+                m = db.get(Personal, mid)
+                equipo[mid] = {"nombre": nombres(mid), "funcion": funcion,
+                               "especialidad": m.especialidad.nombre if m and m.especialidad else None}
+
+    signos = {}
+    for o in db.execute(text("""
+        SELECT DISTINCT ON (codigo_loinc) codigo_loinc, valor_numerico, fecha_hora
+        FROM observaciones WHERE activo AND paciente_id = :pid AND categoria = 'vital-signs'
+          AND fecha_hora > NOW() - INTERVAL '7 days'
+        ORDER BY codigo_loinc, fecha_hora DESC
+    """), {"pid": pid}).mappings():
+        if o["codigo_loinc"] in LOINC_PACIENTE and o["valor_numerico"] is not None:
+            n, u = LOINC_PACIENTE[o["codigo_loinc"]]
+            signos[o["codigo_loinc"]] = {"nombre": n, "valor": float(o["valor_numerico"]), "unidad": u, "fecha": o["fecha_hora"]}
+
+    remisiones = []
+    if db.execute(text("SELECT to_regclass('public.remisiones') IS NOT NULL")).scalar():
+        for r in db.execute(text("""
+            SELECT especialista_id, estado, created_at FROM remisiones WHERE paciente_id = :pid
+            ORDER BY created_at DESC LIMIT 5"""), {"pid": pid}).mappings():
+            m = db.get(Personal, r["especialista_id"])
+            remisiones.append({"especialista": nombres(r["especialista_id"]),
+                               "especialidad": m.especialidad.nombre if m and m.especialidad else None,
+                               "estado": r["estado"], "fecha": r["created_at"]})
+
+    e_ = dict(db.execute(text("SELECT codigo, nombre, regimen FROM eps WHERE id = :i"), {"i": p.eps_id}).mappings().first() or {})
+    return {
+        "paciente": {"nombre": descifrar(p.nombre_cifrado, "pacientes.nombre"),
+                     "apellido": descifrar(p.apellido_cifrado, "pacientes.apellido"),
+                     "edad": edad(p.fecha_nacimiento), "sexo": p.sexo,
+                     "cobertura": cobertura(e_.get("codigo"), e_.get("nombre"), e_.get("regimen"))},
+        "ahora": actual and {
+            "tipo": actual["tipo"], "desde": actual["hora_real_inicio"],
+            "lugar": TIPO_CAMA_SENCILLO.get(actual["tipo_cama"], actual["servicio"]),
+            "cama": actual["cama"], "servicio": actual["servicio"], "diagnostico": actual["diagnostico"],
+            "medico": nombres(actual["medico_responsable_id"])},
+        "proxima_cirugia": cx and {
+            "procedimiento": cx["procedimiento"], "estado": cx["estado"],
+            "fecha": cx["hora_real_inicio"] or cx["hora_programada_inicio"], "duracion_min": cx["duracion_estimada_min"],
+            "quirofano": cx["quirofano"], "cirujano": nombres(cx["medico_responsable_id"]),
+            "anestesiologo": nombres(cx["anestesiologo_id"]),
+            "recuperacion": TIPO_CAMA_SENCILLO.get(cx["cama_recuperacion"])},
+        "equipo": list(equipo.values()),
+        "signos": list(signos.values()),
+        "remisiones": remisiones,
+        "historial": [{
+            "tipo": e["tipo"], "estado": e["estado"],
+            "fecha": e["hora_real_inicio"] or e["hora_programada_inicio"] or e["created_at"],
+            "detalle": e["procedimiento"] or e["diagnostico"],
+            "lugar": e["quirofano"] or e["cama"] or e["servicio"],
+            "profesional": nombres(e["medico_responsable_id"]),
+        } for e in encuentros if e["estado"] not in ("planned",)][:15],
     }

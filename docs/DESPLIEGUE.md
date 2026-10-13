@@ -63,7 +63,12 @@ Solo Carlos las aplica, en orden, después de revisarlas:
 ```bash
 python scripts/aplicar_sql.py db/08_roles_corte2.sql
 python scripts/aplicar_sql.py db/09_perfiles.sql
+python scripts/aplicar_sql.py db/10_remisiones.sql
+python scripts/corregir_nombres.py        # nombres que no coincidían con el sexo
 ```
+
+`10` crea la tabla de remisiones (R08) y sus permisos: el médico remite, el
+especialista la ve, puede revisar al paciente y la acepta.
 
 `08` crea los roles `medico`, `especialista` y `contable` y las cuentas
 `medico01`, `especialista01`, `contable01` y `bloqueo_prueba` (misma contraseña

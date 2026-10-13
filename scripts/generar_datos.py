@@ -280,7 +280,10 @@ def gen_pacientes(n: int) -> list[str]:
         documentos_usados.add(doc)
 
         bidx = blind_index(doc, "pacientes.documento")
-        nombre, apellido = fake.first_name(), fake.last_name()
+        # El nombre va de acuerdo con el sexo (antes salían "Juan" de sexo F).
+        sexo = random.choice(["M", "F"])
+        nombre = fake.first_name_male() if sexo == "M" else fake.first_name_female()
+        apellido = fake.last_name()
         edad = int(np.clip(np.random.gamma(7, 7), 0, 98))
 
         # El tipo de documento depende de la edad, no es independiente:
@@ -303,7 +306,7 @@ def gen_pacientes(n: int) -> list[str]:
             cifrar(fake.phone_number()[:20], "pacientes.telefono"),
             cifrar(fake.address().replace("\n", ", ")[:120], "pacientes.direccion"),
             (datetime.now() - timedelta(days=edad * 365 + random.randint(0, 364))).date(),
-            random.choice(["M", "F"]),
+            sexo,
             random.randint(1, 7),
             edad > 55 and random.random() < .55,
             min(5, max(1, int(np.random.normal(2 + edad / 40, 0.9)))),

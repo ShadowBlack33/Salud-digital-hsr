@@ -133,8 +133,8 @@ class ContextoAcceso:
     # Un médico o especialista solo trabaja con SUS pacientes (alcance
     # 'assigned' en paciente:read). Son suyos los que él registró y los que
     # tienen un encuentro a su cargo (médico responsable o anestesiólogo).
-    # Las remisiones aceptadas se suman en `pacientes_asignados_subq` cuando
-    # exista la tabla del módulo de remisiones.
+    # También los que le remitieron (desde que llega la remisión, para que el
+    # especialista pueda revisar al paciente antes de aceptarla).
     def alcance_paciente(self) -> str | None:
         return tiene_permiso(self.payload.get("permisos", []), "paciente", "read")
 
@@ -150,9 +150,11 @@ class ContextoAcceso:
                 or_(Encuentro.medico_responsable_id == personal_id,
                     Encuentro.anestesiologo_id == personal_id)))
             if _hay_tabla_remisiones(self.db):
-                partes.append(select(text("paciente_id")).select_from(text("remisiones")).where(
-                    text("especialista_id = :pid AND estado IN ('aceptada','atendida')")
-                    .bindparams(pid=personal_id)))
+                from sqlalchemy import String, column, table
+                rem = table("remisiones", column("paciente_id", String), column("especialista_id"), column("estado"))
+                partes.append(select(rem.c.paciente_id).where(
+                    rem.c.especialista_id == personal_id,
+                    rem.c.estado.in_(["pendiente", "aceptada", "atendida"])))
         return union(*partes).subquery()
 
     def es_paciente_asignado(self, paciente_id: str) -> bool:

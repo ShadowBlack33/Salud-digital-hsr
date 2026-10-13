@@ -8,7 +8,7 @@ import * as S from "../../lib/servicios";
 export default function PestanaRemitir({ pacienteId }) {
   const { avisar } = useAvisos();
   const [especialistas, setEspecialistas] = useState({ lista: [], demo: false });
-  const [datos, setDatos] = useState({ especialista_id: "", motivo: "" });
+  const [datos, setDatos] = useState({ especialista_id: "", motivo: "", prioridad: "prioritaria" });
   const [enviando, setEnviando] = useState(false);
   const [hecha, setHecha] = useState(null);
   const [error, setError] = useState(null);
@@ -21,9 +21,9 @@ export default function PestanaRemitir({ pacienteId }) {
     e.preventDefault();
     setEnviando(true); setError(null);
     try {
-      const { datos: r } = await S.remitir({ paciente_id: pacienteId, especialista_id: Number(datos.especialista_id), motivo: datos.motivo.trim() });
+      const { datos: r } = await S.remitir({ paciente_id: pacienteId, especialista_id: Number(datos.especialista_id), motivo: datos.motivo.trim(), prioridad: datos.prioridad });
       setHecha(r.id);
-      setDatos({ especialista_id: "", motivo: "" });
+      setDatos({ especialista_id: "", motivo: "", prioridad: "prioritaria" });
       avisar("Remisión enviada. El especialista ya recibió el aviso.");
     } catch (err) { setError(err.message); }
     finally { setEnviando(false); }
@@ -45,11 +45,21 @@ export default function PestanaRemitir({ pacienteId }) {
       <label className="block text-sm font-medium">Especialista
         <select required value={datos.especialista_id} onChange={(e) => setDatos((d) => ({ ...d, especialista_id: e.target.value }))} className={entrada}>
           <option value="" disabled>Elige un especialista</option>
-          {especialistas.lista.map((e) => <option key={e.id} value={e.id}>{e.nombre}{e.especialidad ? ` · ${e.especialidad}` : ""}</option>)}
+          {especialistas.lista.map((e) => <option key={e.id} value={e.id}>{e.especialidad ? `${e.especialidad} · ` : ""}{e.nombre}{e.activo_reciente ? " (en línea)" : ""}</option>)}
         </select>
       </label>
+      <fieldset className="text-sm font-medium">
+        <legend>Prioridad</legend>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {[["rutinaria", "Rutinaria"], ["prioritaria", "Prioritaria"], ["urgente", "Urgente"]].map(([v, t]) => (
+            <label key={v} className={`cursor-pointer rounded-full px-4 py-2 ${datos.prioridad === v ? (v === "urgente" ? "bg-coral-deep text-white" : "bg-charcoal text-white") : "bg-cloud-card"}`}>
+              <input type="radio" name="prioridad" value={v} checked={datos.prioridad === v} onChange={() => setDatos((d) => ({ ...d, prioridad: v }))} className="sr-only" />{t}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <label className="block text-sm font-medium">Motivo
-        <textarea required minLength={10} rows={3} value={datos.motivo} onChange={(e) => setDatos((d) => ({ ...d, motivo: e.target.value }))}
+        <textarea required minLength={5} rows={3} value={datos.motivo} onChange={(e) => setDatos((d) => ({ ...d, motivo: e.target.value }))}
                   placeholder="Ej.: valoración por cirugía cardiovascular antes del reemplazo valvular." className={`${entrada} resize-y`} />
       </label>
       {error && <p role="alert" className="text-sm text-coral-ink">{error}</p>}

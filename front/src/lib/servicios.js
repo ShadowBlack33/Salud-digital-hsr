@@ -77,12 +77,14 @@ export const decidirReporte = (id, decision, observaciones) =>
 export const especialistas = () => leer("/especialistas", M.especialistas);
 export const remisiones = async () => {
   const r = await leer("/remisiones", M.remisiones);
-  return { ...r, datos: lista(r.datos, "remisiones") };
+  const datos = lista(r.datos, "remisiones");
+  return { ...r, datos: r.demo ? datos : [...M.remisionesSimuladas(), ...datos] };
 };
 export const remitir = (datos) =>
   escribir("/remisiones", { method: "POST", json: datos }, () => M.remitir(datos));
-export const aceptarRemision = (id) =>
-  escribir(`/remisiones/${id}/aceptar`, { method: "POST" }, () => M.aceptar(id));
+export const aceptarRemision = (id) => (String(id).startsWith("sim-")
+  ? Promise.resolve({ datos: M.aceptar(id), demo: true })
+  : escribir(`/remisiones/${id}/aceptar`, { method: "POST" }, () => M.aceptar(id)));
 
 // ------------------------------------------------------------------ contabilidad (R09)
 // La lista puede venir completa (y se filtra aquí) o ya filtrada y paginada
@@ -141,3 +143,4 @@ export const cirugiasCatalogos = () => api("/cirugias/catalogos");
 export const programarCirugia = (datos) => api("/cirugias", { method: "POST", json: datos });
 export const reprogramarCirugia = (id, datos) => api(`/cirugias/${id}/reprogramar`, { method: "PATCH", json: datos });
 export const cancelarCirugia = (id, datos) => api(`/cirugias/${id}/cancelar`, { method: "POST", json: datos });
+export const miResumen = () => api("/mi-resumen");

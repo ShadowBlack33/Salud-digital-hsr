@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, BedDouble, ChevronRight, HeartPulse, Scissors, SearchX, ShieldCheck, Siren, Stethoscope } from "lucide-react";
+import { AlertTriangle, BedDouble, ChevronRight, HeartPulse, ScanLine, Scissors, SearchX, Send, ShieldCheck, Siren, Stethoscope } from "lucide-react";
 import Encabezado from "../../components/Encabezado";
 import Esqueleto from "../../components/Esqueleto";
 import ErrorEstado from "../../components/ErrorEstado";
@@ -16,6 +16,8 @@ const FILTROS = [
   ["urgencias", "Urgencias"],
   ["hospitalizados", "Hospitalizados"],
   ["cirugia", "En cirugía o programados"],
+  ["remitidos", "Remitidos"],
+  ["imagenes", "Con radiografías"],
   ["estables", "Sin atención activa"],
 ];
 
@@ -25,6 +27,8 @@ const cumple = (p, f) => ({
   urgencias: p.encuentro?.tipo === "urgencias",
   hospitalizados: p.encuentro?.tipo === "hospitalizacion",
   cirugia: !!p.cirugia,
+  remitidos: !!p.remision,
+  imagenes: !!p.tiene_imagenes,
   estables: !p.encuentro && !p.cirugia,
 }[f]);
 
@@ -103,6 +107,14 @@ function TarjetaPaciente({ p }) {
           </span>
         </div>
 
+        {p.remision && (
+          <p className={`flex flex-wrap items-center gap-1.5 rounded-2xl px-3 py-2 text-xs ${p.remision.recibida && p.remision.estado === "pendiente" ? "bg-hero-sky" : "bg-paper-white/80"}`}>
+            <Send size={13} className="text-metric-blue" aria-hidden="true" />
+            <b className="font-semibold">{p.remision.recibida ? `Remitido por ${p.remision.de}` : `Remitido a ${p.remision.para}`}</b>
+            · {p.remision.estado}{p.remision.prioridad === "urgente" ? " · urgente" : ""} · {haceCuanto(p.remision.fecha)}
+            <span className="w-full text-gray-strong">{p.remision.motivo}</span>
+          </p>
+        )}
         {critico && (
           <div className="rounded-2xl bg-paper-white/80 px-3 py-2">
             <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-coral-ink"><AlertTriangle size={13} aria-hidden="true" />Valores críticos</p>
@@ -135,6 +147,9 @@ function TarjetaPaciente({ p }) {
             </span>
           )}
         </div>
+        {p.tiene_imagenes && (
+          <span className="flex w-fit items-center gap-1.5 rounded-full bg-paper-white px-3 py-1 text-xs font-semibold text-metric-blue"><ScanLine size={13} aria-hidden="true" />Tiene radiografías en el PACS</span>
+        )}
         {e?.diagnostico && <p className="flex items-center gap-1.5 text-xs text-gray-strong"><HeartPulse size={13} aria-hidden="true" />{e.dx_codigo} · {e.diagnostico}</p>}
         <span className="mt-auto flex items-center justify-end text-xs font-medium text-metric-blue">Abrir ficha<ChevronRight size={14} className="transition group-hover:translate-x-0.5" aria-hidden="true" /></span>
       </Link>
