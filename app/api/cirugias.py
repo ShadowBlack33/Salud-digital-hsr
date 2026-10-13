@@ -10,6 +10,11 @@ quirófano que ya tiene cirugías programadas. Las opciones son
     (POST /cirugias con desplazar=true);
   · cancelar con su causa (Res. 256/2016 exige medir las cancelaciones).
 
+Concurrencia: varios coordinadores pueden trabajar a la vez (cada uno desde su
+celular). Cada escritura toma un cerrojo de transacción por quirófano y por
+profesional, y bloquea la fila de la cirugía que modifica; así dos reservas
+simultáneas nunca quedan las dos confirmadas: la segunda recibe 409.
+
 Cada cambio queda en la auditoría con el antes y el después, y en
 eventos_estado con el motivo, igual que los cambios de camas y quirófanos.
 """
@@ -144,6 +149,42 @@ def _validar_sala(qx: Quirofano | None, proc: CatalogoProcedimiento | None) -> N
                             f"'{proc.nombre}' necesita arco en C y {qx.codigo} no lo tiene")
 
 
+def _bloquear(db: Session, salas=(), personas=()) -> None:
+    """
+    Cerrojo de la transacción (pg_advisory_xact_lock) por quirófano y por
+    profesional. Si dos coordinadores agendan al tiempo en la misma sala, o
+    con el mismo cirujano, el segundo espera a que el primero confirme y
+    luego ve su cirugía como choque (409). Se suelta solo en commit/rollback.
+    Orden fijo (salas, luego personas, ascendente) para no crear interbloqueos.
+    """
+    for clase, ids in ((7701, salas), (7702, personas)):
+        for i in sorted({i for i in ids if i}):
+            db.execute(text("SELECT pg_advisory_xact_lock(:c, :i)"), {"c": clase, "i": i})
+
+
+def _choques_personal(db: Session, personas: dict, ini: datetime, fin: datetime,
+                      excluir: int | None = None) -> None:
+    """El cirujano o el anestesiólogo no pueden estar en dos salas a la vez."""
+    rot = timedelta(minutes=ROTACION_MIN)
+    for rol, pid in personas.items():
+        if not pid:
+            continue
+        q = db.query(Encuentro).filter(
+            Encuentro.activo.is_(True), Encuentro.tipo == "cirugia", Encuentro.estado.in_(ACTIVAS),
+            (Encuentro.medico_responsable_id == pid) | (Encuentro.anestesiologo_id == pid),
+            Encuentro.hora_programada_inicio >= ini - timedelta(hours=24),
+            Encuentro.hora_programada_inicio < fin + rot)
+        if excluir:
+            q = q.filter(Encuentro.id != excluir)
+        otra = next((e for e in q.all() if _fin(e) + rot > ini), None)
+        if otra:
+            nombre = _nombres_personal(db, [pid]).get(pid, "")
+            raise HTTPException(status.HTTP_409_CONFLICT, detail=jsonable_encoder({
+                "mensaje": f"El {rol} {nombre} ya tiene otra cirugía en ese horario "
+                           f"(cirugía {otra.id}, quirófano {otra.quirofano_id}). Elige otra hora u otro {rol}.",
+                "choques": [], "personal_id": pid, "cirugia_id": otra.id}))
+
+
 def _error_choque(choques: list[Encuentro], db: Session) -> HTTPException:
     pacientes = {p.documento_bidx: p for p in db.query(Paciente).filter(
         Paciente.documento_bidx.in_([c.paciente_id for c in choques])).all()}
@@ -252,6 +293,8 @@ def programar(datos: CirugiaCrear, request: Request,
 
     ini = _validar_hora(datos.hora_inicio)
     fin = ini + timedelta(minutes=proc.duracion_estimada_min)
+    _bloquear(db, [qx.id], [datos.cirujano_id, datos.anestesiologo_id])
+    _choques_personal(db, {"cirujano": datos.cirujano_id, "anestesiólogo": datos.anestesiologo_id}, ini, fin)
     sala = _de_la_sala(db, qx.id, ini)
     choques = _choques(sala, ini, fin)
     if choques and not datos.desplazar:
@@ -290,7 +333,7 @@ class Reprogramar(BaseModel):
 def reprogramar(cirugia_id: int, datos: Reprogramar, request: Request,
                 ctx: ContextoAcceso = Depends(RequierePermiso("agenda", "update")),
                 db: Session = Depends(get_db)):
-    e = db.get(Encuentro, cirugia_id)
+    e = db.query(Encuentro).filter(Encuentro.id == cirugia_id).with_for_update(of=Encuentro).first()   # nadie más la mueve mientras tanto
     if e is None or not e.activo or e.tipo != "cirugia":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cirugía no encontrada")
     if e.estado != "planned":
@@ -303,6 +346,9 @@ def reprogramar(cirugia_id: int, datos: Reprogramar, request: Request,
     ini = _validar_hora(datos.hora_inicio) if datos.hora_inicio else e.hora_programada_inicio
     dur = _fin(e) - e.hora_programada_inicio
     fin = ini + dur
+    _bloquear(db, [qx.id, e.quirofano_id], [e.medico_responsable_id, e.anestesiologo_id])
+    _choques_personal(db, {"cirujano": e.medico_responsable_id, "anestesiólogo": e.anestesiologo_id},
+                      ini, fin, excluir=e.id)
     sala = _de_la_sala(db, qx.id, ini, excluir=e.id)
     choques = _choques(sala, ini, fin)
     if choques and not datos.desplazar:
@@ -333,7 +379,7 @@ class Cancelar(BaseModel):
 def cancelar(cirugia_id: int, datos: Cancelar, request: Request,
              ctx: ContextoAcceso = Depends(RequierePermiso("agenda", "update")),
              db: Session = Depends(get_db)):
-    e = db.get(Encuentro, cirugia_id)
+    e = db.query(Encuentro).filter(Encuentro.id == cirugia_id).with_for_update(of=Encuentro).first()   # dos cancelaciones simultáneas → la 2.ª ve 409
     if e is None or not e.activo or e.tipo != "cirugia":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cirugía no encontrada")
     if e.estado != "planned":

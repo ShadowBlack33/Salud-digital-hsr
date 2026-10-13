@@ -187,8 +187,8 @@ function useEnvio(onListo) {
       avisar(corridas ? `${mensaje}. Se corrieron ${corridas} cirugía(s) de la sala.` : mensaje);
       onListo();
     } catch (e) {
-      if (e.status === 409 && e.data?.detail?.choques) setChoques(e.data.detail.choques);
-      else setError(e.message);
+      if (e.status === 409 && e.data?.detail?.choques?.length) setChoques(e.data.detail.choques);
+      else setError(e.data?.detail?.mensaje || e.message);   // p. ej. cirujano ocupado en otra sala
     } finally { setEnviando(false); }
   };
   return { enviando, error, choques, setChoques, enviar };

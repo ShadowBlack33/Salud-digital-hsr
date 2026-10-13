@@ -38,10 +38,11 @@ export default function DrawerCama({ cama, ahora, usuario, onCerrar, onCambio })
 
   async function cambiar(estado, motivo) {
     try {
-      await api(`/camas/${cama.cama_id}/estado`, { method: "PATCH", json: { estado, motivo } });
+      await api(`/camas/${cama.cama_id}/estado`, { method: "PATCH", json: { estado, motivo, estado_esperado: cama.estado_cama } });
       avisar(`Cama ${cama.cama_codigo}: ${CAMA[estado].etiqueta.toLowerCase()}`);
       await onCambio();
     } catch (e) {
+      if (e.status === 409) { avisar(e.message, "error"); await onCambio(); return; }   // otra persona la cambió primero
       avisar(e.status === 403 ? "Tu rol no puede cambiar el estado de las camas" : e.message, "error");
     }
   }

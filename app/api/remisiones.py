@@ -148,8 +148,10 @@ def aceptar(remision_id: int, request: Request,
         raise HTTPException(status.HTTP_409_CONFLICT, f"La remisión ya está {r['estado']}")
     fila = db.execute(text("""
         UPDATE remisiones SET estado = 'aceptada', aceptada_at = :t, aceptada_por = :u
-        WHERE id = :i RETURNING *
+        WHERE id = :i AND estado = 'pendiente' RETURNING *
     """), {"t": datetime.now(timezone.utc), "u": ctx.usuario.id, "i": remision_id}).mappings().first()
+    if fila is None:   # alguien la aceptó o rechazó entre la lectura y el UPDATE
+        raise HTTPException(status.HTTP_409_CONFLICT, "La remisión ya no está pendiente")
     registrar(db, ctx.usuario, "remision", remision_id, "update",
               valor_anterior={"estado": "pendiente"}, valor_nuevo={"estado": "aceptada"}, request=request)
     try:

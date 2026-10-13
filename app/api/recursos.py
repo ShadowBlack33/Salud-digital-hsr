@@ -26,6 +26,18 @@ ESTADOS_QX = ["disponible", "en_preparacion", "en_cirugia", "en_limpieza", "bloq
 class CambioEstado(BaseModel):
     estado: str
     motivo: str | None = None
+    estado_esperado: str | None = None   # el que el usuario veía en pantalla
+
+
+def _verificar_concurrencia(obj, datos: CambioEstado, que: str) -> None:
+    """
+    La fila ya está bloqueada (FOR UPDATE). Si otra persona la cambió entre
+    que este usuario abrió el panel y confirmó, se rechaza con 409 en vez de
+    pisar su cambio (p. ej. dos personas asignando la misma cama libre).
+    """
+    if datos.estado_esperado and datos.estado_esperado != obj.estado:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"Otra persona acaba de cambiar {que} a '{obj.estado}'. Actualiza y vuelve a intentar.")
 
 
 def _subtipo_de(entidad_tipo: str, obj) -> str | None:
@@ -180,9 +192,10 @@ def cambiar_estado_cama(cama_id: int, datos: CambioEstado, request: Request,
     if datos.estado not in ESTADOS_CAMA:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             f"Estado inválido. Válidos: {ESTADOS_CAMA}")
-    c = db.query(Cama).filter(Cama.id == cama_id, Cama.activo.is_(True)).first()
+    c = db.query(Cama).filter(Cama.id == cama_id, Cama.activo.is_(True)).with_for_update(of=Cama).first()
     if c is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cama no encontrada")
+    _verificar_concurrencia(c, datos, f"la cama {c.codigo}")
 
     anterior = c.estado
     _registrar_evento(db, "cama", c, datos.estado, ctx.usuario, datos.motivo)
@@ -306,9 +319,10 @@ def cambiar_estado_quirofano(quirofano_id: int, datos: CambioEstado, request: Re
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             f"Estado inválido. Válidos: {ESTADOS_QX}")
     q = db.query(Quirofano).filter(Quirofano.id == quirofano_id,
-                                   Quirofano.activo.is_(True)).first()
+                                   Quirofano.activo.is_(True)).with_for_update(of=Quirofano).first()
     if q is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Quirófano no encontrado")
+    _verificar_concurrencia(q, datos, f"el quirófano {q.codigo}")
 
     anterior = q.estado
     _registrar_evento(db, "quirofano", q, datos.estado, ctx.usuario, datos.motivo)

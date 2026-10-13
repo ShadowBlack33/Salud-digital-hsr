@@ -436,6 +436,64 @@ for quien, tok in (("paciente", tok_paciente), ("contable", login("contable01"))
     check(f"Un {quien} no puede remitir -> 403",
           client.post("/remisiones", headers=h(tok), json={"paciente_id": "x", "especialista_id": 1, "motivo": "xxxxxx"}).status_code == 403)
 
+# ---------------------------------------------------------- 16. Concurrencia
+# Los jurados entran a la vez desde sus celulares: dos personas que reservan lo
+# mismo al mismo tiempo nunca deben quedar las dos confirmadas.
+print("\n[16] Concurrencia: reservas simultáneas")
+from concurrent.futures import ThreadPoolExecutor  # noqa: E402
+
+
+def a_la_vez(n, fn):
+    with ThreadPoolExecutor(max_workers=n) as ex:
+        rs = list(ex.map(lambda _: fn(), range(n)))
+    creadas.extend(r.json()["id"] for r in rs if r.status_code == 201)
+    return [r.status_code for r in rs]
+
+
+creadas: list[int] = []   # cirugías de prueba: se desactivan al final para no ensuciar los indicadores
+
+
+cat = client.get("/cirugias/catalogos", headers=h(tok_jefe)).json()
+proc = next(p for p in cat["procedimientos"] if not p["requiere_arco_c"])
+salas = [q for q in cat["quirofanos"] if q["estado"] != "bloqueado"]
+cir, anest = cat["cirujanos"][0]["id"], cat["anestesiologos"][0]["id"]
+hora = f"2031-{_random.randint(1, 12):02d}-{_random.randint(1, 28):02d}T{_random.randint(7, 15):02d}:00:00Z"
+cuerpo = {"documento": DOC_PRUEBA, "procedimiento_id": proc["id"], "quirofano_id": salas[0]["id"],
+          "hora_inicio": hora, "cirujano_id": cir, "anestesiologo_id": anest}
+codigos = a_la_vez(5, lambda: client.post("/cirugias", json=cuerpo, headers=h(tok_jefe)))
+check("5 reservas simultáneas del mismo quirófano y hora -> 1 confirmada, 4 con 409",
+      sorted(codigos) == [201, 409, 409, 409, 409], str(codigos))
+r = client.post("/cirugias", headers=h(tok_jefe), json={**cuerpo, "quirofano_id": salas[1]["id"]})
+check("Mismo cirujano en otra sala a la misma hora -> 409", r.status_code == 409, r.text[:150])
+r = client.post("/cirugias", headers=h(tok_jefe), json={**cuerpo, "quirofano_id": salas[1]["id"],
+                                                         "cirujano_id": cat["cirujanos"][1]["id"],
+                                                         "anestesiologo_id": cat["anestesiologos"][1]["id"]})
+check("Otra sala con otro equipo a la misma hora -> 201", r.status_code == 201, r.text[:150])
+if r.status_code == 201:
+    creadas.append(r.json()["id"])
+if creadas:
+    with SessionLocal() as s_:
+        s_.execute(text("UPDATE encuentros SET activo = false WHERE id = ANY(:ids)"), {"ids": creadas})
+        s_.commit()
+
+libres = client.get("/camas", params={"estado": "disponible", "limite": 1}, headers=h(tok_jefe)).json()
+cid = libres[0]["id"] if libres else 1
+if not libres:
+    client.patch(f"/camas/{cid}/estado", headers=h(tok_jefe), json={"estado": "disponible", "motivo": "preparar prueba"})
+codigos = a_la_vez(4, lambda: client.patch(f"/camas/{cid}/estado", headers=h(tok_jefe), json={
+    "estado": "reservada", "motivo": "Prueba concurrencia", "estado_esperado": "disponible"}))
+check("4 personas reservan la misma cama libre a la vez -> 1 lo logra, 3 con 409",
+      sorted(codigos) == [200, 409, 409, 409], str(codigos))
+client.patch(f"/camas/{cid}/estado", headers=h(tok_jefe), json={"estado": "disponible", "motivo": "fin prueba"})
+
+if pac_m and yo_esp:
+    r = client.post("/remisiones", headers=h(tok_m01), json={"paciente_id": pac_m, "especialista_id": yo_esp,
+                                                             "motivo": "Prueba de concurrencia", "prioridad": "rutinaria"})
+    rid2 = r.json().get("id")
+    codigos = a_la_vez(3, lambda: client.post(f"/remisiones/{rid2}/aceptar", headers=h(tok_e01)))
+    check("Aceptar la misma remisión 3 veces a la vez -> 1 aceptada, 2 con 409",
+          sorted(codigos) == [200, 409, 409], str(codigos))
+
 # ---------------------------------------------------------- resumen
 print("\n" + "=" * 70)
 print(f"RESULTADO:  {ok} pruebas superadas, {fallos} fallidas")
