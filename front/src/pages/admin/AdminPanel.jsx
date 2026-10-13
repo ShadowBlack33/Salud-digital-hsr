@@ -292,7 +292,7 @@ function Servicios() {
         {SERVICIOS.map(([clave, nombre]) => {
           const valor = error && !datos ? "error" : datos?.[clave];
           // servidor_fhir llega como URL: si está, la API lo tiene configurado.
-          const ok = valor === "ok" || (clave === "servidor_fhir" && typeof valor === "string" && valor.startsWith("http"));
+          const ok = (typeof valor === "string" && valor.startsWith("ok")) || (clave === "servidor_fhir" && typeof valor === "string" && valor.startsWith("http"));
           const sinDato = valor === undefined;
           return (
             <div key={clave} className="flex items-center justify-between gap-3 rounded-3xl bg-cloud-card p-4">

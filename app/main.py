@@ -161,4 +161,28 @@ def salud():
 
     return {"api": "ok", "base_datos": estado_bd,
             "servidor_fhir": settings.fhir_base_url,
-            "pacs": estado_pacs, "ml": estado_ml}
+            "pacs": estado_pacs, "ml": estado_ml, "mongo": _estado_mongo()}
+
+
+def _estado_mongo() -> str:
+    """MongoDB (contabilidad, R09). Con pymongo hace ping; sin él, revisa que el puerto responda."""
+    import os
+    from urllib.parse import urlparse
+    url = os.getenv("MONGO_URL")
+    if not url:
+        return "sin configurar"
+    try:
+        import pymongo  # noqa: PLC0415 -- lo agrega el módulo de contabilidad
+        with pymongo.MongoClient(url, serverSelectionTimeoutMS=1500) as c:
+            c.admin.command("ping")
+        return "ok"
+    except ImportError:
+        import socket
+        u = urlparse(url)
+        try:
+            with socket.create_connection((u.hostname, u.port or 27017), timeout=1.5):
+                return "ok (contenedor arriba; módulo de contabilidad pendiente)"
+        except OSError:
+            return "no disponible"
+    except Exception:  # noqa: BLE001
+        return "no disponible"
