@@ -59,6 +59,19 @@ class Settings(BaseSettings):
     ml_url: str = "http://localhost:8001"
     # Secreto compartido con el rest-hook de la Subscription FHIR (R21).
     hook_secret: str = ""
+    # Dirección con la que HAPI alcanza a la API (red interna de Docker). Si la
+    # API corre fuera de Docker, apuntar a host.docker.internal:8000.
+    hook_url_base: str = "http://api:8000"
+
+    # Sistema reactivo (R17-R21)
+    # Minutos sin reconocer antes de escalar una alerta crítica al admin.
+    # Debe coincidir con VITE_MINUTOS_ESCALAMIENTO (la cuenta regresiva del front).
+    escalamiento_minutos: int = 5
+    # Tarifa de referencia de la factura automática del análisis de IA (COP).
+    tarifa_analisis_ia: int = 45000
+    # false = no arrancar las tareas de fondo (escalamiento, registro de la
+    # Subscription). Las pruebas automáticas lo apagan.
+    tareas_fondo: bool = True
 
     @property
     def cors_origenes(self) -> list[str]:

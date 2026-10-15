@@ -66,8 +66,15 @@ python scripts/aplicar_sql.py db/09_perfiles.sql
 python scripts/aplicar_sql.py db/10_remisiones.sql
 python scripts/aplicar_sql.py db/11_areas_traslados.sql
 python scripts/aplicar_sql.py db/12_turnos.sql
+python scripts/aplicar_sql.py db/13_notificaciones.sql
 python scripts/corregir_nombres.py        # nombres que no coincidían con el sexo
 ```
+
+`13` crea la bandeja de notificaciones, las alertas críticas (`alertas_criticas`,
+distinta de la tabla `alertas` del Corte 1) y el registro de eventos FHIR del
+sistema reactivo (R17 a R21; ver `docs/EVENTOS.md`). Para R21 el `.env` debe
+tener `HOOK_SECRET` (el secreto que HAPI manda en la cabecera del rest-hook);
+sin él la Subscription no se registra y el receptor rechaza todo.
 
 `10` crea la tabla de remisiones (R08) y sus permisos: el médico remite, el
 especialista la ve, puede revisar al paciente y la acepta o la rechaza con un
@@ -138,6 +145,7 @@ python scripts/aplicar_sql.py db/07_tipo_documento_por_edad.sql
 python scripts/aplicar_sql.py db/08_roles_corte2.sql
 python scripts/aplicar_sql.py db/09_perfiles.sql
 python scripts/aplicar_sql.py db/10_remisiones.sql
+python scripts/aplicar_sql.py db/13_notificaciones.sql
 ```
 
 `05_cedula_como_llave.sql` **no** se aplica: era la migración de una base
