@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 
 from app.api import admin, asignacion, auth, cirugias, clinico, eventos, fhir_hook, imaging, pacientes, perfiles, puerta_fhir, recursos, remisiones, usuarios
 from app.core.config import get_settings
-from app.services import bandeja, escalamiento, fhir_reactivo, metricas  # noqa: F401 -- bandeja registra los hooks de commit
+from app.services import bandeja, fhir_reactivo, metricas  # noqa: F401 -- bandeja registra los hooks de commit
 from app.services import eventos as eventos_vivo
 
 settings = get_settings()
@@ -68,15 +68,14 @@ El estado de camas y quirófanos usa `Location.operationalStatus`
 @asynccontextmanager
 async def ciclo_de_vida(app: FastAPI):
     """
-    Tareas de fondo del sistema activo (con una sola réplica de la API):
-      · escalamiento de alertas críticas no reconocidas (R20)
+    Tarea de fondo del sistema activo (con una sola réplica de la API):
       · registro y vigilancia de la Subscription FHIR en HAPI (R21)
+    (El escalamiento de alertas lo arranca app/api/alertas.py, del módulo de IA.)
     TAREAS_FONDO=false las apaga (pruebas automáticas).
     """
     tareas: list[asyncio.Task] = []
     if settings.tareas_fondo:
-        tareas = [asyncio.create_task(escalamiento.vigilar(), name="escalamiento"),
-                  asyncio.create_task(fhir_reactivo.mantener_suscripcion(), name="suscripcion_fhir")]
+        tareas = [asyncio.create_task(fhir_reactivo.mantener_suscripcion(), name="suscripcion_fhir")]
     yield
     for t in tareas:
         t.cancel()

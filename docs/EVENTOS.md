@@ -54,7 +54,7 @@ paciente o un contable **nunca** recibe un evento clínico.
 | `factura_creada` | Se **aprueba** un reporte de IA → `al_aprobar_reporte` | Los contables | Médicos, paciente | Crea sola la factura en MongoDB con `reporte_id` (una por reporte) |
 | `factura_fallida` | Mongo no respondió al facturar | Contables y admin | Clínicos, paciente | Auditoría con `resultado=error`; no se pierde en silencio |
 | `cuenta_bloqueada` | 3 intentos fallidos de contraseña → `al_bloquear` | Los admin (con el usuario afectado) | Todos los demás roles | El admin la desbloquea en Administración |
-| `alerta_critica` | El modelo clasifica un caso como crítico → `al_alerta_critica` | El clínico responsable (`usuario_id` de la alerta) | Paciente, contable, otros clínicos | Alerta `activa`: aviso persistente hasta que se reconozca con nota |
+| `alerta_critica` | El modelo clasifica un caso como crítico → `al_alerta_critica` | El clínico responsable (`dirigida_a_usuario` de la alerta) | Paciente, contable, otros clínicos | Alerta `activa`: aviso persistente hasta que se reconozca con nota |
 | `alerta_escalada` | La alerta lleva N min sin reconocer (servidor) | Los admin | Paciente, contable | Auditoría `escalar`; el clínico sigue viéndola activa |
 | `fhir_observation` | Llega una Observation a HAPI (Subscription) | Los clínicos responsables del paciente | Paciente, contable | Auditoría con origen FHIR; el aviso dice qué llegó (p. ej. glucosa, LOINC 2339-0) |
 
@@ -102,19 +102,20 @@ no se acumulan aparte, así que suben al nacer el trabajo y bajan al resolverse:
 
 ## 5. Alertas críticas y escalamiento (R20)
 
-1. El módulo de IA inserta una fila en `alertas_criticas` (estado `activa`, con
-   el `usuario_id` del clínico responsable) y llama a `reactores.al_alerta_critica`.
+1. El módulo de IA (`app/api/ia.py`) inserta una fila en `alertas` (estado
+   `activa`, con `dirigida_a_usuario` = el clínico responsable) y llama a
+   `reactores.al_alerta_critica`.
    El evento tiene `tipo = alerta_critica` y llega por el canal.
 2. La alerta sigue `activa` (y el front la muestra como aviso persistente con
    cuenta regresiva) hasta que un `medico` o `especialista` la reconoce con una
    nota (`POST /alertas/{id}/reconocer`, que pasa `estado` a `reconocida`).
-3. **Escalamiento en el servidor** (`app/services/escalamiento.py`): cada 20 s se
-   buscan las alertas `activa` con más de `ESCALAMIENTO_MINUTOS` (5 por defecto,
-   igual que la cuenta regresiva del front: `VITE_MINUTOS_ESCALAMIENTO`) sin
-   reconocer. Cada una se escala **una sola vez** (el `UPDATE ... WHERE
-   escalada_at IS NULL` es atómico): se avisa a los admin con `alerta_escalada` y
-   queda en la auditoría (`alerta`, `escalar`). Ocurre aunque el médico haya
-   cerrado la pestaña.
+3. **Escalamiento en el servidor** (`app/api/alertas.py`, del módulo de IA): cada
+   cierto tiempo busca las alertas `activa` con más de
+   `ALERTA_ESCALAMIENTO_MINUTOS` (5 por defecto, igual que la cuenta regresiva del
+   front: `VITE_MINUTOS_ESCALAMIENTO`) sin reconocer, marca `escalada_at`, lo deja
+   en la auditoría y llama a `reactores.al_alerta_escalada`, que avisa a los
+   `destinatarios` (admin y otro clínico del paciente) con el evento
+   `alerta_escalada`. Ocurre aunque el médico haya cerrado la pestaña.
 4. Reconocimiento y creación quedan en la auditoría (a cargo del módulo de IA).
 
 El umbral que decide qué es "crítico" lo define y justifica el modelo de IA
@@ -176,14 +177,15 @@ Los reactores ya están conectados a remisiones (`al_remitir`, `al_aceptar`,
 |---|---|---|
 | Crea un reporte `pendiente` | `reactores.al_reporte_pendiente(db, reporte)` | `id`, `paciente_id`, `creado_por` (id de usuario que pidió el análisis) |
 | Aprueba un reporte | `reactores.al_aprobar_reporte(db, reporte)` | `id`, `paciente_id` |
-| Inserta una alerta crítica | `reactores.al_alerta_critica(db, alerta)` | `id`, `paciente_id`, `usuario_id`, `mensaje`, `nivel` |
+| Inserta una alerta crítica | `reactores.al_alerta_critica(db, alerta)` | `id`, `paciente_id`, `dirigida_a_usuario`, `mensaje`, `nivel` |
+| Escala una alerta vencida | `reactores.al_alerta_escalada(db, alerta)` | `id`, `paciente_id`, `dirigida_a_usuario`, `destinatarios` (lista de ids de usuario), `nivel` |
 
 Tablas que este módulo lee y debe respetar el módulo de IA:
 
-- `alertas_criticas` (migración 13): `id`, `paciente_id`, `usuario_id`, `nivel`,
-  `mensaje`, `estado` (`activa` | `reconocida`), `creada_at`, `reconocida_at`,
-  `reconocida_por`, `nota`, `escalada_at`. Al reconocer: `estado = 'reconocida'`.
-- `ia_reportes`: `/pendientes` cuenta las filas con `estado = 'pendiente'` y
+- `alertas` (extendida por `db/13_ia.sql`): `dirigida_a_usuario`, `paciente_id`,
+  `estado` (`activa` | `reconocida`), `escalada_at`. `/pendientes` cuenta las
+  `activa` del clínico y, para el admin, las `activa` con `escalada_at`.
+- `reportes_ia` (`db/13_ia.sql`): `/pendientes` cuenta las filas con `estado = 'pendiente'` y
   `paciente_id` entre los pacientes del clínico (nombre de tabla en
   `app/api/eventos.py: TABLA_REPORTES_IA`). Si la tabla aún no existe, el
   contador es 0 y nada falla.
@@ -196,13 +198,13 @@ de contabilidad lee y opera esa misma colección.
 ## 9. Cómo se prueba
 
 ```bash
-python scripts/test_tiempo_real.py     # canal por rol, bandeja, R19, alertas, FHIR (necesita db/13)
+python scripts/test_tiempo_real.py     # canal por rol, bandeja, R19, alertas, FHIR (necesita db/13_ia.sql y db/14_notificaciones.sql)
 python scripts/registrar_subscription.py --probar <fhir_patient_id>   # contra HAPI real
 ```
 
 `test_tiempo_real.py` levanta la API en un servidor real, abre un canal por rol y
 comprueba, entre otras cosas: rechazo sin token, entrega en vivo de una remisión
 al especialista, que el paciente y el contable no reciban nada, los cuatro flujos
-de R19, la factura única al aprobar dos veces, el escalamiento una sola vez, la
+de R19, la factura única al aprobar dos veces, el aviso de escalamiento, la
 reacción a una Observation (y que no reaccione dos veces) y que un reactor roto
 no impida el commit.

@@ -209,14 +209,35 @@ def al_bloquear(db, usuario) -> None:
 def al_alerta_critica(db, alerta) -> None:
     """
     El modelo marcó un caso crítico: avisar al clínico responsable por el canal
-    en vivo. Lo llama el módulo de IA después de insertar la fila en `alertas_criticas`
-    (con su `usuario_id`, el clínico responsable). La alerta sigue activa, y
-    visible, hasta que se reconozca; si pasan ESCALAMIENTO_MINUTOS sin
-    reconocerla, app/services/escalamiento.py avisa al admin.
+    en vivo. Lo llama el módulo de IA (app/api/ia.py) justo después de insertar
+    la fila en `alertas` (el clínico responsable es `dirigida_a_usuario`). La
+    alerta sigue activa, y visible, hasta que se reconozca; si pasan
+    ALERTA_ESCALAMIENTO_MINUTOS sin reconocerla, el escalamiento de
+    app/api/alertas.py avisa al admin (ver al_alerta_escalada).
     """
     aid = _g(alerta, "id")
+    responsable = _g(alerta, "dirigida_a_usuario") or _g(alerta, "usuario_id")
     mensaje = _g(alerta, "mensaje") or "Un paciente fue clasificado como crítico. Revíselo de inmediato."
     bandeja.notificar(
-        db, [_g(alerta, "usuario_id")], "alerta_critica", mensaje,
+        db, [responsable], "alerta_critica", mensaje,
         paciente_id=_g(alerta, "paciente_id"),
-        datos={"alerta_id": aid, "nivel": _g(alerta, "nivel", "critico")})
+        datos={"alerta_id": aid, "nivel": _g(alerta, "nivel", "critica")})
+
+
+@_seguro
+def al_alerta_escalada(db, alerta) -> None:
+    """
+    Una alerta crítica lleva ALERTA_ESCALAMIENTO_MINUTOS sin reconocerse: avisar a
+    sus `destinatarios` (los admin y otro clínico del paciente). Lo llama el
+    escalamiento de app/api/alertas.py, que ya marcó `escalada_at` y auditó; la
+    alerta sigue activa para el clínico responsable.
+    """
+    aid = _g(alerta, "id")
+    minutos = settings.alerta_escalamiento_minutos
+    bandeja.notificar(
+        db, _g(alerta, "destinatarios", []), "alerta_escalada",
+        f"La alerta crítica n.º {aid} lleva {minutos} min sin reconocer. "
+        "Requiere atención del clínico responsable.",
+        paciente_id=_g(alerta, "paciente_id"),
+        datos={"alerta_id": aid, "nivel": _g(alerta, "nivel", "critica"),
+               "responsable_id": _g(alerta, "dirigida_a_usuario")})

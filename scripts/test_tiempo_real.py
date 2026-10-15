@@ -37,7 +37,7 @@ from sqlalchemy import text  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 from app.core.deps import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
-from app.services import bandeja, escalamiento, eventos, facturacion_auto, fhir_reactivo, reactores  # noqa: E402
+from app.services import bandeja, eventos, facturacion_auto, fhir_reactivo, reactores  # noqa: E402
 
 PASSWORD = "Demo#Hospital2026"
 ESPERA = 8          # segundos: el máximo que fija el enunciado entre el hecho y el evento
@@ -340,39 +340,57 @@ check("... y el admin también", canales["admin"].esperar(lambda e: e["tipo"] ==
 facturacion_auto._coleccion = _original
 
 # ---------------------------------------------------- [7] alerta crítica
-print("\n[7] Alerta crítica: en vivo, privada y con escalamiento (R20)")
+print("\n[7] Alerta crítica: en vivo, privada y con aviso de escalamiento (R20)")
+# La tabla `alertas` la extiende db/13_ia.sql (módulo de IA). El escalamiento por
+# tiempo es de app/api/alertas.py; aquí se prueba lo que es de este módulo: los
+# avisos (al_alerta_critica / al_alerta_escalada) y el contador de /pendientes.
 with SessionLocal() as db:
-    aid = db.execute(text("""
-        INSERT INTO alertas_criticas (paciente_id, usuario_id, nivel, mensaje)
-        VALUES (:p, :u, 'critico', 'Riesgo crítico de requerir UCI: revise al paciente.') RETURNING id
-    """), {"p": pid, "u": ids["medico01"]}).scalar()
-    reactores.al_alerta_critica(db, {"id": aid, "paciente_id": pid, "usuario_id": ids["medico01"],
-                                     "mensaje": "Riesgo crítico de requerir UCI: revise al paciente.", "nivel": "critico"})
-    db.commit()
-ev = canales["medico"].esperar(lambda e: "alerta" in e["tipo"] or "critic" in e["tipo"])
-check("El clínico recibe la alerta en vivo (tipo con 'alerta')", ev is not None and ev.get("alerta_id") == aid, str(ev))
-check("El especialista (otro clínico) no la recibe", not canales["especialista"].recibio(tipo("alerta_critica")))
-check("El paciente no la recibe", not canales["paciente"].recibio(tipo("alerta_critica")))
-check("El contable no la recibe", not canales["contable"].recibio(tipo("alerta_critica")))
-check("Sube su contador de alertas activas",
-      http.get("/pendientes", headers=h(tok["medico"])).json()["alertas_activas"] >= 1)
-check("Antes de tiempo, el escalamiento no hace nada", escalamiento.escalar_vencidas() == 0)
-with SessionLocal() as db:
-    db.execute(text("UPDATE alertas_criticas SET creada_at = NOW() - INTERVAL '30 minutes' WHERE id = :i"), {"i": aid})
-    db.commit()
-check("Vencida y sin reconocer, se escala (1)", escalamiento.escalar_vencidas() == 1)
-ev = canales["admin"].esperar(lambda e: e["tipo"] == "alerta_escalada" and e.get("alerta_id") == aid)
-check("El admin recibe 'alerta_escalada' en vivo", ev is not None, str(ev))
-check("Se escala una sola vez", escalamiento.escalar_vencidas() == 0)
-with SessionLocal() as db:
-    aud = db.execute(text("SELECT COUNT(*) FROM log_auditoria WHERE entidad_tipo = 'alerta' AND operacion = 'escalar' "
-                          "AND entidad_id = :i"), {"i": str(aid)}).scalar()
-    db.execute(text("UPDATE alertas_criticas SET estado = 'reconocida', reconocida_at = NOW() WHERE id = :i"), {"i": aid})
-    db.execute(text("UPDATE alertas_criticas SET creada_at = NOW() - INTERVAL '30 minutes', escalada_at = NULL "
-                    "WHERE id = :i"), {"i": aid})
-    db.commit()
-check("El escalamiento quedó en la auditoría", aud == 1, str(aud))
-check("Una alerta ya reconocida no se escala", escalamiento.escalar_vencidas() == 0)
+    cols = {c for (c,) in db.execute(text("SELECT column_name FROM information_schema.columns "
+                                          "WHERE table_name = 'alertas'"))}
+if not {"estado", "escalada_at", "paciente_id", "dirigida_a_usuario"} <= cols:
+    print("  (omitido: falta aplicar db/13_ia.sql, que extiende la tabla `alertas`)")
+else:
+    MENSAJE = "El modelo estima 87% de riesgo (umbral 70%). Revise y reconozca la alerta."
+    with SessionLocal() as db:
+        fila = db.execute(text("""
+            INSERT INTO alertas (tipo, severidad, titulo, mensaje, dirigida_a_usuario, paciente_id, estado)
+            VALUES ('alerta_critica_ia', 'critica', 'Riesgo crítico de UCI posoperatoria', :m, :u, :p, 'activa')
+            RETURNING *
+        """), {"m": MENSAJE, "u": ids["medico01"], "p": pid}).mappings().first()
+        aid = fila["id"]
+        reactores.al_alerta_critica(db, {**dict(fila), "nivel": "critica"})
+        db.commit()
+    ev = canales["medico"].esperar(lambda e: e["tipo"] == "alerta_critica" and e.get("alerta_id") == aid)
+    check("El clínico responsable recibe la alerta en vivo", ev is not None, str(ev))
+    check("El especialista (otro clínico) no la recibe", not canales["especialista"].recibio(tipo("alerta_critica")))
+    check("El paciente no la recibe", not canales["paciente"].recibio(tipo("alerta_critica")))
+    check("El contable no la recibe", not canales["contable"].recibio(tipo("alerta_critica")))
+    check("Sube su contador de alertas activas",
+          http.get("/pendientes", headers=h(tok["medico"])).json()["alertas_activas"] >= 1)
+    check("El admin aún no la ve (no se ha escalado)",
+          http.get("/pendientes", headers=h(tok["admin"])).json()["alertas_activas"] == 0)
+
+    # Lo que hace app/api/alertas.py al vencer el plazo: marca escalada_at, audita y llama al reactor.
+    with SessionLocal() as db:
+        db.execute(text("UPDATE alertas SET escalada_at = NOW() WHERE id = :i"), {"i": aid})
+        admins = bandeja.usuarios_con_rol(db, "admin")
+        reactores.al_alerta_escalada(db, {**dict(fila), "destinatarios": admins})
+        db.commit()
+    ev = canales["admin"].esperar(lambda e: e["tipo"] == "alerta_escalada" and e.get("alerta_id") == aid)
+    check("El admin recibe 'alerta_escalada' en vivo", ev is not None, str(ev))
+    check("El contable no recibe el escalamiento", not canales["contable"].recibio(tipo("alerta_escalada")))
+    check("El paciente no recibe el escalamiento", not canales["paciente"].recibio(tipo("alerta_escalada")))
+    check("Escalada, el admin la cuenta como activa",
+          http.get("/pendientes", headers=h(tok["admin"])).json()["alertas_activas"] >= 1)
+    check("... y el clínico la sigue viendo activa",
+          http.get("/pendientes", headers=h(tok["medico"])).json()["alertas_activas"] >= 1)
+    with SessionLocal() as db:
+        db.execute(text("UPDATE alertas SET estado = 'reconocida', reconocida_at = NOW() WHERE id = :i"), {"i": aid})
+        db.commit()
+    check("Reconocida, deja de contar para el clínico",
+          http.get("/pendientes", headers=h(tok["medico"])).json()["alertas_activas"] == 0)
+    check("... y para el admin",
+          http.get("/pendientes", headers=h(tok["admin"])).json()["alertas_activas"] == 0)
 
 # --------------------------------------------------------- [8] FHIR reactivo
 print("\n[8] Una Observation nueva en FHIR hace reaccionar al sistema (R21)")

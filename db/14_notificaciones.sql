@@ -1,22 +1,19 @@
 -- ============================================================================
--- 13 · Sistema reactivo: bandeja de notificaciones, alertas críticas y
---      eventos recibidos desde FHIR (R17, R18, R19, R20, R21)
+-- 14 · Sistema reactivo: bandeja de notificaciones y eventos recibidos desde
+--      FHIR (R17, R18, R19, R21)
 --
 -- notificaciones  La bandeja persistente de cada usuario. El canal en vivo
 --                 (SSE) solo empuja lo que aquí ya quedó guardado: si el
 --                 usuario estaba desconectado, lo ve al volver.
 --                 No guarda nombre, documento ni texto clínico libre.
--- alertas_criticas  Alertas críticas del modelo (R20). La escribe el módulo de
---                 IA; el escalamiento por tiempo lo hace el servidor
---                 (app/services/escalamiento.py), no el front. Es distinta de
---                 la tabla `alertas` del Corte 1 (capacidad, conflictos de
---                 agenda), que sigue igual.
+-- Las alertas críticas (R20) NO se crean aquí: viven en la tabla `alertas` que
+-- extiende db/13_ia.sql (módulo de IA). Esta migración no depende de ella.
 -- eventos_fhir    Registro de lo que HAPI avisó por la Subscription. Su llave
 --                 única evita reaccionar dos veces a la misma Observation
 --                 cuando HAPI reintenta la entrega.
 --
 -- Se puede correr más de una vez.
---   python scripts/aplicar_sql.py db/13_notificaciones.sql
+--   python scripts/aplicar_sql.py db/14_notificaciones.sql
 -- ============================================================================
 BEGIN;
 
@@ -32,24 +29,6 @@ CREATE TABLE IF NOT EXISTS notificaciones (
     fecha        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_notif_usuario ON notificaciones(usuario_id, leida, fecha DESC);
-
-CREATE TABLE IF NOT EXISTS alertas_criticas (
-    id              SERIAL PRIMARY KEY,
-    paciente_id     CHAR(64) NOT NULL REFERENCES pacientes(documento_bidx),
-    usuario_id      INT NOT NULL REFERENCES usuarios(id),    -- clínico responsable
-    nivel           VARCHAR(12) NOT NULL DEFAULT 'critico',
-    mensaje         TEXT NOT NULL,
-    reporte_id      INT,                                     -- reporte de IA que la originó
-    estado          VARCHAR(12) NOT NULL DEFAULT 'activa',
-    creada_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    reconocida_at   TIMESTAMPTZ,
-    reconocida_por  INT REFERENCES usuarios(id),
-    nota            TEXT,                                    -- nota del reconocimiento
-    escalada_at     TIMESTAMPTZ,                             -- cuándo se escaló al admin
-    CONSTRAINT ck_alerta_estado CHECK (estado IN ('activa', 'reconocida'))
-);
-CREATE INDEX IF NOT EXISTS idx_alertas_crit_usuario ON alertas_criticas(usuario_id, estado);
-CREATE INDEX IF NOT EXISTS idx_alertas_crit_activas ON alertas_criticas(creada_at) WHERE estado = 'activa';
 
 CREATE TABLE IF NOT EXISTS eventos_fhir (
     id            BIGSERIAL PRIMARY KEY,

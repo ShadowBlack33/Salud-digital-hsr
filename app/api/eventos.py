@@ -175,9 +175,10 @@ def leer(notificacion_id: int, usuario: Usuario = Depends(get_usuario_actual), d
 
 
 # ---------------------------------------------------- trabajo pendiente (R18)
-# Tabla de reportes de IA (módulo de Esteban): se cuentan los `pendiente` de los
-# pacientes del clínico. Si la tabla todavía no existe, el contador es 0.
-TABLA_REPORTES_IA = "ia_reportes"
+# Tabla de reportes de IA (módulo de Esteban, db/13_ia.sql): se cuentan los
+# `pendiente` de los pacientes del clínico. Si la tabla todavía no existe, el
+# contador es 0.
+TABLA_REPORTES_IA = "reportes_ia"
 
 
 def _contar(db: Session, sql: str, params: dict) -> int:
@@ -219,9 +220,9 @@ def pendientes(payload: dict = Depends(get_token_payload), usuario: Usuario = De
 
     alertas = 0
     if clinico:
-        alertas = _contar(db, "SELECT COUNT(*) FROM alertas_criticas WHERE usuario_id = :u AND estado = 'activa'",
+        alertas = _contar(db, "SELECT COUNT(*) FROM alertas WHERE dirigida_a_usuario = :u AND estado = 'activa'",
                           {"u": usuario.id})
     elif rol == "admin":
-        alertas = _contar(db, "SELECT COUNT(*) FROM alertas_criticas WHERE estado = 'activa' AND escalada_at IS NOT NULL", {})
+        alertas = _contar(db, "SELECT COUNT(*) FROM alertas WHERE estado = 'activa' AND escalada_at IS NOT NULL", {})
 
     return {"reportes_por_revisar": reportes, "remisiones_recibidas": remisiones, "alertas_activas": alertas}

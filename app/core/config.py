@@ -66,11 +66,11 @@ class Settings(BaseSettings):
     # Sistema reactivo (R17-R21)
     # Minutos sin reconocer antes de escalar una alerta crítica al admin.
     # Debe coincidir con VITE_MINUTOS_ESCALAMIENTO (la cuenta regresiva del front).
-    escalamiento_minutos: int = 5
+    alerta_escalamiento_minutos: int = 5  # ALERTA_ESCALAMIENTO_MINUTOS
     # Tarifa de referencia de la factura automática del análisis de IA (COP).
     tarifa_analisis_ia: int = 45000
-    # false = no arrancar las tareas de fondo (escalamiento, registro de la
-    # Subscription). Las pruebas automáticas lo apagan.
+    # false = no arrancar las tareas de fondo (registro de la
+    # Subscription FHIR). Las pruebas automáticas lo apagan.
     tareas_fondo: bool = True
 
     @property
