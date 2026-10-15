@@ -27,10 +27,11 @@ export default function DrawerQuirofano({ quirofano: q, ahora, usuario, onCerrar
 
   async function cambiar(estado, motivo) {
     try {
-      await api(`/quirofanos/${q.id}/estado`, { method: "PATCH", json: { estado, motivo } });
+      await api(`/quirofanos/${q.id}/estado`, { method: "PATCH", json: { estado, motivo, estado_esperado: q.estado } });
       avisar(`${q.codigo}: ${QUIROFANO[estado].etiqueta.toLowerCase()}`);
       await onCambio();
     } catch (e) {
+      if (e.status === 409) { avisar(e.message, "error"); await onCambio(); return; }   // otra persona la cambió primero
       avisar(e.status === 403 ? "Tu rol no puede cambiar el estado de los quirófanos" : e.message, "error");
     }
   }

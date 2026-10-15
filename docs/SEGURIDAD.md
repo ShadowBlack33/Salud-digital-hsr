@@ -107,8 +107,13 @@ dedicado) y por supuesto cualquier variante de SHA sin derivación de clave.
 **Política de contraseñas:** mínimo 12 caracteres, con mayúscula, minúscula,
 dígito y carácter especial.
 
-**Protección contra fuerza bruta:** bloqueo temporal de la cuenta tras 5
-intentos fallidos. El endpoint de login devuelve un mensaje genérico y ejecuta
+**Protección contra fuerza bruta:** tras **3 intentos fallidos seguidos** la
+cuenta queda bloqueada hasta que un administrador la desbloquee
+(`POST /usuarios/{id}/desbloquear`, Corte 2, R02). Mientras tanto, incluso la
+contraseña correcta recibe `423` y tampoco se puede renovar una sesión ya
+abierta. El bloqueo y el desbloqueo quedan en la auditoría y el bloqueo avisa
+al admin. Con `BLOQUEO_REQUIERE_ADMIN=false` vuelve el bloqueo temporal de 15
+minutos del Corte 1. El endpoint de login devuelve un mensaje genérico y ejecuta
 el hashing incluso cuando el usuario no existe, para no filtrar información
 por diferencia en el tiempo de respuesta.
 
@@ -214,7 +219,16 @@ Este es un ejemplo aplicado de *privacidad por diseño*.
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: no-referrer`
-- CORS con `*` **bloqueado en producción** por validación de arranque
+- CORS con `*` **bloqueado en producción** por validación de arranque. Los
+  orígenes permitidos se leen de `CORS_ORIGENES`; un origen desconocido no
+  recibe `Access-Control-Allow-Origin` (Corte 2, R03)
+- **Un solo origen público** (Corte 2): nginx sirve el front y hace de proxy
+  hacia la API (`/api`) y FHIR (`/fhir`); el túnel de Cloudflare expone solo
+  nginx. API, HAPI, PACS y PostgreSQL publican puertos únicamente en
+  `127.0.0.1`
+- **Limitación de tasa** en nginx (`limit_req`): 10 peticiones por segundo por
+  cliente con ráfaga de 30; el exceso recibe `429`. Detrás del túnel el
+  cliente se identifica por `CF-Connecting-IP`
 - Los errores no controlados devuelven un mensaje genérico: una traza podría
   revelar estructura interna o datos de pacientes
 
@@ -223,7 +237,9 @@ Este es un ejemplo aplicado de *privacidad por diseño*.
 ## 10. Gestión de secretos
 
 Todas las claves provienen de variables de entorno; ninguna está en el
-repositorio (`.env` está en `.gitignore`).
+repositorio (`.env`, `.env.*` y `pass.env` están en `.gitignore`). En el
+repositorio solo va `.env.example`, con los nombres de las variables y sin
+valores.
 
 En arranque con `ENTORNO=produccion`, la aplicación **se niega a iniciar** si
 falta algún secreto o si CORS está abierto.
@@ -247,8 +263,26 @@ Reconocerlas explícitamente es parte del rigor del trabajo:
 4. **Sin SMART on FHIR.** La autorización del servidor FHIR se apoya en la
    API intermedia, no en OAuth2 con scopes FHIR nativos.
 5. **Blind index solo soporta igualdad exacta.** Ver sección 3.
-6. **Servidor HAPI FHIR sin autenticación propia** en la configuración de
-   desarrollo. En producción debería ir detrás de un gateway autenticado.
+6. **HAPI FHIR sin autenticación propia; la pone nginx.** Toda petición a
+   `/fhir` pasa antes por `auth_request` hacia la API
+   (`app/api/puerta_fhir.py`). Público solo `POST /fhir/Observation` (lo
+   exige R21), `GET /fhir/metadata` y la búsqueda exacta
+   `GET /fhir/Patient?identifier=<valor>` (R15; listar o leer por id sigue cerrado); leer pide token con `fhir:read`,
+   escribir otros recursos pide `fhir:sync:write` (cuenta de integración) y
+   `DELETE` se rechaza siempre. El POST público tiene límite de tasa y de
+   tamaño (256 KB). Falta SMART on FHIR (punto 4).
+7. **Quick tunnel de Cloudflare.** La URL pública cambia si el contenedor
+   `cloudflared` se reinicia. Un túnel con nombre daría una URL fija.
+8. **La llave primaria del paciente es su índice ciego.** Si se corrige un
+   documento mal digitado o se rota la clave HMAC, cambia la identidad y hay
+   que actualizar las tablas que la referencian. En producción: un UUID
+   interno como llave y el índice ciego solo como columna única de búsqueda.
+   No se migró a mitad del corte porque afecta nueve llaves foráneas.
+9. **El cobro es una referencia interna**, no un RIPS ni una factura
+   electrónica de venta (FEV) validada ante la DIAN.
+10. **Radiografías de cohorte externa.** Las imágenes del PACS son reales
+    (NIH ChestX-ray14) pero vinculadas a pacientes sintéticos para mostrar el
+    visor; no son exámenes de esos pacientes.
 
 ---
 

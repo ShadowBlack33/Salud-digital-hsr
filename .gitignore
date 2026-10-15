@@ -1,7 +1,13 @@
 .env
+.env.*
+!.env.example
+pass.env
 __pycache__/
 *.pyc
 venv/
 .venv/
 db/03_datos_sinteticos.sql
 *.log
+
+# Radiografías NIH descargadas por scripts/cargar_radiografias.py
+data/rx_nih/

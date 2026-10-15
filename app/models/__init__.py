@@ -4,10 +4,10 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
-    BigInteger, Boolean, Column, Date, DateTime, ForeignKey, Integer,
+    BigInteger, Boolean, Column, Computed, Date, DateTime, ForeignKey, Integer,
     LargeBinary, Numeric, SmallInteger, String, Text, func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -79,7 +79,7 @@ class Sesion(Base):
     id = Column(Integer, primary_key=True)
     usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     refresh_token_hash = Column(String(64), unique=True, nullable=False)
-    ip_origen = Column(String)
+    ip_origen = Column(INET)   # INET en la BD: con String, dos registros en un mismo flush fallan
     user_agent = Column(Text)
     emitido_at = Column(DateTime(timezone=True), server_default=func.now())
     expira_at = Column(DateTime(timezone=True), nullable=False)
@@ -256,6 +256,8 @@ class Paciente(Base):
     created_by = Column(Integer)
     updated_at = Column(DateTime(timezone=True))
 
+    eps = relationship("Eps", lazy="joined")
+
     @property
     def id(self):
         """
@@ -291,7 +293,11 @@ class Encuentro(Base):
     hora_programada_fin = Column(DateTime(timezone=True))
     hora_real_inicio = Column(DateTime(timezone=True))
     hora_real_fin = Column(DateTime(timezone=True))
-    minutos_desviacion = Column(Integer)
+    # Columna generada por Postgres (GENERATED ALWAYS): SQLAlchemy no debe
+    # intentar escribirla, o el INSERT falla.
+    minutos_desviacion = Column(Integer, Computed(
+        "CASE WHEN hora_real_fin IS NOT NULL AND hora_programada_fin IS NOT NULL "
+        "THEN EXTRACT(EPOCH FROM (hora_real_fin - hora_programada_fin))::INT / 60 END", persisted=True))
     fhir_encounter_id = Column(String(64))
     observaciones_texto = Column(Text)
     activo = Column(Boolean, default=True)
@@ -343,7 +349,7 @@ class LogAuditoria(Base):
     resultado = Column(String(15), default="exito")
     valor_anterior = Column(JSONB)
     valor_nuevo = Column(JSONB)
-    ip_origen = Column(String)
+    ip_origen = Column(INET)   # INET en la BD: con String, dos registros en un mismo flush fallan
     user_agent = Column(Text)
     endpoint = Column(String(200))
     timestamp = Column(DateTime(timezone=True), server_default=func.now())

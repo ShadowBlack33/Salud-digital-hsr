@@ -4,7 +4,7 @@ import { ArrowRight, BedDouble, CalendarClock, Database, HeartPulse, Lock, ScanL
 import Anillo from "../components/Anillo";
 import Aparicion from "../components/Aparicion";
 import Logo from "../components/Logo";
-import { estaAutenticado } from "../api";
+import { cerrarSesion, estaAutenticado } from "../api";
 import { GRUPOS, ORDEN_GRUPOS } from "../lib/estados";
 import { cop } from "../lib/format";
 import { useAparicion, useContador } from "../lib/hooks";
@@ -13,19 +13,21 @@ const COSTO_HORA_UCI = 75000; // ≈ $1.800.000 por día / 24 h (comunicación p
 
 /* ----------------------------------------------------------------- NAVEGACIÓN */
 function Navegacion() {
-  const dentro = estaAutenticado();
+  // Salir del panel a la página pública cierra la sesión: para volver hay que
+  // iniciar sesión otra vez (computadores compartidos).
+  useEffect(() => { if (estaAutenticado()) cerrarSesion(); }, []);
   const enlaces = [["#impacto", "Impacto"], ["#semaforo", "Semáforo"], ["#arquitectura", "Arquitectura"], ["#evidencia", "Evidencia"]];
   return (
     <header className="fixed inset-x-0 top-4 z-40 mx-auto w-[min(1120px,calc(100%-2rem))]">
       <nav aria-label="Principal" className="flex items-center justify-between rounded-[32px] bg-paper-white/80 py-2.5 pl-4 pr-2.5 shadow-lift backdrop-blur-xl">
-        <Link to="/" aria-label="San Rafael OS, inicio"><Logo /></Link>
+        <Link to="/" aria-label="Pulso, inicio"><Logo /></Link>
         <ul className="hidden items-center gap-1 md:flex">
           {enlaces.map(([href, texto]) => (
             <li key={href}><a href={href} className="rounded-full px-4 py-2 text-sm font-medium text-ink transition hover:bg-cloud-card">{texto}</a></li>
           ))}
         </ul>
-        <Link to={dentro ? "/app" : "/login"} className="inline-flex items-center gap-2 rounded-full bg-charcoal px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ink">
-          {dentro ? "Ir al centro de mando" : "Ingresar"}<ArrowRight size={15} aria-hidden="true" />
+        <Link to="/login" className="inline-flex items-center gap-2 rounded-full bg-charcoal px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ink">
+          Ingresar<ArrowRight size={15} aria-hidden="true" />
         </Link>
       </nav>
     </header>
@@ -111,13 +113,13 @@ function Hero() {
       <div aria-hidden="true" className="anim-drift pointer-events-none absolute -right-20 top-48 size-[420px] rounded-full bg-signal-gold/20 blur-3xl [animation-delay:-7s]" />
       <div className="relative mx-auto max-w-5xl text-center">
         <p className="anim-rise inline-flex items-center gap-2 rounded-full bg-paper-white/80 px-4 py-2 text-sm font-medium shadow-lift backdrop-blur">
-          <HeartPulse size={16} className="text-coral-deep" aria-hidden="true" />Caso de estudio · Hospital San Rafael
+          <HeartPulse size={16} className="text-coral-deep" aria-hidden="true" />Demostración sobre el caso hipotético · Hospital San Rafael
         </p>
         <h1 className="anim-rise mt-7 text-[44px] font-semibold leading-[1.02] tracking-display [animation-delay:80ms] sm:text-6xl lg:text-[76px]">
           El centro de comando en tiempo real para camas, quirófanos y urgencias
         </h1>
         <p className="anim-rise mx-auto mt-7 max-w-2xl text-lg leading-relaxed text-gray-strong [animation-delay:160ms]">
-          Un solo tablero para saber qué cama está libre, qué quirófano va retrasado y quién ocupa cada espacio, sin depender de llamadas. Pensado para reducir las cancelaciones que se pueden evitar.
+          Un solo sistema para saber qué cama está libre y qué quirófano va retrasado, remitir pacientes entre médicos y que cada perfil vea solo lo que le corresponde, sin depender de llamadas. Pensado para reducir las cancelaciones que se pueden evitar.
         </p>
         <div className="anim-rise mt-9 flex flex-wrap items-center justify-center gap-3 [animation-delay:240ms]">
           <Link to="/login" className="inline-flex items-center gap-2 rounded-full bg-charcoal px-8 py-4 text-[15px] font-semibold text-white transition hover:-translate-y-0.5 hover:bg-ink">
@@ -268,9 +270,9 @@ function Cifra({ meta, etiqueta, activo }) {
 function Arquitectura() {
   const [ref, visible] = useAparicion(0.25);
   const columnas = [
-    { icono: Lock, titulo: "Datos protegidos", puntos: ["Cédula, nombre y teléfono cifrados con AES-256-GCM", "Búsqueda por documento sin descifrar la base (índice ciego)", "Auditoría que no se puede editar y bloqueo tras 3 intentos fallidos"] },
-    { icono: Database, titulo: "Estándares clínicos", puntos: ["HL7 FHIR R4 sobre un servidor HAPI", "CIE-10 para diagnósticos y CUPS para procedimientos", "14 roles con permisos en dos niveles"] },
-    { icono: ScanLine, titulo: "Imágenes y tiempo real", puntos: ["Servidor PACS Orthanc con imágenes DICOM", "Visor con brillo, contraste y zoom", "Tablero que se actualiza solo cada 15 segundos"] },
+    { icono: Lock, titulo: "Datos protegidos", puntos: ["Cédula, nombre y teléfono cifrados con AES-256-GCM", "Búsqueda por documento sin descifrar la base (índice ciego)", "Auditoría inalterable y sin datos sensibles; bloqueo tras 3 intentos", "Cerrar sesión invalida el acceso al instante"] },
+    { icono: Database, titulo: "Estándares e interoperabilidad", puntos: ["HL7 FHIR R4 sobre HAPI, con acceso controlado desde afuera", "CIE-10, CUPS, LOINC y SNOMED CT", "Remisiones publicadas como ServiceRequest", "Cancelación de cirugía según la Res. 256/2016"] },
+    { icono: ScanLine, titulo: "Operación sin choques", puntos: ["Cada perfil ve solo lo suyo: médico, especialista, paciente, contable, coordinación y enfermería jefe", "Dos personas nunca reservan la misma cama o quirófano", "PACS Orthanc con radiografías reales (NIH) y visor propio"] },
   ];
   return (
     <section id="arquitectura" ref={ref} className="mx-auto max-w-6xl scroll-mt-24 px-6 pb-24">
@@ -283,7 +285,7 @@ function Arquitectura() {
           <Cifra meta={300} etiqueta="camas, en 5 tipos de cuidado" activo={visible} />
           <Cifra meta={13} etiqueta="quirófanos con capacidades propias" activo={visible} />
           <Cifra meta={14} etiqueta="roles de usuario" activo={visible} />
-          <Cifra meta={63} etiqueta="pruebas automáticas de extremo a extremo" activo={visible} />
+          <Cifra meta={164} etiqueta="pruebas automáticas de extremo a extremo" activo={visible} />
         </div>
         <ul className="mt-14 grid gap-4 lg:grid-cols-3">
           {columnas.map(({ icono: Icono, titulo, puntos }) => (
@@ -355,7 +357,7 @@ export default function Landing() {
         <Cierre />
       </main>
       <footer className="border-t border-cloud-card px-6 py-8 text-center text-sm text-gray-strong">
-        Hospital San Rafael es un caso de estudio hipotético. Los datos del sistema son sintéticos. Proyecto integrador · Sistemas en Salud Digital · Universidad Autónoma de Occidente · 2026
+        Pulso es la aplicación; toda la demostración corre sobre Hospital San Rafael, un caso de estudio hipotético. Los datos del sistema son sintéticos. Proyecto integrador · Sistemas en Salud Digital · Universidad Autónoma de Occidente · 2026
       </footer>
     </div>
   );

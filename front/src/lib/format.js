@@ -40,3 +40,18 @@ export function edadLegible(fechaNacimiento) {
 
 export const iniciales = (texto = "") =>
   texto.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() || "").join("");
+
+/** "hace 5 min", "hace 2 h", "hace 3 d" (o "ahora"). */
+export function haceCuanto(iso, ahora = Date.now()) {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return String(iso);
+  const m = Math.round((ahora - t) / 60000);
+  if (m < 1) return "ahora";
+  if (m < 60) return `hace ${m} min`;
+  if (m < 60 * 24) return `hace ${Math.round(m / 60)} h`;
+  return `hace ${Math.round(m / 1440)} d`;
+}
+
+const fechaLarga = new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
+export const fechaYHora = (iso) => (iso ? fechaLarga.format(new Date(iso)) : "—");

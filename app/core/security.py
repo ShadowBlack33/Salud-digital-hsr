@@ -84,7 +84,7 @@ def _secreto_jwt() -> str:
 
 def crear_access_token(usuario_id: int, username: str, rol_codigo: str,
                        permisos: list[str], personal_id: int | None = None,
-                       paciente_id: str | None = None) -> str:
+                       paciente_id: str | None = None, sesion_id: int | None = None) -> str:
     ahora = datetime.now(timezone.utc)
     payload = {
         "sub": str(usuario_id),
@@ -98,6 +98,10 @@ def crear_access_token(usuario_id: int, username: str, rol_codigo: str,
         "exp": ahora + timedelta(minutes=ACCESS_TOKEN_MINUTOS),
         "jti": secrets.token_urlsafe(16),
     }
+    if sesion_id is not None:
+        # Liga el token a su sesión: al cerrar sesión, o si el admin revoca,
+        # el token deja de servir de inmediato y no 15 minutos después.
+        payload["sid"] = sesion_id
     return jwt.encode(payload, _secreto_jwt(), algorithm=ALGORITMO)
 
 
@@ -150,6 +154,10 @@ def tiene_permiso(permisos_usuario: list[str], recurso: str, accion: str) -> str
             return alcance
     # permisos sin alcance explícito (ej. 'paciente:restore')
     if f"{recurso}:{accion}" in permisos_usuario:
+        return "all"
+    # 'fhir:sync:write' se sembró con alcance 'all' pero su código termina en
+    # ':write' (la puerta de nginx lo compara tal cual). Se acepta como 'all'.
+    if f"{recurso}:{accion}:write" in permisos_usuario:
         return "all"
     return None
 

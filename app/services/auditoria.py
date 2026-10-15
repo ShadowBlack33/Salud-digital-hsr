@@ -23,6 +23,32 @@ CAMPOS_SENSIBLES = {
     "registro_profesional_cifrado",
 }
 
+# Defensa en profundidad (todo lo que llega a registrar() pasa por _sanear):
+# además de lo cifrado, nunca se guardan credenciales, identificadores directos
+# ni texto clínico libre, aunque un endpoint los mande por error. La auditoría
+# dice QUIÉN hizo QUÉ sobre QUÉ registro; el contenido clínico vive en su tabla.
+CLAVES_PROHIBIDAS = CAMPOS_SENSIBLES | {
+    "password", "nueva_password", "password_actual", "token", "access_token", "refresh_token",
+    "documento", "nombre", "apellido", "telefono", "email", "direccion", "fecha_nacimiento",
+    "observaciones_texto", "valor_texto", "nota", "respuesta", "motivo_clinico",
+}
+MAX_TEXTO = 200   # un texto más largo se corta: la auditoría no es un depósito de documentos
+
+
+def _sanear(valor, clave: str | None = None):
+    """Copia del JSON de auditoría sin campos prohibidos y con textos acotados."""
+    if clave is not None and clave.lower() in CLAVES_PROHIBIDAS:
+        return None if valor is None else "<protegido>"
+    if isinstance(valor, dict):
+        return {k: _sanear(v, str(k)) for k, v in valor.items()}
+    if isinstance(valor, (list, tuple)):
+        return [_sanear(v) for v in valor]
+    if isinstance(valor, bytes):
+        return "<cifrado>"
+    if isinstance(valor, str) and len(valor) > MAX_TEXTO:
+        return valor[:MAX_TEXTO] + "…"
+    return valor
+
 
 def _serializar(valor):
     """Convierte a algo que JSONB acepte. UUID y date no lo son de fábrica."""
@@ -89,8 +115,8 @@ def registrar(db: Session, usuario, entidad_tipo: str, entidad_id: int | None,
         entidad_id=entidad_id,
         operacion=operacion,
         resultado=resultado,
-        valor_anterior=valor_anterior,
-        valor_nuevo=valor_nuevo,
+        valor_anterior=_sanear(valor_anterior),
+        valor_nuevo=_sanear(valor_nuevo),
         ip_origen=_ip_valida(request),
         user_agent=request.headers.get("user-agent") if request else None,
         endpoint=f"{request.method} {request.url.path}" if request else None,

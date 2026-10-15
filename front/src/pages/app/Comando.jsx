@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import Anillo from "../../components/Anillo";
 import DrawerCama from "../../components/DrawerCama";
+import { EsperandoCama, usePendientesCama } from "../../components/AsignarCama";
+import { PanelTraslados, useAreas } from "../../components/Traslados";
 import DrawerQuirofano from "../../components/DrawerQuirofano";
 import PanelCamas from "../../components/PanelCamas";
 import PanelQuirofanos from "../../components/PanelQuirofanos";
-import { api } from "../../api";
+import { api, puede } from "../../api";
 import { useReloj, useSondeo, useUsuario } from "../../lib/hooks";
 import { cop, horaConSegundos } from "../../lib/format";
 import { cortoTipo, TIPOS_CAMA } from "../../lib/estados";
@@ -58,6 +60,11 @@ export default function Comando() {
   const reloj = useReloj(30000);
   const [camaId, setCamaId] = useState(null);
   const [qxId, setQxId] = useState(null);
+  const pendientes = usePendientesCama(puede(usuario, "cama", "update"));
+  const { mi_area: miArea, areas } = useAreas();
+  const [servicioDe, setServicioDe] = useState({});   // cama -> área, para saber cuáles son de mi área
+  useEffect(() => { api("/camas?limite=400").then((l) => setServicioDe(Object.fromEntries(l.map((c) => [c.id, c.servicio])))).catch(() => {}); }, []);
+  const nombreMiArea = areas.find((a) => a.id === miArea)?.nombre;
 
   // Los tiempos vienen del servidor: se corrige la diferencia con el reloj del navegador.
   const desfase = agenda.datos?.ahora && agenda.actualizado ? Date.parse(agenda.datos.ahora) - agenda.actualizado : 0;
@@ -67,7 +74,7 @@ export default function Comando() {
   const qx = agenda.datos?.quirofanos;
   const res = useMemo(() => (lista ? resumenCamas(lista, ahora) : null), [lista, ahora]);
 
-  const recargarTodo = () => Promise.all([camas.recargar(), agenda.recargar()]);
+  const recargarTodo = () => Promise.all([camas.recargar(), agenda.recargar(), puede(usuario, "cama", "update") ? pendientes.recargar() : null]);
   const cargando = camas.cargando || agenda.cargando;
 
   if (!lista && camas.cargando) return <Esqueleto />;
@@ -107,6 +114,10 @@ export default function Comando() {
           <RefreshCw size={15} className={cargando ? "anim-spin" : ""} aria-hidden="true" />Actualizar
         </button>
       </div>
+
+      {nombreMiArea && <p className="text-sm text-gray-strong">Tu área: <b className="text-ink">{nombreMiArea}</b>. Asignas camas de tu área; para otra área, solicita un traslado.</p>}
+      <PanelTraslados onCambio={recargarTodo} />
+      <EsperandoCama pendientes={pendientes} miArea={miArea} />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi titulo="Ocupación UCI adultos"
@@ -150,7 +161,9 @@ export default function Comando() {
         <PanelQuirofanos quirofanos={qx} ahora={ahora} conAgenda={!!agenda.datos?.conAgenda} onAbrir={(q) => setQxId(q.id)} />
       )}
 
-      <DrawerCama cama={camaSel} ahora={ahora} usuario={usuario} onCerrar={() => setCamaId(null)} onCambio={recargarTodo} />
+      <DrawerCama cama={camaSel} ahora={ahora} usuario={usuario} onCerrar={() => setCamaId(null)} onCambio={recargarTodo}
+                  deMiArea={!miArea || !camaSel || servicioDe[camaSel.cama_id] === nombreMiArea}
+                  areaCama={camaSel ? areas.find((a) => a.nombre === servicioDe[camaSel.cama_id])?.id : null} />
       <DrawerQuirofano quirofano={qxSel} ahora={ahora} usuario={usuario} onCerrar={() => setQxId(null)} onCambio={recargarTodo} />
     </div>
   );

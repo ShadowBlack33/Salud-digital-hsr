@@ -110,6 +110,7 @@ export default function GaleriaImagenes({ pacienteId }) {
                   <span className="block p-3">
                     <span className="block truncate text-sm font-medium">{i.description}</span>
                     <span className="mt-0.5 block text-xs text-gray-strong">{i.modality || "—"} · {fechaCorta(i.date)}</span>
+                    {i.ilustrativa && <span className="mt-1 block text-[11px] leading-snug text-gray-strong" title={i.origen}>Cohorte externa NIH · ilustrativa</span>}
                   </span>
                 </button>
               </li>

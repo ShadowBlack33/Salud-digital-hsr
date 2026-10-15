@@ -106,6 +106,12 @@ def main():
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     ahora = datetime.now(timezone.utc)
 
+    # Lo que cuelga de esos encuentros (signos vitales, cancelaciones hechas
+    # en la demo) se borra primero: si no, la llave foránea impide borrarlos.
+    sub = "SELECT id FROM encuentros WHERE observaciones_texto = %s"
+    cur.execute(f"DELETE FROM observaciones WHERE encuentro_id IN ({sub})", (MARCA,))
+    cur.execute(f"DELETE FROM cancelaciones WHERE encuentro_id IN ({sub}) OR encuentro_nuevo_id IN ({sub})",
+                (MARCA, MARCA))
     cur.execute("DELETE FROM encuentros WHERE observaciones_texto = %s", (MARCA,))
     print(f"Encuentros simulados anteriores borrados: {cur.rowcount}")
     if args.limpiar:
@@ -136,7 +142,15 @@ def main():
               nacimiento, rng.choice(["M", "F"])))
         recien_nacidos.append(bidx)
 
-    iter_adultos, iter_rn = iter(adultos), iter(recien_nacidos)
+    if len(adultos) < 400:
+        # Base de pruebas pequeña (no la de 4.000 pacientes): se reutilizan
+        # pacientes para no fallar. En la base real esto no ocurre.
+        import itertools
+        print(f"Aviso: solo hay {len(adultos)} adultos; algunos pacientes se repiten.")
+        iter_adultos = itertools.cycle(adultos)
+    else:
+        iter_adultos = iter(adultos)
+    iter_rn = iter(recien_nacidos)
 
     def paciente_para(tipo_cama: str) -> str:
         return next(iter_rn if tipo_cama == "UCIN" else iter_adultos)

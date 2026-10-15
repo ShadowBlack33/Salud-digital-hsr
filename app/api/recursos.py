@@ -26,6 +26,18 @@ ESTADOS_QX = ["disponible", "en_preparacion", "en_cirugia", "en_limpieza", "bloq
 class CambioEstado(BaseModel):
     estado: str
     motivo: str | None = None
+    estado_esperado: str | None = None   # el que el usuario veía en pantalla
+
+
+def _verificar_concurrencia(obj, datos: CambioEstado, que: str) -> None:
+    """
+    La fila ya está bloqueada (FOR UPDATE). Si otra persona la cambió entre
+    que este usuario abrió el panel y confirmó, se rechaza con 409 en vez de
+    pisar su cambio (p. ej. dos personas asignando la misma cama libre).
+    """
+    if datos.estado_esperado and datos.estado_esperado != obj.estado:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"Otra persona acaba de cambiar {que} a '{obj.estado}'. Actualiza y vuelve a intentar.")
 
 
 def _subtipo_de(entidad_tipo: str, obj) -> str | None:
@@ -170,6 +182,13 @@ def ocupacion_camas(ctx: ContextoAcceso = Depends(RequierePermiso("cama", "read"
                 item["medico_nombre"] = nombre_medico[m.id]
                 item["medico_especialidad"] = m.especialidad.nombre if m.especialidad else None
         resultado.append(item)
+    if ctx.alcance_paciente() is None:
+        # Perfiles sin permiso sobre pacientes ven el estado de la
+        # cama, nunca quién la ocupa (Res. 1995/1999 art. 14).
+        for item in resultado:
+            for k in list(item):
+                if k.startswith("paciente") or k in ("diagnostico", "procedimiento", "medico_nombre"):
+                    item[k] = None
     return resultado
 
 
@@ -180,9 +199,15 @@ def cambiar_estado_cama(cama_id: int, datos: CambioEstado, request: Request,
     if datos.estado not in ESTADOS_CAMA:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             f"Estado inválido. Válidos: {ESTADOS_CAMA}")
-    c = db.query(Cama).filter(Cama.id == cama_id, Cama.activo.is_(True)).first()
+    c = db.query(Cama).filter(Cama.id == cama_id, Cama.activo.is_(True)).with_for_update(of=Cama).first()
     if c is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cama no encontrada")
+    _verificar_concurrencia(c, datos, f"la cama {c.codigo}")
+    from app.api.asignacion import _exigir_area, _mi_area
+    from app.services.turnos import exigir_turno
+    area = _mi_area(db, ctx)
+    _exigir_area(area, c.servicio_id, f"La cama {c.codigo}")
+    exigir_turno(db, ctx, area)
 
     anterior = c.estado
     _registrar_evento(db, "cama", c, datos.estado, ctx.usuario, datos.motivo)
@@ -222,6 +247,7 @@ def agenda_quirofanos(ctx: ContextoAcceso = Depends(RequierePermiso("quirofano",
     """
     from app.core.crypto import descifrar
 
+    ve_pacientes = ctx.alcance_paciente() is not None
     ahora = datetime.now(timezone.utc)
     quirofanos = db.query(Quirofano).filter(Quirofano.activo.is_(True)) \
         .order_by(Quirofano.id).all()
@@ -273,7 +299,7 @@ def agenda_quirofanos(ctx: ContextoAcceso = Depends(RequierePermiso("quirofano",
                          f"{descifrar(m.apellido_cifrado, 'personal.apellido')}") if m else None,
             "paciente_nombre_corto": _nombre_corto(
                 descifrar(p.nombre_cifrado, "pacientes.nombre"),
-                descifrar(p.apellido_cifrado, "pacientes.apellido")) if p else None,
+                descifrar(p.apellido_cifrado, "pacientes.apellido")) if p and ve_pacientes else None,
             "cama_destino": f["cama_destino"],
             "cama_destino_estado": f["cama_destino_estado"],
         }
@@ -306,9 +332,10 @@ def cambiar_estado_quirofano(quirofano_id: int, datos: CambioEstado, request: Re
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             f"Estado inválido. Válidos: {ESTADOS_QX}")
     q = db.query(Quirofano).filter(Quirofano.id == quirofano_id,
-                                   Quirofano.activo.is_(True)).first()
+                                   Quirofano.activo.is_(True)).with_for_update(of=Quirofano).first()
     if q is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Quirófano no encontrado")
+    _verificar_concurrencia(q, datos, f"el quirófano {q.codigo}")
 
     anterior = q.estado
     _registrar_evento(db, "quirofano", q, datos.estado, ctx.usuario, datos.motivo)

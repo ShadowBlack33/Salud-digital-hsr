@@ -70,9 +70,16 @@ def list_images(paciente_documento_bidx: str) -> list[dict]:
     images = []
     for instance_id in ids:
         t = orthanc("GET", f"/instances/{instance_id}/simplified-tags").json()
+        desc = t.get("SeriesDescription") or t.get("StudyDescription") or "Imagen"
         images.append({
+            "id": instance_id,   # el contrato del tester pide `id` o `url`
             "instance_id": instance_id,
-            "description": t.get("SeriesDescription") or t.get("StudyDescription") or "Imagen",
+            "description": desc,
+            # Procedencia honesta: las de la demo son reales pero de una cohorte
+            # externa, vinculadas a un paciente sintético (no son sus exámenes).
+            "origen": ("Imagen real de cohorte externa (NIH ChestX-ray14), vinculada a un caso sintético"
+                       if "NIH" in desc else t.get("InstitutionName") or "Cargada en Pulso"),
+            "ilustrativa": "NIH" in desc,
             "modality": t.get("Modality"),
             "date": t.get("StudyDate"),
             "time": t.get("StudyTime") or "",
@@ -89,7 +96,8 @@ def instance_paciente_bidx(instance_id: str) -> str:
     return tags.get("PatientID", "")
 
 
-def dicomize(png_bytes: bytes, paciente, descripcion: str) -> str:
+def dicomize(png_bytes: bytes, paciente, descripcion: str, modalidad: str = "OT",
+             extra: dict | None = None) -> str:
     """
     Convierte un PNG en una instancia DICOM dentro de Orthanc y devuelve su ID.
 
@@ -107,7 +115,33 @@ def dicomize(png_bytes: bytes, paciente, descripcion: str) -> str:
             "PatientSex": paciente["sexo"],
             "StudyDescription": descripcion,
             "SeriesDescription": descripcion,
-            "Modality": "OT",   # OT = "Other" -- no es un estudio de una modalidad clínica real
+            # OT = "Other" para lo que sube un usuario; DX para las radiografías
+            # del dataset NIH ChestX-ray14 (scripts/cargar_radiografias.py).
+            "Modality": modalidad,
+            **(extra or {}),
         },
     }
     return orthanc("POST", "/tools/create-dicom", json=body).json()["ID"]
+
+
+_CACHE_CON_IMAGENES: dict = {"t": 0.0, "ids": set()}
+
+
+def pacientes_con_imagenes() -> set[str]:
+    """documento_bidx de los pacientes con algún estudio en el PACS.
+
+    Una sola consulta a Orthanc (no una por paciente), guardada 60 s. Si el
+    PACS no responde devuelve un conjunto vacío: la lista de pacientes no
+    debe caerse por eso.
+    """
+    import time
+    if time.monotonic() - _CACHE_CON_IMAGENES["t"] < 60:
+        return _CACHE_CON_IMAGENES["ids"]
+    try:
+        r = httpx.post(settings.orthanc_url + "/tools/find", auth=_auth(), timeout=4,
+                       json={"Level": "Patient", "Query": {}, "Expand": True})
+        ids = {p.get("MainDicomTags", {}).get("PatientID") for p in r.json()} if r.status_code == 200 else set()
+    except (httpx.HTTPError, ValueError):
+        ids = set()
+    _CACHE_CON_IMAGENES.update(t=time.monotonic(), ids={i for i in ids if i})
+    return _CACHE_CON_IMAGENES["ids"]

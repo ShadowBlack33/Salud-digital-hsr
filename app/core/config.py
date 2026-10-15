@@ -4,12 +4,13 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     # Aplicación
-    app_nombre: str = "API Coordinación de Capacidad Quirúrgica"
+    app_nombre: str = "Pulso API · coordinación hospitalaria (caso Hospital San Rafael)"
     app_version: str = "1.0.0"
     entorno: str = os.getenv("ENTORNO", "desarrollo")
     debug: bool = os.getenv("DEBUG", "false").lower() == "true"
@@ -41,13 +42,32 @@ class Settings(BaseSettings):
     # prueba usuarios al azar puede distinguir cuáles existen (solo esos
     # devuelven el contador). Se puede apagar con LOGIN_MOSTRAR_INTENTOS=false.
     login_mostrar_intentos: bool = True
+    # R02: tras el bloqueo, la cuenta solo se libera cuando el admin la
+    # desbloquea. En False vuelve al comportamiento del Corte 1 (se libera
+    # sola a los minutos_bloqueo minutos).
+    bloqueo_requiere_admin: bool = True
 
-    # CORS
-    cors_origenes: list[str] = ["*"]
+    # CORS (R03). Lista separada por comas en la variable CORS_ORIGENES.
+    # En producción el front y la API comparten origen detrás de nginx, así
+    # que aquí solo hace falta el servidor de desarrollo de Vite. Nunca "*".
+    cors_origenes_texto: str = Field("http://localhost:5173",
+                                     validation_alias="CORS_ORIGENES")
+
+    # Servicios del Corte 2. Se declaran aquí, y no con os.getenv() suelto en
+    # cada módulo, para que todos lean la misma configuración.
+    mongo_url: str = "mongodb://localhost:27017/hsr"
+    ml_url: str = "http://localhost:8001"
+    # Secreto compartido con el rest-hook de la Subscription FHIR (R21).
+    hook_secret: str = ""
+
+    @property
+    def cors_origenes(self) -> list[str]:
+        return [o.strip() for o in self.cors_origenes_texto.split(",") if o.strip()]
 
     class Config:
         env_file = ".env"
         extra = "ignore"
+        populate_by_name = True
 
     def validar_produccion(self) -> None:
         """En producción no se arranca sin claves reales."""
@@ -62,7 +82,7 @@ class Settings(BaseSettings):
         ]
         if faltantes:
             raise RuntimeError(f"Faltan secretos en producción: {faltantes}")
-        if self.cors_origenes == ["*"]:
+        if "*" in self.cors_origenes:
             raise RuntimeError("CORS '*' no está permitido en producción")
 
 

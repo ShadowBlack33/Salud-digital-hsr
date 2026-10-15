@@ -10,6 +10,19 @@ export const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000"
 
 const K = { access: "hsr_access", refresh: "hsr_refresh", usuario: "hsr_usuario" };
 
+// La sesión vive en sessionStorage, no en localStorage: al cerrar la pestaña o
+// el navegador se pierde y hay que volver a entrar. En un computador compartido
+// de un hospital, una sesión que sobrevive al cierre del navegador es un riesgo.
+const almacen = (() => {
+  try { sessionStorage.setItem("__p", "1"); sessionStorage.removeItem("__p"); return sessionStorage; }
+  catch { const m = new Map(); return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) }; }
+})();
+// Restos de versiones anteriores que guardaban la sesión en localStorage.
+try { Object.values({ a: "hsr_access", r: "hsr_refresh", u: "hsr_usuario" }).forEach((k) => localStorage.removeItem(k)); } catch { /* nada */ }
+
+/** Token de acceso actual (lo usa el canal en vivo). */
+export const tokenActual = () => almacen.getItem(K.access);
+
 export class ApiError extends Error {
   constructor(status, data, mensaje) {
     super(mensaje);
@@ -21,28 +34,28 @@ export class ApiError extends Error {
 // ---- Sesión como un pequeño almacén al que los componentes se suscriben
 const oyentes = new Set();
 let usuario = (() => {
-  try { return JSON.parse(localStorage.getItem(K.usuario)); } catch { return null; }
+  try { return JSON.parse(almacen.getItem(K.usuario)); } catch { return null; }
 })();
 
 export const suscribirSesion = (fn) => { oyentes.add(fn); return () => oyentes.delete(fn); };
 export const getUsuario = () => usuario;
-export const estaAutenticado = () => !!localStorage.getItem(K.access);
+export const estaAutenticado = () => !!almacen.getItem(K.access);
 
 function cambiarUsuario(u) {
   usuario = u;
-  if (u) localStorage.setItem(K.usuario, JSON.stringify(u));
-  else localStorage.removeItem(K.usuario);
+  if (u) almacen.setItem(K.usuario, JSON.stringify(u));
+  else almacen.removeItem(K.usuario);
   oyentes.forEach((fn) => fn());
 }
 
 function guardarTokens(t) {
-  localStorage.setItem(K.access, t.access_token);
-  if (t.refresh_token) localStorage.setItem(K.refresh, t.refresh_token);
+  almacen.setItem(K.access, t.access_token);
+  if (t.refresh_token) almacen.setItem(K.refresh, t.refresh_token);
 }
 
 function cerrarSesionLocal() {
-  localStorage.removeItem(K.access);
-  localStorage.removeItem(K.refresh);
+  almacen.removeItem(K.access);
+  almacen.removeItem(K.refresh);
   cambiarUsuario(null);
 }
 
@@ -68,7 +81,7 @@ function comoError(r, cuerpo) {
 let renovando = null;
 function renovar() {
   if (renovando) return renovando;
-  const rt = localStorage.getItem(K.refresh);
+  const rt = almacen.getItem(K.refresh);
   if (!rt) return Promise.resolve(false);
   renovando = fetch(`${API_BASE}/auth/refresh`, {
     method: "POST",
@@ -86,7 +99,7 @@ function renovar() {
 }
 
 async function pedir(ruta, { json, ...opciones } = {}, reintentar = true) {
-  const token = localStorage.getItem(K.access);
+  const token = almacen.getItem(K.access);
   const headers = {
     ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -103,6 +116,8 @@ async function pedir(ruta, { json, ...opciones } = {}, reintentar = true) {
     throw new ApiError(0, null, "No se pudo conectar con el servidor");
   }
   if (r.status === 401 && reintentar && token) {
+    // Otra petición ya renovó la sesión mientras esta viajaba: reintentar con el token nuevo.
+    if (almacen.getItem(K.access) && almacen.getItem(K.access) !== token) return pedir(ruta, { json, ...opciones }, false);
     if (await renovar()) return pedir(ruta, { json, ...opciones }, false);
     cerrarSesionLocal();
   }
@@ -147,14 +162,32 @@ export async function login(username, password) {
   if (!r.ok) throw comoError(r, cuerpo); // .data trae intentos_restantes y bloqueado_hasta
   guardarTokens(cuerpo);
   const yo = await api("/auth/yo");
-  cambiarUsuario(yo);
+  // La bandera viene en la respuesta del login; /auth/yo también la trae en las versiones nuevas.
+  cambiarUsuario({ ...yo, debe_cambiar_password: yo.debe_cambiar_password ?? !!cuerpo.debe_cambiar_password });
   return yo;
 }
 
+/** Cambia la contraseña. La API revoca todas las sesiones: después hay que volver a entrar. */
+export async function cambiarPassword(actual, nueva) {
+  await api("/auth/cambiar-password", { method: "POST", json: { password_actual: actual, password_nueva: nueva } });
+  cerrarSesionLocal();
+}
+
 export async function cerrarSesion() {
-  const rt = localStorage.getItem(K.refresh);
+  const rt = almacen.getItem(K.refresh);
   if (rt) {
     try { await pedir("/auth/logout", { method: "POST", json: { refresh_token: rt } }, false); } catch { /* da igual */ }
   }
   cerrarSesionLocal();
+}
+
+/** Cierre por inactividad: sin teclado, mouse ni toques durante `minutos`, la
+ *  sesión se cierra. Devuelve la función que desactiva el vigilante. */
+export function vigilarInactividad(minutos, alVencer) {
+  let t;
+  const reiniciar = () => { clearTimeout(t); t = setTimeout(async () => { await cerrarSesion(); alVencer?.(); }, minutos * 60000); };
+  const eventos = ["pointerdown", "keydown", "wheel", "touchstart"];
+  eventos.forEach((e) => window.addEventListener(e, reiniciar, { passive: true }));
+  reiniciar();
+  return () => { clearTimeout(t); eventos.forEach((e) => window.removeEventListener(e, reiniciar)); };
 }

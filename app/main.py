@@ -6,16 +6,37 @@ Esquema OpenAPI:                     /openapi.json
 """
 from __future__ import annotations
 
+import logging
+import re
 import time
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import auth, clinico, imaging, pacientes, recursos
+from app.api import admin, asignacion, auth, cirugias, clinico, imaging, pacientes, perfiles, puerta_fhir, recursos, remisiones, usuarios
 from app.core.config import get_settings
+from app.services import metricas
 
 settings = get_settings()
+
+
+class _SinTokenEnRegistros(logging.Filter):
+    """
+    El canal en vivo recibe el JWT en la URL (?token=...), porque EventSource
+    no puede mandar cabeceras. Sin este filtro, uvicorn escribiría el token
+    completo en su registro de accesos. Se reemplaza por '***'.
+    """
+    _patron = re.compile(r"(token=)[^&\s]+")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(self._patron.sub(r"\1***", a) if isinstance(a, str) else a
+                                for a in record.args)
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_SinTokenEnRegistros())
 
 DESCRIPCION = """
 API del sistema de coordinación en tiempo real de **quirófanos, camas y urgencias**.
@@ -67,7 +88,10 @@ async def cabeceras_seguridad(request: Request, call_next):
     respuesta.headers["X-Content-Type-Options"] = "nosniff"
     respuesta.headers["X-Frame-Options"] = "DENY"
     respuesta.headers["Referrer-Policy"] = "no-referrer"
-    respuesta.headers["X-Tiempo-ms"] = f"{(time.perf_counter() - inicio) * 1000:.1f}"
+    ms = (time.perf_counter() - inicio) * 1000
+    respuesta.headers["X-Tiempo-ms"] = f"{ms:.1f}"
+    ruta = request.scope.get("route")
+    metricas.anotar(f"{request.method} {getattr(ruta, 'path', 'otra')}", respuesta.status_code, ms)
     if settings.entorno == "produccion":
         respuesta.headers["Strict-Transport-Security"] = \
             "max-age=31536000; includeSubDomains"
@@ -89,11 +113,18 @@ async def error_no_controlado(request: Request, exc: Exception):
 app.include_router(auth.router)
 app.include_router(pacientes.router)
 app.include_router(clinico.router)
+app.include_router(asignacion.router)
 app.include_router(recursos.router)
 app.include_router(recursos.fhir_router)
 app.include_router(recursos.audit_router)
 app.include_router(recursos.analitica_router)
 app.include_router(imaging.router)
+app.include_router(usuarios.router)
+app.include_router(perfiles.router)
+app.include_router(cirugias.router)
+app.include_router(remisiones.router)
+app.include_router(puerta_fhir.router)
+app.include_router(admin.router)
 
 
 @app.get("/", tags=["Sistema"], summary="Información de la API")
@@ -122,6 +153,38 @@ def salud():
     from app.services import pacs
     estado_pacs = "ok" if pacs.is_alive() else "no disponible"
 
+    # Servicio de IA (Corte 2): solo se reporta, la API arranca aunque no esté.
+    import httpx
+    try:
+        estado_ml = "ok" if httpx.get(f"{settings.ml_url}/salud", timeout=2).status_code == 200 else "error"
+    except httpx.HTTPError:
+        estado_ml = "no disponible"
+
     return {"api": "ok", "base_datos": estado_bd,
             "servidor_fhir": settings.fhir_base_url,
-            "pacs": estado_pacs}
+            "pacs": estado_pacs, "ml": estado_ml, "mongo": _estado_mongo()}
+
+
+def _estado_mongo() -> str:
+    """MongoDB (contabilidad, R09). Con pymongo hace ping; sin él, revisa que el puerto responda."""
+    import os
+    url = os.getenv("MONGO_URL")
+    if not url:
+        return "sin configurar"
+    try:
+        import pymongo  # noqa: PLC0415 -- lo agrega el módulo de contabilidad
+        with pymongo.MongoClient(url, serverSelectionTimeoutMS=1500) as c:
+            c.admin.command("ping")
+        return "ok"
+    except ImportError:
+        import socket
+        # Host y puerto después de la última "@": una contraseña con # / ? : rompe urlparse.
+        resto = url.rsplit("@", 1)[-1].split("/", 1)[0].split("?", 1)[0]
+        host, _, puerto = resto.partition(":")
+        try:
+            with socket.create_connection((host, int(puerto or 27017)), timeout=2):
+                return "ok (contenedor arriba; módulo de contabilidad pendiente)"
+        except (OSError, ValueError):
+            return "no disponible"
+    except Exception:  # noqa: BLE001
+        return "no disponible"

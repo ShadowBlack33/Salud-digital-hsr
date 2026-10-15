@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, Eye, EyeOff, Loader2, LockKeyhole, WifiOff } from "lucide-react";
 import Logo from "../components/Logo";
 import EstadoServicios from "../components/EstadoServicios";
-import { estaAutenticado, login } from "../api";
+import { cerrarSesion, estaAutenticado, login } from "../api";
 import { horaConSegundos } from "../lib/format";
 
 const CUENTAS = [
-  { usuario: "admin", rol: "Administrador", detalle: "Acceso completo" },
-  { usuario: "coordinador", rol: "Coordinación quirúrgica", detalle: "Camas y quirófanos" },
-  { usuario: "enfe0082", rol: "Jefe de enfermería", detalle: "Tablero de camas" },
-  { usuario: "medi0001", rol: "Médico especialista", detalle: "Pacientes e imágenes" },
-  { usuario: "paciente_demo", rol: "Paciente", detalle: "Solo su propia ficha" },
+  { usuario: "admin", rol: "Administrador", detalle: "Usuarios, desbloqueos y auditoría" },
+  { usuario: "coordinador", rol: "Coordinador del hospital", detalle: "Capacidad, ocupación proyectada y dinero" },
+  { usuario: "jefe01", rol: "Enfermera jefe · Cirugía", detalle: "Programa y mueve cirugías" },
+  { usuario: "jefe_urg", rol: "Enfermero jefe · Urgencias", detalle: "Asigna camas de urgencias y pide traslados" },
+  { usuario: "jefe_uci", rol: "Enfermera jefe · UCI", detalle: "Recibe traslados y asigna camas de UCI" },
+  { usuario: "medico01", rol: "Médico general", detalle: "Sus pacientes, críticos e IA" },
+  { usuario: "especialista01", rol: "Especialista", detalle: "Remisiones y sus cirugías" },
+  { usuario: "contable01", rol: "Contable", detalle: "Facturación, sin datos clínicos" },
+  { usuario: "paciente_demo", rol: "Paciente", detalle: "Su salud y lo que se le cobra" },
 ];
 const CLAVE_DEMO = import.meta.env.VITE_DEMO_PASSWORD || "";
 const OCULTAR_CUENTAS = import.meta.env.VITE_OCULTAR_CUENTAS_DEMO === "true";
@@ -57,7 +61,8 @@ export default function Login() {
   const [sacudiendo, setSacudiendo] = useState(false);
   const campoClave = useRef(null);
 
-  if (estaAutenticado()) return <Navigate to={state?.desde || "/app"} replace />;
+  // Volver al login con una sesión abierta (botón atrás, otra URL) la cierra.
+  useEffect(() => { if (estaAutenticado()) cerrarSesion(); }, []);
 
   const bloqueado = fallo?.tipo === "bloqueo";
 
@@ -69,7 +74,9 @@ export default function Login() {
       await login(usuario.trim(), clave);
       navegar(state?.desde || "/app", { replace: true });
     } catch (err) {
-      if (err.status === 423) setFallo({ tipo: "bloqueo", hasta: leerBloqueo(err) });
+      if (err.status === 423) setFallo(err.data?.requiere_admin
+        ? { tipo: "bloqueo", requiereAdmin: true }
+        : { tipo: "bloqueo", hasta: leerBloqueo(err) });
       else if (err.status === 401) { setFallo({ tipo: "credenciales", restantes: err.data?.intentos_restantes, max: err.data?.max_intentos ?? 3 }); setSacudiendo(true); setTimeout(() => setSacudiendo(false), 500); }
       else if (err.status === 0) setFallo({ tipo: "red" });
       else setFallo({ tipo: "otro", mensaje: err.message });
@@ -99,14 +106,29 @@ export default function Login() {
         <main className="anim-rise rounded-[32px] bg-paper-white p-7 shadow-lift sm:p-9">
           <div className={sacudiendo ? "anim-shake" : ""}>
           <Logo />
-          <h1 className="mt-7 text-[32px] font-semibold leading-[1.1] tracking-display">Ingresa al centro de mando</h1>
+          <h1 className="mt-7 text-[32px] font-semibold leading-[1.1] tracking-display">Ingresa a Pulso</h1>
           <p className="mt-2 text-[15px] text-gray-strong">Usa tu usuario institucional. Cada acceso queda en la auditoría.</p>
+          <p className="mt-2 text-xs text-gray-strong">Demostración sobre el caso hipotético <b className="font-semibold text-ink">Hospital San Rafael</b>. Los datos son sintéticos.</p>
+          {state?.mensaje && !fallo && <p role="status" className="anim-pop mt-5 rounded-2xl bg-green-soft px-4 py-3 text-sm font-medium text-green-ink">{state.mensaje}</p>}
 
           {bloqueado && (
             <div role="alert" className="anim-pop mt-6 rounded-3xl bg-coral-soft p-5 text-coral-ink">
-              <p className="flex items-center gap-2 font-semibold"><LockKeyhole size={18} aria-hidden="true" />Cuenta bloqueada temporalmente</p>
-              <p className="mt-1 text-sm">Fallaste 3 veces seguidas. Por seguridad, podrás volver a intentar a las {horaConSegundos(fallo.hasta)}</p>
-              <p className="mt-3 flex items-center gap-3 text-ink"><CuentaRegresiva hasta={fallo.hasta} onTermina={() => setFallo(null)} /><span className="text-sm text-coral-ink">para desbloquearse</span></p>
+              {fallo.requiereAdmin ? (
+                <>
+                  <p className="flex items-center gap-2 font-semibold"><LockKeyhole size={18} aria-hidden="true" />Cuenta bloqueada</p>
+                  <p className="mt-1 text-sm">Se registraron 3 intentos fallidos seguidos. Por seguridad, solo el administrador puede desbloquearla. El aviso ya le llegó.</p>
+                  <button type="button" onClick={() => { setFallo(null); setUsuario(""); setClave(""); }}
+                          className="mt-3 rounded-full bg-paper-white px-4 py-2 text-sm font-medium text-ink transition hover:bg-cloud-card">
+                    Entrar con otra cuenta
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="flex items-center gap-2 font-semibold"><LockKeyhole size={18} aria-hidden="true" />Cuenta bloqueada temporalmente</p>
+                  <p className="mt-1 text-sm">Fallaste 3 veces seguidas. Por seguridad, podrás volver a intentar a las {horaConSegundos(fallo.hasta)}</p>
+                  <p className="mt-3 flex items-center gap-3 text-ink"><CuentaRegresiva hasta={fallo.hasta} onTermina={() => setFallo(null)} /><span className="text-sm text-coral-ink">para desbloquearse</span></p>
+                </>
+              )}
             </div>
           )}
 
@@ -135,7 +157,7 @@ export default function Login() {
                 <p className="flex items-start gap-2 font-medium">
                   {fallo.tipo === "red" ? <WifiOff size={17} className="mt-0.5 shrink-0" aria-hidden="true" /> : <AlertTriangle size={17} className="mt-0.5 shrink-0" aria-hidden="true" />}
                   {fallo.tipo === "credenciales" && (conContador
-                    ? (ultimo ? "Contraseña incorrecta. Te queda 1 intento antes del bloqueo temporal." : `Usuario o contraseña incorrectos. Te quedan ${fallo.restantes} intentos.`)
+                    ? (ultimo ? "Contraseña incorrecta. Te queda 1 intento antes de que la cuenta se bloquee." : `Usuario o contraseña incorrectos. Te quedan ${fallo.restantes} intentos.`)
                     : "Usuario o contraseña incorrectos.")}
                   {fallo.tipo === "red" && "No se pudo conectar con el servidor. Revisa que la API esté encendida."}
                   {fallo.tipo === "otro" && fallo.mensaje}

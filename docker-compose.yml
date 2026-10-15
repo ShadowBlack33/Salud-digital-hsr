@@ -1,16 +1,24 @@
-# Hospital San Rafael: todo el sistema en Docker.
+# Hospital San Rafael: todo el sistema en Docker (R05).
 #
 #   docker compose up -d --build        # levanta todo
 #   docker compose ps                   # estado de cada contenedor
 #   docker compose logs -f api          # registros de la API
+#   docker compose logs cloudflared     # aquí aparece la URL pública (trycloudflare.com)
 #
-#   Front ........ http://localhost:5173
-#   API (Swagger)  http://localhost:8000/docs
-#   FHIR ......... http://localhost:8080/fhir
-#   PACS ......... http://localhost:8042   
+#   Público ....... la URL HTTPS del túnel: front en /, API en /api, FHIR en /fhir
+#   Front local ... http://localhost:5173  (mismas rutas: /api y /fhir)
+#   API (Swagger) . http://localhost:8000/docs   (solo desde este equipo)
+#   FHIR .......... http://localhost:8080/fhir   (solo desde este equipo)
+#   PACS .......... http://localhost:8042        (solo desde este equipo)
 #
-# Los secretos (DATABASE_URL, JWT_SECRET_KEY, claves de cifrado) salen del .env
-# de esta carpeta. El .env NO se copia dentro de ninguna imagen.
+# Los secretos salen del .env de esta carpeta (ver .env.example). El .env NO se
+# copia dentro de ninguna imagen.
+#
+# Base de datos: el servicio "postgres" existe para que el sistema completo se
+# levante con un solo comando. Mientras el equipo siga trabajando sobre Neon,
+# la API usa la DATABASE_URL del .env. Para usar la base local, en el .env:
+#   DATABASE_URL=postgresql+psycopg2://hsr:<POSTGRES_PASSWORD>@postgres:5432/hsanrafael
+# y se cargan los datos una vez desde este equipo (ver docs/DESPLIEGUE.md).
 services:
   fhir-db:
     image: postgres:16-alpine
@@ -34,8 +42,9 @@ services:
     depends_on:
       fhir-db:
         condition: service_healthy
+    # Solo desde este equipo: hacia afuera FHIR sale por nginx, en /fhir.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       spring.datasource.url: jdbc:postgresql://fhir-db:5432/hapi
       spring.datasource.username: hapi
@@ -45,6 +54,9 @@ services:
       hapi.fhir.fhir_version: R4
       hapi.fhir.allow_multiple_delete: "true"
       hapi.fhir.reuse_cached_search_results_millis: "0"
+      # R21: HAPI avisa a la API cuando llega un recurso que cumple una
+      # Subscription (canal rest-hook hacia http://api:8000/fhir-hook/...).
+      hapi.fhir.subscription.resthook_enabled: "true"
 
   # Servidor PACS (DICOM) para imágenes médicas. El navegador nunca lo toca:
   # solo la API le habla, por eso el puerto solo se publica en 127.0.0.1.
@@ -62,6 +74,58 @@ services:
       - "127.0.0.1:8042:8042"
     volumes:
       - orthanc_data:/var/lib/orthanc/db
+
+  # PostgreSQL propio del sistema (R05). Ver el encabezado: mientras el equipo
+  # use Neon, este servicio corre pero la API no lo usa. Al crear el volumen
+  # por primera vez carga el esquema y los catálogos; los datos se cargan
+  # después (docs/DESPLIEGUE.md).
+  postgres:
+    image: postgres:16-alpine
+    container_name: hsr-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hsanrafael
+      POSTGRES_USER: hsr
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambiar_en_produccion}
+    volumes:
+      - hsr_pgdata:/var/lib/postgresql/data
+      - ./db/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./db/02_seed_catalogos.sql:/docker-entrypoint-initdb.d/02_seed_catalogos.sql:ro
+    # Publicado solo en este equipo (puerto 5433 para no chocar con un
+    # PostgreSQL instalado), para cargar los datos con los scripts.
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hsr -d hsanrafael"]
+      interval: 10s
+      retries: 5
+
+  # MongoDB para la contabilidad (R09). El puerto se publica solo en 127.0.0.1
+  # (este PC, para MongoDB Compass); el túnel no lo expone: hacia afuera solo
+  # la API le habla.
+  mongo:
+    image: mongo:7
+    container_name: hsr-mongo
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: hsr
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-cambiar_en_produccion}
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      retries: 5
+
+  # Servicio de IA (R10, R12). Solo recibe variables clínicas seudonimizadas
+  # desde la API; no habla con ninguna base de datos ni publica puerto.
+  ml:
+    build:
+      context: ./ml
+    container_name: hsr-ml
+    restart: unless-stopped
 
   # API FastAPI. Habla con la base de datos en Neon (por internet), con HAPI FHIR
   # y con Orthanc (por la red interna de Docker, por su nombre de servicio).
@@ -81,30 +145,114 @@ services:
       ORTHANC_URL: http://orthanc:8042
       ORTHANC_USER: api
       ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:-orthanc_dev_2026}
+      MONGO_URL: mongodb://hsr:${MONGO_PASSWORD:-cambiar_en_produccion}@mongo:27017/hsr?authSource=admin
+      ML_URL: http://ml:8001
+      # Detrás de nginx y del túnel, la IP real llega en X-Forwarded-For.
+      FORWARDED_ALLOW_IPS: "*"
+    # La API espera a que Mongo y la IA estén sanos; HAPI y Orthanc no traen
+    # herramientas para un healthcheck confiable, así que basta con que arranquen.
     depends_on:
-      - hapi-fhir
-      - orthanc
+      hapi-fhir:
+        condition: service_started
+      orthanc:
+        condition: service_started
+      mongo:
+        condition: service_healthy
+      ml:
+        condition: service_healthy
+    # Solo desde este equipo (Swagger). Hacia afuera la API sale por nginx, en /api.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
-  # Front en React, compilado y servido por nginx. VITE_API_BASE se incrusta en
-  # el JS y lo usa tu NAVEGADOR, por eso es localhost:8000 (el puerto publicado
-  # de la API) y no el nombre "api" de la red interna.
+  # Jornada en curso para el tablero. El generador de datos deja solo historia
+  # (cirugías ya terminadas); sin esto, el centro de mando muestra todo libre y
+  # camas "en limpieza desde hace semanas". Corre scripts/simular_jornada.py
+  # (y luego scripts/casos_demo.py, los pacientes de medico01 y especialista01)
+  # una vez cada vez que se levanta el sistema, cuando la API ya está sana, y
+  # termina. Borra y vuelve a crear solo lo que él mismo creó la vez anterior.
+  #
+  #   SIMULAR_JORNADA=false   en el .env para no correrlo (base compartida)
+  #   JORNADA_CADA_MIN=60     en el .env para refrescarla cada hora (demo larga)
+  #   CARGAR_RADIOGRAFIAS=false  para no subir las radiografías NIH al PACS
+  #   docker compose run --rm jornada      para correrlo a mano
+  jornada:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: hsr-jornada
+    env_file: .env
+    environment:
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USER: api
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:-orthanc_dev_2026}
+      RX_CACHE: /tmp/rx_nih
+    restart: "no"
+    depends_on:
+      api:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ "$${SIMULAR_JORNADA:-true}" = "false" ]; then echo "Jornada omitida (SIMULAR_JORNADA=false)"; exit 0; fi
+        primera=1
+        while true; do
+          python scripts/simular_jornada.py || echo "La simulación falló; el sistema sigue funcionando."
+          python scripts/casos_demo.py || echo "Los casos de demostración fallaron; el sistema sigue funcionando."
+          if [ "$$primera" = "1" ] && [ "$${CARGAR_RADIOGRAFIAS:-true}" != "false" ]; then
+            python scripts/cargar_radiografias.py || echo "No se cargaron las radiografías (¿sin internet o sin PACS?)."
+          fi
+          primera=0
+          [ -z "$${JORNADA_CADA_MIN:-}" ] && exit 0
+          echo "Siguiente actualización en $${JORNADA_CADA_MIN} min"; sleep $$(( $${JORNADA_CADA_MIN} * 60 ))
+        done
+
+  # Front en React, compilado y servido por nginx. nginx también hace de
+  # puerta única: /api va a la API, /api/eventos es el canal en vivo y /fhir
+  # va a HAPI. Por eso VITE_API_BASE es una ruta relativa: el navegador llama
+  # al mismo origen desde el que cargó la página (localhost o el túnel).
   front:
     build:
       context: ./front
       args:
-        VITE_API_BASE: http://localhost:8000
+        VITE_API_BASE: /api
         # Opcional: las cuentas de demostración del login rellenan la contraseña.
         # Se lee del .env de esta carpeta; si no existe, queda vacío.
         VITE_DEMO_PASSWORD: ${VITE_DEMO_PASSWORD:-}
+        VITE_MINUTOS_ESCALAMIENTO: ${VITE_MINUTOS_ESCALAMIENTO:-5}
+        VITE_DATOS_DEMO: ${VITE_DATOS_DEMO:-true}
     container_name: hsr-front
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+      hapi-fhir:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 15s
+      retries: 3
     ports:
       - "5173:80"
+
+  # Túnel de Cloudflare (R04): expone nginx por una URL HTTPS pública.
+  #
+  # Por defecto es un "quick tunnel": no necesita cuenta, pero la URL cambia
+  # cada vez que este contenedor se reinicia. Se genera el sábado, se copia a
+  # tester.yaml y NO se reinicia hasta después de la sustentación.
+  #
+  # URL fija (túnel con nombre, ver docs/DESPLIEGUE.md): en el .env poner
+  #   CLOUDFLARED_COMANDO=tunnel --no-autoupdate run --token <token de Cloudflare>
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: hsr-cloudflared
+    restart: unless-stopped
+    command: ${CLOUDFLARED_COMANDO:-tunnel --no-autoupdate --url http://front:80}
+    depends_on:
+      front:
+        condition: service_healthy
 
 volumes:
   fhir_pgdata:
   orthanc_data:
+  hsr_pgdata:
+  mongo_data:
