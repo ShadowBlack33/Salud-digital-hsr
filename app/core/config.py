@@ -59,14 +59,25 @@ class Settings(BaseSettings):
     ml_url: str = "http://localhost:8001"
     # Secreto compartido con el rest-hook de la Subscription FHIR (R21).
     hook_secret: str = ""
+    # Dirección con la que HAPI alcanza a la API (red interna de Docker). Si la
+    # API corre fuera de Docker, apuntar a host.docker.internal:8000.
+    hook_url_base: str = "http://api:8000"
+
+    # Sistema reactivo (R17-R21)
+    # Minutos sin reconocer antes de escalar una alerta crítica al admin.
+    # Debe coincidir con VITE_MINUTOS_ESCALAMIENTO (la cuenta regresiva del front).
+    alerta_escalamiento_minutos: int = 5  # ALERTA_ESCALAMIENTO_MINUTOS
+    # Tarifa de referencia de la factura automática del análisis de IA (COP).
+    tarifa_analisis_ia: int = 45000
+    # false = no arrancar las tareas de fondo (registro de la
+    # Subscription FHIR). Las pruebas automáticas lo apagan.
+    tareas_fondo: bool = True
 
     # IA (R12, R20). La clave del seudónimo es PROPIA: no se reutiliza ninguna
     # de las otras, así filtrar una no compromete la otra.
     ia_seudonimo_key: str = ""            # IA_SEUDONIMO_KEY
     ml_timeout_segundos: float = 10.0     # ML_TIMEOUT_SEGUNDOS
-    # Una alerta crítica sin reconocer más de N minutos se escala al admin
-    # y a otro clínico (justificación en docs/EVENTOS.md).
-    alerta_escalamiento_minutos: int = 5  # ALERTA_ESCALAMIENTO_MINUTOS
+    # (Los minutos de escalamiento son alerta_escalamiento_minutos, arriba.)
 
     @property
     def cors_origenes(self) -> list[str]:

@@ -45,6 +45,8 @@ jobs:
     env:
       DATABASE_URL: postgresql+psycopg2://hsr:ci@localhost:5432/hsanrafael
       PGPASSWORD: ci
+      TAREAS_FONDO: "false"
+      HOOK_SECRET: secreto-de-ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -66,5 +68,7 @@ jobs:
           $P -f db/02_seed_catalogos.sql
           python scripts/generar_datos.py --meses 1 --pacientes 200 --salida /tmp/03.sql
           $P -f /tmp/03.sql
-           for f in db/04_*.sql db/06_*.sql db/07_*.sql db/08_*.sql db/09_*.sql db/10_*.sql db/11_*.sql db/12_*.sql; do $P -f "$f"; done
+           for f in db/04_*.sql db/06_*.sql db/07_*.sql db/08_*.sql db/09_*.sql db/10_*.sql db/11_*.sql db/12_*.sql db/13_*.sql db/14_*.sql; do [ -e "$f" ] || continue; $P -f "$f"; done
       - run: python scripts/test_e2e.py
+      - name: Sistema reactivo (canal en vivo, bandeja, reactores, FHIR)
+        run: python scripts/test_tiempo_real.py

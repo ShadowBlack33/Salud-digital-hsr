@@ -203,6 +203,10 @@ def analizar(datos: Analizar, request: Request,
                            "probabilidad": resultado["probabilidad"], "critico": r["critico"],
                            "modelo_version": r["modelo_version"], "origen_variables": origen},
               request=request)
+    try:   # R18: sube el contador reportes_por_revisar y avisa "tu reporte está listo"
+        reactores.al_reporte_pendiente(db, _Fila(r))
+    except Exception:  # noqa: BLE001 -- el aviso no tumba el análisis
+        pass
 
     alerta_id = crear_alerta_critica(db, ctx, request, r, p) if r["critico"] else None
     db.commit()

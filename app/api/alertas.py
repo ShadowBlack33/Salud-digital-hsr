@@ -19,7 +19,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -150,7 +150,8 @@ def escalar_vencidas() -> int:
         return len(vencidas)
 
 
-async def _bucle_escalamiento() -> None:
+async def bucle_escalamiento() -> None:
+    """Revisa cada 30 s. Lo arranca el lifespan de app/main.py (ciclo_de_vida)."""
     while True:
         try:
             n = await asyncio.to_thread(escalar_vencidas)
@@ -160,9 +161,3 @@ async def _bucle_escalamiento() -> None:
             log.exception("Error revisando alertas para escalar")
         await asyncio.sleep(INTERVALO_REVISION_S)
 
-
-def registrar_escalamiento(app: FastAPI) -> None:
-    """Arranca la tarea de fondo con la API (se llama desde app/main.py)."""
-    @app.on_event("startup")
-    async def _iniciar() -> None:  # noqa: RUF029
-        app.state.tarea_escalamiento = asyncio.create_task(_bucle_escalamiento())

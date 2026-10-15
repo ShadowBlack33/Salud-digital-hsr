@@ -155,6 +155,10 @@ def tiene_permiso(permisos_usuario: list[str], recurso: str, accion: str) -> str
     # permisos sin alcance explícito (ej. 'paciente:restore')
     if f"{recurso}:{accion}" in permisos_usuario:
         return "all"
+    # 'fhir:sync:write' se sembró con alcance 'all' pero su código termina en
+    # ':write' (la puerta de nginx lo compara tal cual). Se acepta como 'all'.
+    if f"{recurso}:{accion}:write" in permisos_usuario:
+        return "all"
     return None
 
 
