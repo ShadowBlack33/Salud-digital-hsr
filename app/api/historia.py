@@ -12,7 +12,7 @@ con la de otro) y el contable no tiene paciente:read (403).
 from __future__ import annotations
 
 import io
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -30,6 +30,15 @@ router = APIRouter(prefix="/pacientes", tags=["Historia clínica"])
 TIPO_ENCUENTRO = {"cirugia": "Cirugía", "consulta_externa": "Consulta externa", "urgencias": "Urgencias",
                   "hospitalizacion": "Hospitalización", "consulta": "Consulta"}
 SEXO = {"F": "Femenino", "M": "Masculino", "O": "Otro"}
+
+# El contenedor corre en UTC: las fechas del PDF se muestran en hora de Colombia.
+# Colombia no tiene horario de verano, así que basta un desfase fijo si la
+# imagen no trae la base de zonas horarias.
+try:
+    from zoneinfo import ZoneInfo
+    ZONA = ZoneInfo("America/Bogota")
+except Exception:  # noqa: BLE001
+    ZONA = timezone(timedelta(hours=-5), "COT")
 
 
 def _texto(cifrado, campo: str) -> str | None:
@@ -119,7 +128,7 @@ def _fecha(v) -> str:
     if v is None:
         return ""
     if isinstance(v, datetime):
-        return v.astimezone().strftime("%Y-%m-%d %H:%M")
+        return v.astimezone(ZONA).strftime("%Y-%m-%d %H:%M")
     return v.strftime("%Y-%m-%d") if isinstance(v, date) else str(v)
 
 

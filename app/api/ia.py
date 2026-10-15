@@ -116,7 +116,7 @@ def _llamar_modelo(payload: dict) -> dict:
                             "El servicio de IA no responde. Intente de nuevo en unos segundos.")
     if resp.status_code == 422:
         detalle = resp.json().get("detail") if resp.headers.get("content-type", "").startswith("application/json") else None
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"El modelo rechazó los datos: {detalle}")
+        raise HTTPException(422, f"El modelo rechazó los datos: {detalle}")
     if resp.status_code == 503:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "El servicio de IA está arriba pero sin modelo cargado.")
     if resp.status_code != 200:
@@ -165,7 +165,7 @@ def analizar(datos: Analizar, request: Request,
 
     variables = seudo.variables_clinicas(db, p.documento_bidx)
     if not variables:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+        raise HTTPException(422,
                             "El paciente no tiene glucosa, potasio ni hemoglobina registradas: "
                             "sin al menos un laboratorio el modelo no puede estimar el riesgo.")
     try:
