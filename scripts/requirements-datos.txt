@@ -1,0 +1,12 @@
+# Dependencias para los scripts de datos (R07): clusters con VitalDB y su carga a MongoDB.
+# La API no las necesita (por eso no están en requirements.txt).
+#   pip install -r scripts/requirements-datos.txt
+pandas>=2.2
+numpy>=1.26
+scikit-learn>=1.4
+scipy>=1.11
+matplotlib>=3.8
+pymongo>=4.7
+python-dotenv>=1.0
+# Solo para abrir el notebook fuera de VS Code:
+notebook>=7.0

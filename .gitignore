@@ -11,3 +11,6 @@ db/03_datos_sinteticos.sql
 
 # Radiografías NIH descargadas por scripts/cargar_radiografias.py
 data/rx_nih/
+
+# VitalDB descargado y resultados de clusters (se regeneran con scripts/clusters_vitaldb.py)
+data/vitaldb/

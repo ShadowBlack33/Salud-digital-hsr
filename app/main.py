@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import admin, asignacion, auth, cirugias, clinico, imaging, pacientes, perfiles, puerta_fhir, recursos, remisiones, usuarios
+from app.api import admin, asignacion, auth, cirugias, clinico, clusters, contabilidad, imaging, pacientes, perfiles, puerta_fhir, recursos, remisiones, usuarios
 from app.core.config import get_settings
 from app.services import metricas
 
@@ -118,11 +118,13 @@ app.include_router(recursos.router)
 app.include_router(recursos.fhir_router)
 app.include_router(recursos.audit_router)
 app.include_router(recursos.analitica_router)
+app.include_router(clusters.router)
 app.include_router(imaging.router)
 app.include_router(usuarios.router)
 app.include_router(perfiles.router)
 app.include_router(cirugias.router)
 app.include_router(remisiones.router)
+app.include_router(contabilidad.router)
 app.include_router(puerta_fhir.router)
 app.include_router(admin.router)
 
