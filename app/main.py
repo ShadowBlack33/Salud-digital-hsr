@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api import admin, asignacion, auth, cirugias, clinico, imaging, pacientes, perfiles, puerta_fhir, recursos, remisiones, usuarios
+from app.api import alertas, historia, ia
 from app.core.config import get_settings
 from app.services import metricas
 
@@ -125,6 +126,11 @@ app.include_router(cirugias.router)
 app.include_router(remisiones.router)
 app.include_router(puerta_fhir.router)
 app.include_router(admin.router)
+# Corte 2 · IA (R10, R11, R12, R20)
+app.include_router(ia.router)
+app.include_router(alertas.router)
+app.include_router(historia.router)
+alertas.registrar_escalamiento(app)
 
 
 @app.get("/", tags=["Sistema"], summary="Información de la API")
