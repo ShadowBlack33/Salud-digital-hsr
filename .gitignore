@@ -11,3 +11,6 @@ db/03_datos_sinteticos.sql
 
 # Radiografías NIH descargadas por scripts/cargar_radiografias.py
 data/rx_nih/
+
+# Datos crudos del modelo de IA (no se suben)
+ml/datos/
