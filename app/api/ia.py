@@ -43,6 +43,11 @@ _reportes = table("reportes_ia", column("id"), column("paciente_id"), column("es
 
 class Analizar(BaseModel):
     paciente_id: str = Field(..., min_length=1, max_length=64)
+    # Opcional: valores clínicos enviados en la petición (por ejemplo, por el tester
+    # con paciente_critico). Si vienen, reemplazan a los de las observaciones
+    # registradas. Pasan por la MISMA lista permitida de seudonimizacion.py: una llave
+    # que no sea variable del modelo (por ejemplo "nombre") se descarta.
+    variables: dict[str, object] | None = None   # sin tipo en los valores: se filtran abajo, sin devolverlos en errores
 
 
 class Decision(BaseModel):
@@ -164,6 +169,12 @@ def analizar(datos: Analizar, request: Request,
     ctx.verificar_registro(p)
 
     variables = seudo.variables_clinicas(db, p.documento_bidx)
+    origen = "observaciones"
+    if datos.variables:
+        enviadas = {k: v for k, v in datos.variables.items() if k in seudo.VARIABLES_LOINC and seudo._numero(v) is not None}
+        if enviadas:
+            variables = {**variables, **enviadas}
+            origen = "observaciones+peticion" if len(variables) > len(enviadas) else "peticion"
     if not variables:
         raise HTTPException(422,
                             "El paciente no tiene glucosa, potasio ni hemoglobina registradas: "
@@ -190,7 +201,8 @@ def analizar(datos: Analizar, request: Request,
     registrar(db, ctx.usuario, "reporte_ia", r["id"], "ia_analisis",
               valor_nuevo={"paciente_id": p.documento_bidx, "estado": "pendiente",
                            "probabilidad": resultado["probabilidad"], "critico": r["critico"],
-                           "modelo_version": r["modelo_version"]}, request=request)
+                           "modelo_version": r["modelo_version"], "origen_variables": origen},
+              request=request)
 
     alerta_id = crear_alerta_critica(db, ctx, request, r, p) if r["critico"] else None
     db.commit()
