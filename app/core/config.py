@@ -60,6 +60,14 @@ class Settings(BaseSettings):
     # Secreto compartido con el rest-hook de la Subscription FHIR (R21).
     hook_secret: str = ""
 
+    # IA (R12, R20). La clave del seudónimo es PROPIA: no se reutiliza ninguna
+    # de las otras, así filtrar una no compromete la otra.
+    ia_seudonimo_key: str = ""            # IA_SEUDONIMO_KEY
+    ml_timeout_segundos: float = 10.0     # ML_TIMEOUT_SEGUNDOS
+    # Una alerta crítica sin reconocer más de N minutos se escala al admin
+    # y a otro clínico (justificación en docs/EVENTOS.md).
+    alerta_escalamiento_minutos: int = 5  # ALERTA_ESCALAMIENTO_MINUTOS
+
     @property
     def cors_origenes(self) -> list[str]:
         return [o.strip() for o in self.cors_origenes_texto.split(",") if o.strip()]
@@ -78,6 +86,7 @@ class Settings(BaseSettings):
                 "JWT_SECRET_KEY": self.jwt_secret_key,
                 "APP_ENCRYPTION_KEY": self.app_encryption_key,
                 "APP_BLIND_INDEX_KEY": self.app_blind_index_key,
+                "IA_SEUDONIMO_KEY": self.ia_seudonimo_key,
             }.items() if not v
         ]
         if faltantes:

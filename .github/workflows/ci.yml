@@ -58,6 +58,7 @@ jobs:
           echo "JWT_SECRET_KEY=$(gen)" >> "$GITHUB_ENV"
           echo "APP_ENCRYPTION_KEY=$(gen)" >> "$GITHUB_ENV"
           echo "APP_BLIND_INDEX_KEY=$(gen)" >> "$GITHUB_ENV"
+          echo "IA_SEUDONIMO_KEY=$(gen)" >> "$GITHUB_ENV"
       - name: Esquema, catálogos y datos sintéticos
         run: |
           P="psql -h localhost -U hsr -d hsanrafael -v ON_ERROR_STOP=1 -q"
