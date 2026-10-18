@@ -9,8 +9,7 @@ venv/
 db/03_datos_sinteticos.sql
 *.log
 
-# Radiografías NIH descargadas por scripts/cargar_radiografias.py
-data/rx_nih/
-
+# Datos crudos del modelo de IA (no se suben)
+ml/datos/
 # VitalDB descargado y resultados de clusters (se regeneran con scripts/clusters_vitaldb.py)
 data/vitaldb/

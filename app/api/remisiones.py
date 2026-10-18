@@ -244,6 +244,8 @@ def _transicion(db: Session, ctx: ContextoAcceso, request: Request, tareas: Back
                             f"La remisión está {r['estado']}: solo se puede pasar a {hacia} desde {desde}")
     registrar(db, ctx.usuario, "remision", remision_id, "update",
               valor_anterior={"estado": desde}, valor_nuevo={"estado": hacia}, request=request)
+    if hacia == "rechazada":
+        reactores.al_rechazar(db, _Fila(dict(fila)))   # nunca lanza: corre en un savepoint
     db.commit()
     tareas.add_task(_publicar_fhir, remision_id)
     return _vista(db, dict(fila), yo)

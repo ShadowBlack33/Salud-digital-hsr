@@ -147,6 +147,10 @@ services:
       ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:-orthanc_dev_2026}
       MONGO_URL: mongodb://hsr:${MONGO_PASSWORD:-cambiar_en_produccion}@mongo:27017/hsr?authSource=admin
       ML_URL: http://ml:8001
+      # R21: HAPI entrega las Observations a la API por la red interna.
+      HOOK_URL_BASE: http://api:8000
+      # R20: minutos sin reconocer antes de escalar una alerta (igual que la cuenta regresiva del front).
+      ALERTA_ESCALAMIENTO_MINUTOS: ${VITE_MINUTOS_ESCALAMIENTO:-5}
       # Detrás de nginx y del túnel, la IP real llega en X-Forwarded-For.
       FORWARDED_ALLOW_IPS: "*"
     # La API espera a que Mongo y la IA estén sanos; HAPI y Orthanc no traen
