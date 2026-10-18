@@ -5,11 +5,16 @@ import { X } from "lucide-react";
 /** Panel lateral deslizable (drawer). Se cierra con Esc, con la X o tocando fuera. */
 export default function Panel({ abierto, onCerrar, titulo, subtitulo, children, pie }) {
   const cerrar = useRef(null);
+  // onCerrar suele ser una función nueva en cada render: se guarda en una ref
+  // para que escribir en un campo no vuelva a correr el efecto (que movía el
+  // foco a la X en cada tecla).
+  const alCerrar = useRef(onCerrar);
+  useEffect(() => { alCerrar.current = onCerrar; });
 
   useEffect(() => {
     if (!abierto) return;
     const previo = document.activeElement;
-    const alTeclear = (e) => { if (e.key === "Escape") onCerrar(); };
+    const alTeclear = (e) => { if (e.key === "Escape") alCerrar.current(); };
     document.addEventListener("keydown", alTeclear);
     document.body.style.overflow = "hidden";
     cerrar.current?.focus();
@@ -18,7 +23,7 @@ export default function Panel({ abierto, onCerrar, titulo, subtitulo, children, 
       document.body.style.overflow = "";
       previo?.focus?.();
     };
-  }, [abierto, onCerrar]);
+  }, [abierto]);
 
   if (!abierto) return null;
   return createPortal(
