@@ -149,7 +149,7 @@ def _paciente_de(db, obs: dict) -> str | None:
     valor = ident.get("value")
     if valor:
         # El identificador del hospital es el propio índice ciego; el de la cédula, su valor.
-        for candidato in (str(valor).strip(), blind_index(str(valor), "documento")):
+        for candidato in (str(valor).strip(), blind_index(str(valor), "pacientes.documento")):
             fila = db.execute(text("SELECT documento_bidx FROM pacientes WHERE documento_bidx = :b AND activo"),
                               {"b": candidato}).first()
             if fila:
