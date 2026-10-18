@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.crypto import blind_index, cifrar, descifrar, enmascarar
 from app.core.deps import ContextoAcceso, RequierePermiso, get_db
 from app.models import Paciente
+from app.services import fhir as fhir_svc
 from app.services.auditoria import registrar, restaurar, snapshot, soft_delete, soft_edit
 
 router = APIRouter(prefix="/pacientes", tags=["Pacientes"])
@@ -137,7 +138,23 @@ def crear(datos: PacienteCrear, request: Request,
               valor_nuevo=snapshot(p), request=request)
     db.commit()
     db.refresh(p)
+    _publicar_en_fhir(db, p)
     return _a_respuesta(p)
+
+
+def _publicar_en_fhir(db: Session, p: Paciente) -> None:
+    """
+    R15: el paciente nuevo queda en HAPI FHIR, buscable por su identificador.
+    Es de mejor esfuerzo: si HAPI no responde, el paciente igual queda creado y
+    se puede sincronizar después con POST /fhir/sync/paciente/{id}.
+    """
+    try:
+        resultado = fhir_svc.ClienteFHIR().crear("Patient", fhir_svc.paciente_a_fhir(p))
+        if resultado.get("id"):
+            p.fhir_patient_id = resultado["id"]
+            db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
 
 
 @router.get("", response_model=list[PacienteRespuesta],

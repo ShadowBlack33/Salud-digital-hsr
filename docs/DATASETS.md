@@ -6,9 +6,9 @@ inventado: las radiografías de tórax (imagen) y los casos quirúrgicos de
 VitalDB (tabular). Todo lo demás (pacientes, camas, cirugías, tarifas) es
 sintético y está declarado como tal.
 
-> Los campos marcados **[COMPLETAR]** dependen de lo que quedó cargado en el
-> equipo que hace la demostración. Se llenan una sola vez, con los comandos
-> que aparecen en cada sección.
+> Las cantidades corresponden a lo cargado el 18 de octubre de 2026 en el
+> equipo que hace la demostración. Si se vuelve a cargar, se actualizan con
+> los comandos que aparecen en cada sección.
 
 ---
 
@@ -28,7 +28,7 @@ sintético y está declarado como tal.
 
 ### Qué se cargó en Pulso
 
-- **Cantidad cargada: [COMPLETAR] imágenes** (el valor por defecto del script
+- **Cantidad cargada: 24 imágenes** (el valor por defecto del script
   son 24, de una muestra pública de unos 10 MB).
 - Origen de la muestra: el repositorio `jrzech/reproduce-chexnet`, que
   redistribuye imágenes del dataset con sus etiquetas. Con `--carpeta` y
@@ -66,7 +66,7 @@ curl.exe -s -u api:TU_CLAVE http://127.0.0.1:8042/statistics
 ```
 
 El campo `CountStudies` es la cantidad de estudios y `CountInstances` la de
-imágenes: ese es el número que va en **[COMPLETAR]**.
+imágenes: es el número que se reporta arriba.
 
 ### Por qué responde al problema
 
@@ -115,9 +115,9 @@ Variables del archivo que importan aquí: demografía (`age`, `sex`, `height`,
 
 | Conjunto | Filas |
 |---|---|
-| Casos reales de VitalDB usados | **[COMPLETAR]** |
-| Pacientes sintéticos generados por clusters (`origen = sintetico`) | **[COMPLETAR]** |
-| Número de clusters elegido | **[COMPLETAR]** (justificado en `docs/INFORME_CLUSTERS.md`) |
+| Casos reales de VitalDB usados | **6.199** adultos (de 6.388 casos del archivo) |
+| Pacientes sintéticos generados por clusters (`origen = sintetico`) | **4.958** |
+| Número de clusters elegido | **4**, con estabilidad ARI 0,91 (justificado en `docs/INFORME_CLUSTERS.md`) |
 
 Esos tres números los imprime `scripts/clusters_vitaldb.py` al terminar, y los
 sirve el endpoint `GET /analitica/clusters` (campos `n_reales` y
@@ -137,7 +137,7 @@ Cómo se construye (detalle y métricas en `docs/INFORME_CLUSTERS.md`):
 
 ```bash
 pip install -r scripts/requirements-datos.txt
-python scripts/clusters_vitaldb.py            # descarga, agrupa, genera sintéticos
+python scripts/clusters_vitaldb.py --modo proporcional   # descarga, agrupa, genera sintéticos en cada grupo
 python scripts/cargar_clusters.py             # los sube a MongoDB (para el endpoint)
 ```
 
@@ -173,5 +173,5 @@ casos fuera de lo clínicamente plausible.
 | Dataset | NIH ChestX-ray14 | VitalDB (PhysioNet) |
 | Tipo | Radiografías de tórax (DICOM al PACS) | Casos quirúrgicos (tabla) |
 | Licencia | Sin restricciones; citar y reconocer al NIH | CC BY 4.0 |
-| Cantidad cargada | [COMPLETAR] | [COMPLETAR] reales + [COMPLETAR] sintéticos |
+| Cantidad cargada | 24 imágenes | 6.199 reales + 4.958 sintéticos |
 | Requisito | R06 | R07 |
