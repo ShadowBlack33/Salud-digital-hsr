@@ -76,6 +76,7 @@ def main() -> None:
     # Las observaciones de demostración llevan la marca en valor_texto (algunas
     # cuelgan de hospitalizaciones de la jornada, no de encuentros propios).
     cur.execute(f"DELETE FROM observaciones WHERE valor_texto = %s OR encuentro_id IN ({sub})", (MARCA, MARCA))
+    cur.execute(f"DELETE FROM traslados WHERE encuentro_origen_id IN ({sub})", (MARCA,))
     cur.execute(f"DELETE FROM cancelaciones WHERE encuentro_id IN ({sub}) OR encuentro_nuevo_id IN ({sub})",
                 (MARCA, MARCA))
     cur.execute("DELETE FROM encuentros WHERE observaciones_texto = %s", (MARCA,))
