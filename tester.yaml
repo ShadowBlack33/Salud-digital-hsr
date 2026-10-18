@@ -1,0 +1,126 @@
+# Contrato de verificación · Pulso (Hospital San Rafael)
+# REQUISITOS.md, sección 7. Responsable: Juan José García (R22).
+#
+# OJO: este archivo sigue el contrato de REQUISITOS.md. Antes de entregar, se
+# compara con plantilla_equipo.yaml (la del profesor) y se renombran las llaves
+# que allá se llamen distinto. Los valores (rutas, cuerpos, usuarios) no cambian.
+#
+# Los valores entre __DOBLE_GUION__ los llena scripts/datos_tester.py con los
+# datos reales de Neon y del .env. No se dejan sin llenar.
+
+equipo:
+  nombre: "Pulso · Hospital San Rafael"
+  repositorio: "https://github.com/ShadowBlack33/Salud-digital-hsr"
+  integrantes:
+    - Carlos Orozco
+    - José David Mesa
+    - Esteban Cobo
+    - Sara Rojas
+    - Juan José García
+
+# URL pública del túnel (cloudflared dentro del docker-compose, R04).
+# No reiniciar el contenedor cloudflared hasta después de la sustentación.
+url_publica: "https://new-sao-filed-scheduled.trycloudflare.com"
+# La API está detrás de nginx en /api; el servidor FHIR en /fhir.
+api_base: "https://new-sao-filed-scheduled.trycloudflare.com/api"
+fhir_base: "https://new-sao-filed-scheduled.trycloudflare.com/fhir"
+
+autenticacion:
+  login:
+    metodo: POST
+    ruta: /auth/login
+    cuerpo: { username: "{usuario}", password: "{password}" }
+    token_en: access_token          # campo de la respuesta con el JWT
+  esquema: Bearer                   # Authorization: Bearer <token>
+
+usuarios:
+  admin:        { username: admin,          password: "Demo#Hospital2026" }
+  medico:       { username: medico01,       password: "Demo#Hospital2026" }
+  especialista: { username: especialista01, password: "Demo#Hospital2026" }
+  paciente:     { username: paciente_demo,  password: "Demo#Hospital2026" }
+  contable:     { username: contable01,     password: "Demo#Hospital2026" }
+  # Cuenta que el tester bloquea con 3 intentos fallidos (R02). No es de ningún integrante.
+  bloqueo:      { username: facturacion01,  password: "Demo#Hospital2026", id: 271 }
+
+# Datos fijos de la demo
+datos:
+  especialista_id: 1          # personal.id de especialista01 (para remitir)
+  paciente_con_imagenes: "a358af19a52e34facfcd83bc17658d7dba643dbdcac5a1596a721e838c914f96"   # paciente de paciente_demo, tiene radiografía y medico01 lo ve
+
+# Paciente que crea el tester. Los campos personales sirven de "canario" (R12):
+# ninguno debe aparecer en el payload enviado a la IA.
+paciente_nuevo:
+  metodo: POST
+  ruta: /pacientes
+  cuerpo:
+    tipo_documento: CC
+    documento: "{documento_aleatorio}"
+    nombre: "Canario"
+    apellido: "Prueba Tester"
+    telefono: "3009998877"
+    email: "canario@ejemplo.com"
+    direccion: "Calle Falsa 123"
+    fecha_nacimiento: "1948-03-02"
+    sexo: F
+    consentimiento_datos: true
+  id_en: paciente_id                # la respuesta trae el id del paciente en "paciente_id"
+
+# Valores que con el modelo provisional garantizan critico=true (R20).
+# Justificación en ml/UMBRAL.md y docs/tester_ia.md.
+paciente_critico:
+  fecha_nacimiento: "1948-03-02"
+  sexo: F
+  variables: { glucosa: 42, potasio: 6.6, hemoglobina: 6.8 }
+  loinc:     { glucosa: "2339-0", potasio: "2823-3", hemoglobina: "718-7" }
+
+rutas:
+  yo:                 { metodo: GET,   ruta: /auth/yo }
+  # R10 · IA con aprobación clínica
+  ia_analizar:        { metodo: POST,  ruta: /ia/analizar,
+                        cuerpo: { paciente_id: "{paciente_id}", variables: { glucosa: 42, potasio: 6.6, hemoglobina: 6.8 } } }
+  ia_reporte:         { metodo: GET,   ruta: "/ia/reportes/{reporte_id}" }
+  ia_aprobar:         { metodo: POST,  ruta: "/ia/reportes/{reporte_id}/aprobar",  cuerpo: { observaciones: "Revisado por el tester" } }
+  ia_rechazar:        { metodo: POST,  ruta: "/ia/reportes/{reporte_id}/rechazar", cuerpo: { observaciones: "Rechazado por el tester" } }
+  ia_payload:         { metodo: GET,   ruta: "/ia/reportes/{reporte_id}/payload" }
+  # R11 · Historia clínica
+  historia:           { metodo: GET,   ruta: "/pacientes/{paciente_id}/historia" }
+  historia_pdf:       { metodo: GET,   ruta: "/pacientes/{paciente_id}/historia/pdf" }
+  # R06 · Imágenes (PACS)
+  imagenes_paciente:  { metodo: GET,   ruta: "/pacientes/{paciente_id}/imagenes" }
+  imagen_descargar:   { metodo: GET,   ruta: "/imagenes/{imagen_id}/preview" }
+  # R07 · Clusters
+  clusters:           { metodo: GET,   ruta: /analitica/clusters }
+  # R08 · Remisiones
+  remitir:            { metodo: POST,  ruta: /remisiones,
+                        cuerpo: { paciente_id: "{paciente_id}", especialista_id: 1, motivo: "Remisión de prueba del tester", prioridad: prioritaria } }
+  remisiones:         { metodo: GET,   ruta: /remisiones }
+  remision_aceptar:   { metodo: POST,  ruta: "/remisiones/{remision_id}/aceptar" }
+  # R09 · Contabilidad (MongoDB)
+  contable_crear:     { metodo: POST,  ruta: /contabilidad/facturas,
+                        cuerpo: { paciente_id: "{paciente_id}", servicio: consulta, valor: 85000 } }
+  contable_listar:    { metodo: GET,   ruta: /contabilidad/facturas }
+  # R18 · Bandeja y trabajo pendiente
+  notificaciones:     { metodo: GET,   ruta: /notificaciones }
+  notif_leer:         { metodo: POST,  ruta: "/notificaciones/{notificacion_id}/leer" }
+  pendientes:         { metodo: GET,   ruta: /pendientes }
+  # R20 · Alertas críticas
+  alertas:            { metodo: GET,   ruta: /alertas }
+  alerta_reconocer:   { metodo: POST,  ruta: "/alertas/{alerta_id}/reconocer", cuerpo: { nota: "Reconocida por el tester" } }
+  # R02 · Desbloqueo (solo admin)
+  desbloquear:        { metodo: POST,  ruta: "/usuarios/{usuario_id}/desbloquear" }
+  # R13 · Auditoría (solo admin)
+  auditoria:          { metodo: GET,   ruta: /auditoria }
+  # R14 · Soft delete y restauración
+  paciente_borrar:    { metodo: DELETE, ruta: "/pacientes/{paciente_id}" }
+  paciente_restaurar: { metodo: POST,  ruta: "/pacientes/{paciente_id}/restaurar" }
+  # R15 · FHIR: búsqueda exacta del paciente por su identificador (no requiere token)
+  fhir_paciente:      { metodo: GET,   ruta: "/fhir/Patient?identifier={documento}", base: fhir }
+  # R21 · Observation publicada en el servidor FHIR (no requiere token)
+  fhir_observation:   { metodo: POST,  ruta: /fhir/Observation, base: fhir, loinc: "2339-0" }
+
+# R17 · Canal en tiempo real (SSE)
+tiempo_real:
+  tipo: sse
+  ruta: "/eventos/stream?token={token}"
+  espera_segundos: 8
+  # Cada evento es JSON con: tipo, mensaje, fecha y paciente_id cuando aplica.
