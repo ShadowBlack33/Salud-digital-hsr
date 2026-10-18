@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     # Subscription FHIR). Las pruebas automáticas lo apagan.
     tareas_fondo: bool = True
 
+    # IA (R12, R20). La clave del seudónimo es PROPIA: no se reutiliza ninguna
+    # de las otras, así filtrar una no compromete la otra.
+    ia_seudonimo_key: str = ""            # IA_SEUDONIMO_KEY
+    ml_timeout_segundos: float = 10.0     # ML_TIMEOUT_SEGUNDOS
+    # (Los minutos de escalamiento son alerta_escalamiento_minutos, arriba.)
+
     @property
     def cors_origenes(self) -> list[str]:
         return [o.strip() for o in self.cors_origenes_texto.split(",") if o.strip()]
@@ -91,6 +97,7 @@ class Settings(BaseSettings):
                 "JWT_SECRET_KEY": self.jwt_secret_key,
                 "APP_ENCRYPTION_KEY": self.app_encryption_key,
                 "APP_BLIND_INDEX_KEY": self.app_blind_index_key,
+                "IA_SEUDONIMO_KEY": self.ia_seudonimo_key,
             }.items() if not v
         ]
         if faltantes:

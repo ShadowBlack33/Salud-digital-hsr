@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api import admin, asignacion, auth, cirugias, clinico, eventos, fhir_hook, imaging, pacientes, perfiles, puerta_fhir, recursos, remisiones, usuarios
+from app.api import alertas, historia, ia
 from app.core.config import get_settings
 from app.services import bandeja, fhir_reactivo, metricas  # noqa: F401 -- bandeja registra los hooks de commit
 from app.services import eventos as eventos_vivo
@@ -68,14 +69,20 @@ El estado de camas y quirófanos usa `Location.operationalStatus`
 @asynccontextmanager
 async def ciclo_de_vida(app: FastAPI):
     """
-    Tarea de fondo del sistema activo (con una sola réplica de la API):
+    Tareas de fondo del sistema activo (con una sola réplica de la API):
       · registro y vigilancia de la Subscription FHIR en HAPI (R21)
-    (El escalamiento de alertas lo arranca app/api/alertas.py, del módulo de IA.)
+      · escalamiento de alertas críticas sin reconocer (R20, app/api/alertas.py)
+    Van aquí y no con @app.on_event("startup"): con lifespan, FastAPI no ejecuta
+    los on_event, y el escalamiento dejaría de correr sin dar error.
     TAREAS_FONDO=false las apaga (pruebas automáticas).
     """
     tareas: list[asyncio.Task] = []
     if settings.tareas_fondo:
-        tareas = [asyncio.create_task(fhir_reactivo.mantener_suscripcion(), name="suscripcion_fhir")]
+        tareas = [
+            asyncio.create_task(fhir_reactivo.mantener_suscripcion(), name="suscripcion_fhir"),
+            # R20: escala las alertas críticas sin reconocer (app/api/alertas.py).
+            asyncio.create_task(alertas.bucle_escalamiento(), name="escalamiento_alertas"),
+        ]
     yield
     for t in tareas:
         t.cancel()
@@ -148,6 +155,10 @@ app.include_router(puerta_fhir.router)
 app.include_router(eventos.router)
 app.include_router(fhir_hook.router)
 app.include_router(admin.router)
+# Corte 2 · IA (R10, R11, R12, R20)
+app.include_router(ia.router)
+app.include_router(alertas.router)
+app.include_router(historia.router)
 
 
 @app.get("/", tags=["Sistema"], summary="Información de la API")
