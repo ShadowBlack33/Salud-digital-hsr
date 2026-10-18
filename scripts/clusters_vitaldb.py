@@ -111,6 +111,11 @@ def preparar(df: pd.DataFrame, incluir_menores: bool = False) -> tuple[pd.DataFr
     """
     bit: dict = {"filas_originales": int(len(df))}
     d = df.copy()
+    # VitalDB trae algunas columnas numéricas como texto (p. ej. edad ">89"), y
+    # pandas 3 las lee como string: se convierten a número antes de comparar.
+    for c in ["age", "asa", "preop_htn", "preop_dm", "emop", *RANGOS, *DESENLACES]:
+        if c in d.columns and not pd.api.types.is_numeric_dtype(d[c]):
+            d[c] = pd.to_numeric(d[c].astype(str).str.extract(r"(-?\d+(?:\.\d+)?)")[0], errors="coerce")
     if "subjectid" not in d.columns:
         d["subjectid"] = d["caseid"]
     d = d.dropna(subset=["age", "sex", "asa", "department"])
