@@ -146,6 +146,7 @@ def mis_pacientes(ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "rea
 
     # Remisiones de estos pacientes que me llegaron (o que yo envié).
     remisiones: dict[str, dict] = {}
+    equipo: dict[str, dict] = {}
     if yo is not None and db.execute(text("SELECT to_regclass('public.remisiones') IS NOT NULL")).scalar():
         for r in db.execute(text("""
             SELECT DISTINCT ON (paciente_id) paciente_id, id, medico_id, especialista_id, motivo, prioridad, estado, created_at
@@ -153,6 +154,14 @@ def mis_pacientes(ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "rea
             ORDER BY paciente_id, created_at DESC
         """), {"ids": ids, "yo": yo}).mappings():
             remisiones[r["paciente_id"]] = dict(r)
+        # Un paciente puede estar con varios especialistas a la vez: el equipo
+        # activo (remisiones pendientes o aceptadas, sin cerrar) de cada paciente.
+        for r in db.execute(text("""
+            SELECT paciente_id, especialista_id, estado FROM remisiones
+            WHERE paciente_id = ANY(:ids) AND estado IN ('pendiente', 'aceptada')
+            ORDER BY created_at DESC
+        """), {"ids": ids}).mappings():
+            equipo.setdefault(r["paciente_id"], {}).setdefault(r["especialista_id"], r["estado"])
 
     from app.services import pacs
     con_imagenes = pacs.pacientes_con_imagenes()
@@ -203,6 +212,8 @@ def mis_pacientes(ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "rea
                 "fecha": rem["created_at"], "recibida": rem["especialista_id"] == yo,
                 "de": nombres(rem["medico_id"]) if rem["especialista_id"] == yo else None,
                 "para": nombres(rem["especialista_id"]) if rem["especialista_id"] != yo else None},
+            "equipo": [{"especialista": "Usted" if eid == yo else nombres(eid), "estado": est}
+                       for eid, est in equipo.get(pid, {}).items()],
             "ultima_atencion": d["ultimo"] and (d["ultimo"]["hora_real_fin"] or d["ultimo"]["hora_real_inicio"]
                                                 or d["ultimo"]["created_at"]),
         })

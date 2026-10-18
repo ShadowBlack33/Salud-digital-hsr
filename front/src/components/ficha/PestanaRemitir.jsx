@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Loader2, Send } from "lucide-react";
+import { CheckCircle2, Loader2, Send, Users } from "lucide-react";
 import ChipDemo from "../ChipDemo";
 import { useAvisos } from "../Avisos";
 import * as S from "../../lib/servicios";
@@ -12,10 +12,20 @@ export default function PestanaRemitir({ pacienteId }) {
   const [enviando, setEnviando] = useState(false);
   const [hecha, setHecha] = useState(null);
   const [error, setError] = useState(null);
+  const [equipo, setEquipo] = useState([]);
 
   useEffect(() => {
     S.especialistas().then(({ datos, demo }) => setEspecialistas({ lista: Array.isArray(datos) ? datos : [], demo })).catch((e) => setError(e.message));
   }, []);
+  // Un paciente puede estar con varios especialistas a la vez: se muestra quién
+  // más lo atiende y no se ofrece remitir de nuevo a quien ya lo tiene activo.
+  useEffect(() => {
+    let vivo = true;
+    S.remisionesDePaciente(pacienteId).then((l) => vivo && setEquipo(l)).catch(() => {});
+    return () => { vivo = false; };
+  }, [pacienteId, hecha]);
+  const activos = equipo.filter((r) => ["pendiente", "aceptada"].includes(r.estado));
+  const yaActivo = new Set(activos.map((r) => r.especialista_id));
 
   const enviar = async (e) => {
     e.preventDefault();
@@ -31,7 +41,23 @@ export default function PestanaRemitir({ pacienteId }) {
 
   const entrada = "mt-1 w-full rounded-2xl bg-cloud-card px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-metric-blue/40";
   return (
-    <form onSubmit={enviar} className="max-w-2xl space-y-4 rounded-[28px] bg-paper-white p-6 shadow-lift">
+    <div className="max-w-2xl space-y-4">
+    {activos.length > 0 && (
+      <div className="rounded-[28px] bg-cloud-card p-5">
+        <p className="flex items-center gap-2 text-sm font-semibold"><Users size={16} aria-hidden="true" />Especialistas que ya lo atienden</p>
+        <ul className="mt-2 space-y-1.5 text-sm">
+          {activos.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-paper-white px-4 py-2">
+              <span>{r.especialista}{r.especialidad ? <span className="text-gray-strong"> · {r.especialidad}</span> : null}</span>
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${r.estado === "aceptada" ? "bg-green-soft text-green-ink" : "bg-paper-white text-gray-strong"}`}>
+                {r.estado === "aceptada" ? "Lo atiende" : "Remisión pendiente"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+    <form onSubmit={enviar} className="space-y-4 rounded-[28px] bg-paper-white p-6 shadow-lift">
       <div>
         <h2 className="text-lg font-semibold">Remitir a especialista</h2>
         <p className="mt-1 text-sm text-gray-strong">El especialista recibe el aviso al instante y, cuando acepte, te llega la confirmación.</p>
@@ -45,7 +71,7 @@ export default function PestanaRemitir({ pacienteId }) {
       <label className="block text-sm font-medium">Especialista
         <select required value={datos.especialista_id} onChange={(e) => setDatos((d) => ({ ...d, especialista_id: e.target.value }))} className={entrada}>
           <option value="" disabled>Elige un especialista</option>
-          {especialistas.lista.map((e) => <option key={e.id} value={e.id}>{e.especialidad ? `${e.especialidad} · ` : ""}{e.nombre}{e.usuario ? ` · cuenta ${e.usuario}` : ""}{e.conectado ? " (conectado)" : ""}</option>)}
+          {especialistas.lista.map((e) => <option key={e.id} value={e.id} disabled={yaActivo.has(e.id)}>{yaActivo.has(e.id) ? "Ya lo atiende · " : ""}{e.especialidad ? `${e.especialidad} · ` : ""}{e.nombre}{e.usuario ? ` · cuenta ${e.usuario}` : ""}{e.conectado ? " (conectado)" : ""}</option>)}
         </select>
       </label>
       <fieldset className="text-sm font-medium">
@@ -67,5 +93,6 @@ export default function PestanaRemitir({ pacienteId }) {
         {enviando ? <Loader2 size={15} className="anim-spin" /> : <Send size={15} />}Remitir
       </button>
     </form>
+    </div>
   );
 }

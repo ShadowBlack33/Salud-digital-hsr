@@ -436,6 +436,9 @@ if pac_m and yo_esp:
           any(x["id"] == rid for x in client.get("/remisiones", headers=h(tok_e01)).json()["remisiones"]))
     check("El médico remitente no puede aceptarla -> 403",
           client.post(f"/remisiones/{rid}/aceptar", headers=h(tok_m01)).status_code == 403)
+    equipo = client.get(f"/remisiones?paciente_id={pac_m}", headers=h(tok_e01))
+    check("Quien ve al paciente ve todo su equipo de especialistas (?paciente_id=)",
+          equipo.status_code == 200 and any(x["id"] == rid for x in equipo.json()["remisiones"]), equipo.text[:120])
     r = client.post(f"/remisiones/{rid}/aceptar", headers=h(tok_e01))
     check("El especialista la acepta", r.status_code == 200 and r.json()["estado"] == "aceptada", r.text[:120])
 for quien, tok in (("paciente", tok_paciente), ("contable", login("contable01"))):

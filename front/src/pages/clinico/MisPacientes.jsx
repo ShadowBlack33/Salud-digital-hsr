@@ -113,6 +113,11 @@ function TarjetaPaciente({ p }) {
           </span>
         </div>
 
+        {p.equipo?.length > 1 && (
+          <p className="rounded-2xl bg-paper-white/80 px-3 py-2 text-xs">
+            <b className="font-semibold">Lo atienden {p.equipo.length} especialistas:</b> {p.equipo.map((x) => x.especialista).join(", ")}
+          </p>
+        )}
         {p.remision && (
           <p className={`flex flex-wrap items-center gap-1.5 rounded-2xl px-3 py-2 text-xs ${p.remision.recibida && p.remision.estado === "pendiente" ? "bg-hero-sky" : "bg-paper-white/80"}`}>
             <Send size={13} className="text-metric-blue" aria-hidden="true" />

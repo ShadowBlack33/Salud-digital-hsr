@@ -83,6 +83,9 @@ export const remisiones = async () => {
   const datos = lista(r.datos, "remisiones");
   return { ...r, datos: r.demo || !DATOS_DEMO ? datos : [...M.remisionesSimuladas(), ...datos] };
 };
+/** Todo el equipo de especialistas de un paciente (puede tener varios a la vez). */
+export const remisionesDePaciente = async (pacienteId) =>
+  lista(await api(`/remisiones?paciente_id=${encodeURIComponent(pacienteId)}`), "remisiones");
 export const remitir = (datos) =>
   escribir("/remisiones", { method: "POST", json: datos }, () => M.remitir(datos));
 export const aceptarRemision = (id) => (String(id).startsWith("sim-")

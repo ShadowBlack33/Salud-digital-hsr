@@ -17,7 +17,7 @@ const SECCIONES = [["resumen", "Resumen"], ["resultados", "Resultados"], ["image
 /** Explica un reporte de IA aprobado en lenguaje sencillo, sin jerga. */
 function explicar(r) {
   const pct = Math.round(Number(r.probabilidad || 0) * 100);
-  if (r.clase === "requiere_uci" || r.critico) {
+  if (r.clase === "riesgo_uci" || r.clase === "requiere_uci" || r.critico) {
     return `Según tus exámenes, es probable (${pct} %) que después de la cirugía necesites unos días en cuidados intensivos. Tu equipo ya lo tuvo en cuenta para tenerte un espacio listo.`;
   }
   return `Según tus exámenes, lo más probable es que después de la cirugía no necesites cuidados intensivos (${pct} % de probabilidad de necesitarlos).`;

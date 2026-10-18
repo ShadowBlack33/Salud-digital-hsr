@@ -11,7 +11,10 @@ import { useEventos, useTiempoReal } from "../../lib/tiempoReal";
 import { fechaYHora } from "../../lib/format";
 
 const ESTADO = { pendiente: ["proceso", "Pendiente"], aprobado: ["libre", "Aprobado"], rechazado: ["bloqueado", "Rechazado"] };
-const CLASE = { requiere_uci: "Requerirá cama de UCI tras la cirugía", no_requiere_uci: "No requerirá UCI tras la cirugía" };
+const CLASE = {
+  riesgo_uci: "Alto riesgo de requerir UCI tras la cirugía", bajo_riesgo: "Bajo riesgo de requerir UCI tras la cirugía",
+  requiere_uci: "Requerirá cama de UCI tras la cirugía", no_requiere_uci: "No requerirá UCI tras la cirugía",
+};
 const textoClase = (r) => CLASE[r.clase] || r.clase || "Resultado del modelo";
 
 /** Análisis de IA con aprobación clínica (R10) y vista del payload seudonimizado (R12). */
