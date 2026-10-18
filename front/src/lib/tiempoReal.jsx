@@ -74,7 +74,8 @@ export function ProveedorTiempoReal({ children }) {
       const token = tokenActual();
       if (!token || !vivo) return;
       es = new EventSource(`${API_BASE}/eventos/stream?token=${encodeURIComponent(token)}`);
-      es.onopen = () => { setConectado(true); espera = 5000; };
+      // Al (re)conectar se relee la bandeja: lo que llegó con el canal caído ya está guardado.
+      es.onopen = () => { setConectado(true); espera = 5000; refrescar(); };
       es.onmessage = (m) => {
         try { despachar(JSON.parse(m.data)); } catch { /* evento mal formado: se ignora */ }
       };

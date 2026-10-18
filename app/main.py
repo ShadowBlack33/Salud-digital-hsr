@@ -6,17 +6,20 @@ Esquema OpenAPI:                     /openapi.json
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import admin, asignacion, auth, cirugias, clinico, imaging, pacientes, perfiles, puerta_fhir, recursos, remisiones, usuarios
+from app.api import admin, asignacion, auth, cirugias, clinico, eventos, fhir_hook, imaging, pacientes, perfiles, puerta_fhir, recursos, remisiones, usuarios
 from app.core.config import get_settings
-from app.services import metricas
+from app.services import bandeja, fhir_reactivo, metricas  # noqa: F401 -- bandeja registra los hooks de commit
+from app.services import eventos as eventos_vivo
 
 settings = get_settings()
 
@@ -62,7 +65,25 @@ El estado de camas y quirófanos usa `Location.operationalStatus`
 (value set HL7 v2-0116), que el estándar ya define para este fin.
 """
 
+@asynccontextmanager
+async def ciclo_de_vida(app: FastAPI):
+    """
+    Tarea de fondo del sistema activo (con una sola réplica de la API):
+      · registro y vigilancia de la Subscription FHIR en HAPI (R21)
+    (El escalamiento de alertas lo arranca app/api/alertas.py, del módulo de IA.)
+    TAREAS_FONDO=false las apaga (pruebas automáticas).
+    """
+    tareas: list[asyncio.Task] = []
+    if settings.tareas_fondo:
+        tareas = [asyncio.create_task(fhir_reactivo.mantener_suscripcion(), name="suscripcion_fhir")]
+    yield
+    for t in tareas:
+        t.cancel()
+    await asyncio.gather(*tareas, return_exceptions=True)
+
+
 app = FastAPI(
+    lifespan=ciclo_de_vida,
     title=settings.app_nombre,
     version=settings.app_version,
     description=DESCRIPCION,
@@ -124,6 +145,8 @@ app.include_router(perfiles.router)
 app.include_router(cirugias.router)
 app.include_router(remisiones.router)
 app.include_router(puerta_fhir.router)
+app.include_router(eventos.router)
+app.include_router(fhir_hook.router)
 app.include_router(admin.router)
 
 
@@ -162,7 +185,8 @@ def salud():
 
     return {"api": "ok", "base_datos": estado_bd,
             "servidor_fhir": settings.fhir_base_url,
-            "pacs": estado_pacs, "ml": estado_ml, "mongo": _estado_mongo()}
+            "pacs": estado_pacs, "ml": estado_ml, "mongo": _estado_mongo(),
+            "canal_en_vivo": {"conexiones": eventos_vivo.conectados()}}
 
 
 def _estado_mongo() -> str:
