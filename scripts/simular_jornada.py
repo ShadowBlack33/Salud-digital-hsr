@@ -110,6 +110,7 @@ def main():
     # en la demo) se borra primero: si no, la llave foránea impide borrarlos.
     sub = "SELECT id FROM encuentros WHERE observaciones_texto = %s"
     cur.execute(f"DELETE FROM observaciones WHERE encuentro_id IN ({sub})", (MARCA,))
+    cur.execute(f"DELETE FROM traslados WHERE encuentro_origen_id IN ({sub})", (MARCA,))
     cur.execute(f"DELETE FROM cancelaciones WHERE encuentro_id IN ({sub}) OR encuentro_nuevo_id IN ({sub})",
                 (MARCA, MARCA))
     cur.execute("DELETE FROM encuentros WHERE observaciones_texto = %s", (MARCA,))
