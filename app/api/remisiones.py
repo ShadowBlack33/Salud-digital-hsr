@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -173,10 +173,20 @@ def remitir(datos: RemisionCrear, request: Request, tareas: BackgroundTasks,
 
 
 @router.get("/remisiones", summary="Remisiones enviadas o recibidas")
-def listar(ctx: ContextoAcceso = Depends(RequierePermiso("remision", "read")),
+def listar(paciente_id: str | None = Query(None, description="Todas las remisiones de un paciente que puedo ver"),
+           ctx: ContextoAcceso = Depends(RequierePermiso("remision", "read")),
            db: Session = Depends(get_db)):
     yo = ctx.payload.get("personal_id")
-    if ctx.alcance == "all":
+    if paciente_id:
+        # Un paciente puede estar con varios especialistas a la vez: quien puede
+        # ver al paciente ve a todo su equipo (a quién se remitió y en qué estado).
+        p = db.get(Paciente, paciente_id)
+        if p is None or not p.activo:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
+        ctx.verificar_registro(p)
+        filas = db.execute(text("SELECT * FROM remisiones WHERE paciente_id = :p ORDER BY created_at DESC"),
+                           {"p": paciente_id}).mappings().all()
+    elif ctx.alcance == "all":
         filas = db.execute(text("SELECT * FROM remisiones ORDER BY created_at DESC LIMIT 200")).mappings().all()
     else:
         filas = db.execute(text("""

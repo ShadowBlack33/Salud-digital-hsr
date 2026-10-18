@@ -60,8 +60,9 @@ export const reportesDePaciente = async (pacienteId) => {
   const r = await leer(`/ia/reportes?paciente_id=${encodeURIComponent(pacienteId)}`, () => M.reportesDe(pacienteId));
   return { ...r, datos: lista(r.datos, "reportes") };
 };
-export const analizar = (pacienteId) =>
-  escribir("/ia/analizar", { method: "POST", json: { paciente_id: pacienteId } }, () => M.analizar(pacienteId));
+export const analizar = (pacienteId, variables) =>
+  escribir("/ia/analizar", { method: "POST", json: { paciente_id: pacienteId, ...(variables ? { variables } : {}) } },
+    () => M.analizar(pacienteId));
 export const reportesPendientes = async () => {
   const r = await leer("/ia/reportes?estado=pendiente", M.reportesPendientes);
   return { ...r, datos: lista(r.datos, "reportes") };
@@ -82,6 +83,9 @@ export const remisiones = async () => {
   const datos = lista(r.datos, "remisiones");
   return { ...r, datos: r.demo || !DATOS_DEMO ? datos : [...M.remisionesSimuladas(), ...datos] };
 };
+/** Todo el equipo de especialistas de un paciente (puede tener varios a la vez). */
+export const remisionesDePaciente = async (pacienteId) =>
+  lista(await api(`/remisiones?paciente_id=${encodeURIComponent(pacienteId)}`), "remisiones");
 export const remitir = (datos) =>
   escribir("/remisiones", { method: "POST", json: datos }, () => M.remitir(datos));
 export const aceptarRemision = (id) => (String(id).startsWith("sim-")

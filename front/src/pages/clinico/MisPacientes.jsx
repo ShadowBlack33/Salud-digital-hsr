@@ -2,6 +2,9 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, BedDouble, ChevronRight, HeartPulse, ScanLine, Scissors, SearchX, Send, ShieldCheck, Siren, Stethoscope } from "lucide-react";
 import Encabezado from "../../components/Encabezado";
+import NuevoPaciente from "../../components/NuevoPaciente";
+import { puede } from "../../api";
+import { useUsuario } from "../../lib/hooks";
 import Esqueleto from "../../components/Esqueleto";
 import ErrorEstado from "../../components/ErrorEstado";
 import * as S from "../../lib/servicios";
@@ -45,6 +48,7 @@ export default function MisPacientes() {
   const [filtro, setFiltro] = useState("todos");
   const [texto, setTexto] = useState("");
   const lista = datos.datos?.pacientes;
+  const usuario = useUsuario();
 
   const conteo = useMemo(() => Object.fromEntries(FILTROS.map(([k]) => [k, (lista || []).filter((p) => cumple(p, k)).length])), [lista]);
   const visibles = useMemo(() => {
@@ -58,7 +62,9 @@ export default function MisPacientes() {
   return (
     <div className="space-y-6 pb-16">
       <Encabezado titulo="Mis pacientes"
-                  subtitulo="Solo los pacientes a tu cargo: los que registraste, los que atiendes y los que te remitieron." />
+                  subtitulo="Solo los pacientes a tu cargo: los que registraste, los que atiendes y los que te remitieron.">
+        {puede(usuario, "paciente", "create") && <NuevoPaciente />}
+      </Encabezado>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div role="tablist" aria-label="Filtrar pacientes" className="flex gap-1.5 overflow-x-auto pb-1">
@@ -107,6 +113,11 @@ function TarjetaPaciente({ p }) {
           </span>
         </div>
 
+        {p.equipo?.length > 1 && (
+          <p className="rounded-2xl bg-paper-white/80 px-3 py-2 text-xs">
+            <b className="font-semibold">Lo atienden {p.equipo.length} especialistas:</b> {p.equipo.map((x) => x.especialista).join(", ")}
+          </p>
+        )}
         {p.remision && (
           <p className={`flex flex-wrap items-center gap-1.5 rounded-2xl px-3 py-2 text-xs ${p.remision.recibida && p.remision.estado === "pendiente" ? "bg-hero-sky" : "bg-paper-white/80"}`}>
             <Send size={13} className="text-metric-blue" aria-hidden="true" />
