@@ -20,6 +20,7 @@ export default function PestanaIA({ pacienteId }) {
   const [estado, setEstado] = useState({ cargando: true, lista: [], demo: false, error: null });
   const [analizando, setAnalizando] = useState(false);
   const [payload, setPayload] = useState(null);
+  const [labs, setLabs] = useState({ glucosa: "", potasio: "", hemoglobina: "" });
 
   const cargar = useCallback(async () => {
     try {
@@ -35,7 +36,8 @@ export default function PestanaIA({ pacienteId }) {
   const analizar = async () => {
     setAnalizando(true);
     try {
-      const { datos } = await S.analizar(pacienteId);
+      const variables = Object.fromEntries(Object.entries(labs).filter(([, v]) => v !== "").map(([k, v]) => [k, Number(v)]));
+      const { datos } = await S.analizar(pacienteId, Object.keys(variables).length ? variables : undefined);
       avisar(`Análisis listo (reporte ${datos.id}). Queda pendiente hasta que un clínico lo apruebe.`);
       await cargar();
     } catch (err) { avisar(err.message, "error"); }
@@ -63,6 +65,20 @@ export default function PestanaIA({ pacienteId }) {
                 className="flex shrink-0 items-center justify-center gap-2 rounded-full bg-charcoal px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ink disabled:opacity-50">
           {analizando ? <Loader2 size={16} className="anim-spin" /> : <Play size={16} />}Ejecutar análisis
         </button>
+      </div>
+
+      <div className="rounded-[28px] bg-cloud-card p-6">
+        <h3 className="text-sm font-semibold">Laboratorios para el análisis (opcional)</h3>
+        <p className="mt-1 text-xs text-gray-strong">Si los dejas vacíos, el modelo usa los últimos laboratorios registrados del paciente.</p>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {[["glucosa", "Glucosa", "mg/dL"], ["potasio", "Potasio", "mmol/L"], ["hemoglobina", "Hemoglobina", "g/dL"]].map(([k, t, u]) => (
+            <label key={k} className="text-xs font-medium text-gray-strong">{t} <span className="font-normal">({u})</span>
+              <input type="number" step="any" min="0" inputMode="decimal" value={labs[k]}
+                     onChange={(e) => setLabs((v) => ({ ...v, [k]: e.target.value }))}
+                     className="mt-1 w-full rounded-2xl bg-paper-white px-4 py-2.5 text-sm text-ink outline-none focus:ring-2 focus:ring-metric-blue" />
+            </label>
+          ))}
+        </div>
       </div>
 
       {estado.cargando && <Esqueleto filas={2} alto="h-16" />}

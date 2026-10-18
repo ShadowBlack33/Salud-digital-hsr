@@ -60,8 +60,9 @@ export const reportesDePaciente = async (pacienteId) => {
   const r = await leer(`/ia/reportes?paciente_id=${encodeURIComponent(pacienteId)}`, () => M.reportesDe(pacienteId));
   return { ...r, datos: lista(r.datos, "reportes") };
 };
-export const analizar = (pacienteId) =>
-  escribir("/ia/analizar", { method: "POST", json: { paciente_id: pacienteId } }, () => M.analizar(pacienteId));
+export const analizar = (pacienteId, variables) =>
+  escribir("/ia/analizar", { method: "POST", json: { paciente_id: pacienteId, ...(variables ? { variables } : {}) } },
+    () => M.analizar(pacienteId));
 export const reportesPendientes = async () => {
   const r = await leer("/ia/reportes?estado=pendiente", M.reportesPendientes);
   return { ...r, datos: lista(r.datos, "reportes") };
