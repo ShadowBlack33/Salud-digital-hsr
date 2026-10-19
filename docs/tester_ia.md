@@ -23,8 +23,8 @@ Extras que usa el front (no están en el contrato):
 
 ## `paciente_critico`
 
-Valores que con el modelo `provisional-0` garantizan `critico: true` (probabilidad 0,999,
-umbral 0,30). Detalle y justificación en `ml/UMBRAL.md`.
+Valores que con el modelo `vitaldb-1` (datos reales de VitalDB) garantizan `critico: true`
+(probabilidad 0,830, umbral 0,40). Detalle y justificación en `ml/UMBRAL.md`.
 
 | Variable | Valor | Cómo entra al sistema |
 |---|---|---|
