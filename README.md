@@ -134,7 +134,7 @@ docker compose up -d --build  # levanta los 10 servicios
 - **Datos sintéticos calibrados, no inventados.** Cancelación de cirugía entre 2,7 % y 7,6 % con el reparto de causas reportado en Colombia, duración quirúrgica log-normal, tipo de cama según el procedimiento y un periodo de crisis que satura la UCI para probar el sistema bajo presión.
 - **Imágenes reales.** Radiografías de tórax del NIH ChestX-ray14, marcadas en la interfaz como cohorte externa e ilustrativa. Detalle y licencias en [`docs/DATASETS.md`](docs/DATASETS.md).
 - **Aumento por clusters.** Pacientes reales de VitalDB agrupados y sintéticos generados dentro de cada grupo, con la interpretación clínica de cada uno.
-- **Modelo de riesgo de UCI.** Versión provisional entrenada con datos sintéticos: sensibilidad 0,87, especificidad 0,53, AUC 0,80, con umbral elegido para no dejar pasar casos críticos. Son métricas del *pipeline*, no evidencia clínica; el criterio y el análisis por subgrupo están en [`ml/UMBRAL.md`](ml/UMBRAL.md).
+- **Modelo de riesgo de UCI.** Entrenado con casos quirúrgicos reales de VitalDB (versión `vitaldb-1`): sensibilidad 0,80, especificidad 0,47, AUC 0,71, con umbral de 0,40 elegido para no dejar pasar casos críticos. El criterio y el análisis de sesgo por subgrupo están en [`ml/UMBRAL.md`](ml/UMBRAL.md).
 
 ---
 
@@ -148,7 +148,7 @@ El sistema se diseñó contra la normativa colombiana de salud y datos: Ley 1581
 
 Se declaran como camino de evolución, no se presentan como algo que funcione:
 
-- Todos los datos de pacientes son sintéticos; el modelo valida el proceso, no la precisión clínica.
+- Los pacientes del hospital son sintéticos; el modelo se entrenó con casos quirúrgicos reales de VitalDB, pero no se ha validado con pacientes de la institución.
 - Sin doble factor de autenticación; las claves de cifrado viven en variables de entorno, no en un KMS.
 - La llave del paciente es su índice ciego; en producción sería un UUID.
 - La URL de Cloudflare cambia al reiniciar el túnel (no hay dominio propio).
