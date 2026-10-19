@@ -43,7 +43,7 @@ def _coleccion():
         _cliente = pymongo.MongoClient(settings.mongo_url, serverSelectionTimeoutMS=3000, tz_aware=True)
     db = _cliente.get_default_database(default="hsr")
     col = db["facturas"]
-    col.create_index([("reporte_id", pymongo.ASCENDING)], unique=True, name="uq_factura_reporte",
+    col.create_index([("reporte_id", pymongo.ASCENDING)], unique=True, name="uq_reporte_id",
                      partialFilterExpression={"reporte_id": {"$exists": True}})
     return col
 

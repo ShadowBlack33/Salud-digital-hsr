@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Hospital San Rafael - API Capacidad Quirúrgica",
-    "description": "Colección de demostración. Ejecutar en orden: la carpeta 1 obtiene los tokens.",
+    "name": "Pulso · Hospital San Rafael (Corte 2)",
+    "description": "Correr en orden. La carpeta 0 guarda los tokens; la 2 crea el paciente que usan la 3 y la 4. Cada petición trae una prueba con el código esperado, así que el Runner de Postman muestra en verde o rojo qué pasó. base_url es la API local; url_publica es la URL del túnel (cámbiala cada vez que se reinicie cloudflared).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,15 +10,39 @@
       "value": "http://localhost:8000"
     },
     {
+      "key": "url_publica",
+      "value": "https://allocated-reasoning-duck-databases.trycloudflare.com"
+    },
+    {
+      "key": "especialista_id",
+      "value": "1"
+    },
+    {
+      "key": "id_cuenta_bloqueo",
+      "value": "271"
+    },
+    {
       "key": "token_admin",
       "value": ""
     },
     {
-      "key": "token_medico_a",
+      "key": "token_medico",
       "value": ""
     },
     {
       "key": "token_medico_b",
+      "value": ""
+    },
+    {
+      "key": "token_especialista",
+      "value": ""
+    },
+    {
+      "key": "token_contable",
+      "value": ""
+    },
+    {
+      "key": "token_paciente",
       "value": ""
     },
     {
@@ -34,20 +58,29 @@
       "value": ""
     },
     {
-      "key": "url_publica",
-      "value": "https://new-sao-filed-scheduled.trycloudflare.com"
+      "key": "documento_paciente",
+      "value": ""
     },
     {
-      "key": "documento_paciente",
+      "key": "reporte_id",
+      "value": ""
+    },
+    {
+      "key": "alerta_id",
+      "value": ""
+    },
+    {
+      "key": "remision_id",
       "value": ""
     }
   ],
   "item": [
     {
-      "name": "1. Autenticación",
+      "name": "0. Iniciar sesión (correr primero)",
+      "description": "Obtiene y guarda los tokens de cada perfil. Duran 15 minutos: si algo responde 401, vuelve a correr esta carpeta.",
       "item": [
         {
-          "name": "Login admin",
+          "name": "Admin",
           "request": {
             "method": "POST",
             "header": [
@@ -66,15 +99,27 @@
                 "login"
               ]
             },
-            "description": "Guarda el token en {{token_admin}}",
+            "description": "Guarda el token en {{token_admin}}.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"Demo#Hospital2026\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"token_admin\", pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Login médico A",
+          "name": "Médico (medico01)",
           "request": {
             "method": "POST",
             "header": [
@@ -93,15 +138,27 @@
                 "login"
               ]
             },
-            "description": "",
+            "description": "Guarda el token en {{token_medico}}.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"medi0001\",\n  \"password\": \"Demo#Hospital2026\"\n}"
+              "raw": "{\n  \"username\": \"medico01\",\n  \"password\": \"Demo#Hospital2026\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"token_medico\", pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Login médico B",
+          "name": "Otro médico (medico02)",
           "request": {
             "method": "POST",
             "header": [
@@ -120,15 +177,27 @@
                 "login"
               ]
             },
-            "description": "",
+            "description": "Guarda el token en {{token_medico_b}}.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"medi0002\",\n  \"password\": \"Demo#Hospital2026\"\n}"
+              "raw": "{\n  \"username\": \"medico02\",\n  \"password\": \"Demo#Hospital2026\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"token_medico_b\", pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Login coordinador",
+          "name": "Especialista (especialista01)",
           "request": {
             "method": "POST",
             "header": [
@@ -147,15 +216,144 @@
                 "login"
               ]
             },
-            "description": "",
+            "description": "Guarda el token en {{token_especialista}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"especialista01\",\n  \"password\": \"Demo#Hospital2026\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"token_especialista\", pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Contable (contable01)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Guarda el token en {{token_contable}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"contable01\",\n  \"password\": \"Demo#Hospital2026\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"token_contable\", pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Paciente (paciente_demo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Guarda el token en {{token_paciente}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"paciente_demo\",\n  \"password\": \"Demo#Hospital2026\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"token_paciente\", pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Coordinador",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Guarda el token en {{token_coordinador}}.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"coordinador\",\n  \"password\": \"Demo#Hospital2026\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"token_coordinador\", pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Login servicio integración",
+          "name": "Servicio de integración",
           "request": {
             "method": "POST",
             "header": [
@@ -174,12 +372,24 @@
                 "login"
               ]
             },
-            "description": "",
+            "description": "Guarda el token en {{token_integracion}}.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"integracion_svc\",\n  \"password\": \"Demo#Hospital2026\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"token_integracion\", pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Ver mi sesión",
@@ -187,12 +397,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
                 "key": "Authorization",
-                "value": "Bearer {{token_admin}}"
+                "value": "Bearer {{token_medico}}"
               }
             ],
             "url": {
@@ -206,10 +412,27 @@
               ]
             },
             "description": ""
-          }
-        },
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Cuentas y bloqueo (R01-R03, R13)",
+      "description": "Bloqueo al tercer intento y desbloqueo solo por el admin. Usa facturacion01, que no es de ningún integrante.",
+      "item": [
         {
-          "name": "Contraseña incorrecta (espera 401)",
+          "name": "Intento fallido 1 (401, quedan 2)",
           "request": {
             "method": "POST",
             "header": [
@@ -231,17 +454,249 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"mala\"\n}"
+              "raw": "{\n  \"username\": \"facturacion01\",\n  \"password\": \"clave-incorrecta\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Intento fallido 2 (401, queda 1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"facturacion01\",\n  \"password\": \"clave-incorrecta\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Intento fallido 3 (423, bloqueada)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "El admin recibe el aviso en vivo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"facturacion01\",\n  \"password\": \"clave-incorrecta\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 423\", () => pm.response.to.have.status(423));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Contraseña correcta, cuenta bloqueada (423)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"facturacion01\",\n  \"password\": \"Demo#Hospital2026\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 423\", () => pm.response.to.have.status(423));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin desbloquea (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/usuarios/{{id_cuenta_bloqueo}}/desbloquear",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "usuarios",
+                "{{id_cuenta_bloqueo}}",
+                "desbloquear"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ya entra (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"facturacion01\",\n  \"password\": \"Demo#Hospital2026\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Un médico no ve la auditoría (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_medico}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auditoria",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auditoria"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "2. Autorización de dos niveles",
+      "name": "2. Pacientes: dos niveles, cifrado y soft delete (Corte 1)",
+      "description": "medico01 crea un paciente con cédula aleatoria; ese paciente se usa en las carpetas 3 y 4.",
       "item": [
         {
-          "name": "A crea paciente",
+          "name": "medico01 crea paciente (201)",
           "request": {
             "method": "POST",
             "header": [
@@ -251,7 +706,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{token_medico_a}}"
+                "value": "Bearer {{token_medico}}"
               }
             ],
             "url": {
@@ -263,15 +718,36 @@
                 "pacientes"
               ]
             },
-            "description": "",
+            "description": "Guarda paciente_id (índice ciego) y documento_paciente.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tipo_documento\": \"CC\",\n  \"documento\": \"1099887766\",\n  \"nombre\": \"Demo\",\n  \"apellido\": \"Sustentación\",\n  \"telefono\": \"3001112233\",\n  \"fecha_nacimiento\": \"1990-05-20\",\n  \"sexo\": \"F\",\n  \"consentimiento_datos\": true\n}"
+              "raw": "{\n  \"tipo_documento\": \"CC\",\n  \"documento\": \"{{documento_paciente}}\",\n  \"nombre\": \"Demo\",\n  \"apellido\": \"Sustentación\",\n  \"telefono\": \"3001112233\",\n  \"fecha_nacimiento\": \"1948-05-20\",\n  \"sexo\": \"F\",\n  \"consentimiento_datos\": true\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"paciente_id\", pm.response.json().paciente_id);"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"documento_paciente\", String(Math.floor(1000000000 + Math.random() * 8999999999)));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "B intenta editar (espera 403)",
+          "name": "medico02 intenta editarlo (403)",
           "request": {
             "method": "PUT",
             "header": [
@@ -299,10 +775,21 @@
               "mode": "raw",
               "raw": "{\n  \"telefono\": \"3009998877\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "A edita lo suyo (200)",
+          "name": "medico01 edita lo suyo (200)",
           "request": {
             "method": "PUT",
             "header": [
@@ -312,7 +799,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{token_medico_a}}"
+                "value": "Bearer {{token_medico}}"
               }
             ],
             "url": {
@@ -330,7 +817,18 @@
               "mode": "raw",
               "raw": "{\n  \"telefono\": \"3007776655\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Historial de cambios",
@@ -338,12 +836,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
                 "key": "Authorization",
-                "value": "Bearer {{token_admin}}"
+                "value": "Bearer {{token_medico}}"
               }
             ],
             "url": {
@@ -357,57 +851,104 @@
                 "historial"
               ]
             },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "\"{{token_medico_a}}\""
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
             }
-          }
+          ]
         },
         {
-          "name": "Médico ve auditoría (espera 403)",
+          "name": "Buscar por cédula con índice ciego",
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
+                "key": "Authorization",
+                "value": "Bearer {{token_medico}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/pacientes/buscar?documento={{documento_paciente}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "pacientes",
+                "buscar"
+              ],
+              "query": [
+                {
+                  "key": "documento",
+                  "value": "{{documento_paciente}}"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar (documento enmascarado)",
+          "request": {
+            "method": "GET",
+            "header": [
               {
                 "key": "Authorization",
                 "value": "Bearer {{token_admin}}"
               }
             ],
             "url": {
-              "raw": "{{base_url}}/auditoria",
+              "raw": "{{base_url}}/pacientes?limite=5",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
-                "auditoria"
+                "pacientes"
+              ],
+              "query": [
+                {
+                  "key": "limite",
+                  "value": "5"
+                }
               ]
             },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "\"{{token_medico_a}}\""
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
             }
-          }
-        }
-      ]
-    },
-    {
-      "name": "3. Soft delete y restauración",
-      "item": [
+          ]
+        },
         {
-          "name": "B borra ajeno (espera 403)",
+          "name": "medico02 borra ajeno (403)",
           "request": {
             "method": "DELETE",
             "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
               {
                 "key": "Authorization",
                 "value": "Bearer {{token_medico_b}}"
@@ -424,20 +965,27 @@
               ]
             },
             "description": ""
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "A borra lo suyo (200)",
+          "name": "medico01 borra lo suyo (200)",
           "request": {
             "method": "DELETE",
             "header": [
               {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
                 "key": "Authorization",
-                "value": "Bearer {{token_medico_a}}"
+                "value": "Bearer {{token_medico}}"
               }
             ],
             "url": {
@@ -451,20 +999,27 @@
               ]
             },
             "description": ""
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "GET tras borrar (espera 404)",
+          "name": "Consultar tras borrar (404)",
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
                 "key": "Authorization",
-                "value": "Bearer {{token_admin}}"
+                "value": "Bearer {{token_medico}}"
               }
             ],
             "url": {
@@ -478,10 +1033,21 @@
               ]
             },
             "description": ""
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Médico restaura (espera 403)",
+          "name": "Médico restaura (403)",
           "request": {
             "method": "POST",
             "header": [
@@ -491,7 +1057,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{token_medico_a}}"
+                "value": "Bearer {{token_medico}}"
               }
             ],
             "url": {
@@ -510,39 +1076,18 @@
               "mode": "raw",
               "raw": "{}"
             }
-          }
-        },
-        {
-          "name": "Coordinador restaura (espera 403)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token_coordinador}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 403\", () => pm.response.to.have.status(403));"
+                ]
               }
-            ],
-            "url": {
-              "raw": "{{base_url}}/pacientes/{{paciente_id}}/restaurar",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "pacientes",
-                "{{paciente_id}}",
-                "restaurar"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
             }
-          }
+          ]
         },
         {
           "name": "Admin restaura (200)",
@@ -574,17 +1119,29 @@
               "mode": "raw",
               "raw": "{}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "4. Cifrado",
+      "name": "3. Flujo del Corte 2, en el orden del guion (R10-R21)",
+      "description": "Requiere la carpeta 2. Cada paso dispara avisos en vivo: si tienes el front abierto, se ven sin recargar.",
       "item": [
         {
-          "name": "Buscar por blind index",
+          "name": "IA analiza al paciente (201)",
           "request": {
-            "method": "GET",
+            "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
@@ -592,189 +1149,471 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{token_admin}}"
+                "value": "Bearer {{token_medico}}"
               }
             ],
             "url": {
-              "raw": "{{base_url}}/pacientes/buscar?documento=1099887766",
+              "raw": "{{base_url}}/ia/analizar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ia",
+                "analizar"
+              ]
+            },
+            "description": "Riesgo cerca de 83 %: sobre el umbral 0,40 crea una alerta crítica. Guarda reporte_id.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paciente_id\": \"{{paciente_id}}\",\n  \"variables\": {\"glucosa\": 42, \"potasio\": 6.6, \"hemoglobina\": 6.8}\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"reporte_id\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ver lo que recibió el modelo (sin datos personales)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_medico}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ia/reportes/{{reporte_id}}/payload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ia",
+                "reportes",
+                "{{reporte_id}}",
+                "payload"
+              ]
+            },
+            "description": "R12: solo variables clínicas y un seudónimo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Alertas activas del médico",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_medico}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/alertas?estado=activa",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "alertas"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "activa"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+                  "const a = (pm.response.json().alertas || []).find(x => x.paciente_id === pm.collectionVariables.get(\"paciente_id\") && x.estado === \"activa\");",
+                  "if (a) pm.collectionVariables.set(\"alerta_id\", a.id);",
+                  "pm.test(\"Hay una alerta activa del paciente\", () => pm.expect(a).to.exist);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reconocer la alerta con la conducta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_medico}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/alertas/{{alerta_id}}/reconocer",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "alertas",
+                "{{alerta_id}}",
+                "reconocer"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nota\": \"Se inicia corrección de glucosa y potasio; se solicita cama de UCI.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aprobar el reporte (entra a la historia)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_medico}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ia/reportes/{{reporte_id}}/aprobar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ia",
+                "reportes",
+                "{{reporte_id}}",
+                "aprobar"
+              ]
+            },
+            "description": "El reactor crea la factura automática.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"observaciones\": \"Concuerdo con el riesgo; se maneja en UCI.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Contable ve la factura automática",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_contable}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/contabilidad/facturas?desde=2026-01-01",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "contabilidad",
+                "facturas"
+              ],
+              "query": [
+                {
+                  "key": "desde",
+                  "value": "2026-01-01"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remitir al especialista (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_medico}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/remisiones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "remisiones"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paciente_id\": \"{{paciente_id}}\",\n  \"especialista_id\": {{especialista_id}},\n  \"motivo\": \"Valoración por riesgo alto de UCI\",\n  \"prioridad\": \"urgente\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"remision_id\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Especialista: sus pendientes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_especialista}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/pendientes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "pendientes"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Especialista acepta la remisión",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_especialista}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/remisiones/{{remision_id}}/aceptar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "remisiones",
+                "{{remision_id}}",
+                "aceptar"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Médico: su bandeja de avisos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_medico}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notificaciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notificaciones"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Laboratorio externo publica glucosa en FHIR (R21)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "url": {
+              "raw": "{{url_publica}}/fhir/Observation",
+              "host": [
+                "{{url_publica}}"
+              ],
+              "path": [
+                "fhir",
+                "Observation"
+              ]
+            },
+            "description": "Sin token: la puerta de nginx solo deja pasar POST de Observation. El médico responsable del paciente recibe el aviso en vivo y queda un evento auditado con origen FHIR. Poner en documento_paciente la cédula del paciente de la demo. Va por la URL pública (pasa por nginx).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Observation\",\n  \"status\": \"final\",\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"http://terminology.hl7.org/CodeSystem/observation-category\",\n          \"code\": \"laboratory\"\n        }\n      ]\n    }\n  ],\n  \"code\": {\n    \"coding\": [\n      {\n        \"system\": \"http://loinc.org\",\n        \"code\": \"2339-0\",\n        \"display\": \"Glucose [Mass/volume] in Blood\"\n      }\n    ]\n  },\n  \"subject\": {\n    \"identifier\": {\n      \"system\": \"http://hsanrafael.co/fhir/identifier\",\n      \"value\": \"{{documento_paciente}}\"\n    }\n  },\n  \"valueQuantity\": {\n    \"value\": 42,\n    \"unit\": \"mg/dL\",\n    \"system\": \"http://unitsofmeasure.org\",\n    \"code\": \"mg/dL\"\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Historia clínica en PDF",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_medico}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/pacientes/{{paciente_id}}/historia/pdf",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "pacientes",
-                "buscar?documento=1099887766"
+                "{{paciente_id}}",
+                "historia",
+                "pdf"
               ]
             },
             "description": ""
-          }
-        },
-        {
-          "name": "Listar (documento enmascarado)",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token_admin}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
               }
-            ],
-            "url": {
-              "raw": "{{base_url}}/pacientes?limite=5",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "pacientes?limite=5"
-              ]
-            },
-            "description": ""
-          }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "5. Recursos y FHIR",
+      "name": "4. FHIR e interoperabilidad (Corte 1 y 2)",
+      "description": "",
       "item": [
-        {
-          "name": "Listar camas",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token_admin}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/camas?limite=10",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "camas?limite=10"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "\"{{token_coordinador}}\""
-            }
-          }
-        },
-        {
-          "name": "Cama a en_limpieza",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token_coordinador}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/camas/1/estado",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "camas",
-                "1",
-                "estado"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"estado\": \"en_limpieza\",\n  \"motivo\": \"Aseo terminal\"\n}"
-            }
-          }
-        },
-        {
-          "name": "Preview Location (operationalStatus H)",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token_admin}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/fhir/preview/cama/1",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "fhir",
-                "preview",
-                "cama",
-                "1"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "\"{{token_coordinador}}\""
-            }
-          }
-        },
-        {
-          "name": "Quirófano en cirugía",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token_coordinador}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/quirofanos/1/estado",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "quirofanos",
-                "1",
-                "estado"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"estado\": \"en_cirugia\",\n  \"motivo\": \"Inicio de procedimiento\"\n}"
-            }
-          }
-        },
         {
           "name": "Preview Patient",
           "request": {
             "method": "GET",
             "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
               {
                 "key": "Authorization",
                 "value": "Bearer {{token_admin}}"
@@ -793,7 +1632,18 @@
               ]
             },
             "description": ""
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Sincronizar Patient a HAPI",
@@ -826,7 +1676,89 @@
               "mode": "raw",
               "raw": "{}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remisión como ServiceRequest",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_medico}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/remisiones/{{remision_id}}/fhir",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "remisiones",
+                "{{remision_id}}",
+                "fhir"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preview cama como Location (operationalStatus)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/fhir/preview/cama/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "preview",
+                "cama",
+                "1"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Sincronizar cama a HAPI",
@@ -859,17 +1791,24 @@
               "mode": "raw",
               "raw": "{}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Buscar en HAPI",
           "request": {
             "method": "GET",
             "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
               {
                 "key": "Authorization",
                 "value": "Bearer {{token_admin}}"
@@ -883,25 +1822,34 @@
               "path": [
                 "fhir",
                 "buscar",
-                "Patient?_count=5"
+                "Patient"
+              ],
+              "query": [
+                {
+                  "key": "_count",
+                  "value": "5"
+                }
               ]
             },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "\"{{token_integracion}}\""
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
             }
-          }
+          ]
         },
         {
-          "name": "Integración intenta borrar (espera 403)",
+          "name": "Integración intenta borrar un paciente (403)",
           "request": {
             "method": "DELETE",
             "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
               {
                 "key": "Authorization",
                 "value": "Bearer {{token_integracion}}"
@@ -918,22 +1866,195 @@
               ]
             },
             "description": ""
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "6. Analítica y auditoría",
+      "name": "5. Camas y quirófanos",
+      "description": "",
+      "item": [
+        {
+          "name": "Listar camas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/camas?limite=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "camas"
+              ],
+              "query": [
+                {
+                  "key": "limite",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cama a en_limpieza",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_coordinador}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/camas/1/estado",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "camas",
+                "1",
+                "estado"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"en_limpieza\",\n  \"motivo\": \"Aseo terminal\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Quirófano en cirugía",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_coordinador}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/quirofanos/1/estado",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "quirofanos",
+                "1",
+                "estado"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"en_cirugia\",\n  \"motivo\": \"Inicio de procedimiento\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agenda de quirófanos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/quirofanos/agenda",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "quirofanos",
+                "agenda"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Analítica, contabilidad, portal del paciente y auditoría",
+      "description": "",
       "item": [
         {
           "name": "Ocupación de camas",
           "request": {
             "method": "GET",
             "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
               {
                 "key": "Authorization",
                 "value": "Bearer {{token_admin}}"
@@ -950,17 +2071,24 @@
               ]
             },
             "description": ""
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Indicador de cancelación",
+          "name": "Indicador de cancelación (Res. 256)",
           "request": {
             "method": "GET",
             "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
               {
                 "key": "Authorization",
                 "value": "Bearer {{token_admin}}"
@@ -977,17 +2105,24 @@
               ]
             },
             "description": ""
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Costo de camas ociosas",
           "request": {
             "method": "GET",
             "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
               {
                 "key": "Authorization",
                 "value": "Bearer {{token_admin}}"
@@ -1004,17 +2139,24 @@
               ]
             },
             "description": ""
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Desviación quirúrgica",
           "request": {
             "method": "GET",
             "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
               {
                 "key": "Authorization",
                 "value": "Bearer {{token_admin}}"
@@ -1031,17 +2173,192 @@
               ]
             },
             "description": ""
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Clusters de VitalDB (R07)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/analitica/clusters",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "analitica",
+                "clusters"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tarifario de referencia",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_contable}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/contabilidad/tarifario",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "contabilidad",
+                "tarifario"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Paciente: mi resumen",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_paciente}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/mi-resumen",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "mi-resumen"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Paciente: mi cuenta",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_paciente}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/mi-cuenta",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "mi-cuenta"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rendimiento del sistema y del modelo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/rendimiento",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "rendimiento"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Log de auditoría",
           "request": {
             "method": "GET",
             "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
               {
                 "key": "Authorization",
                 "value": "Bearer {{token_admin}}"
@@ -1053,21 +2370,34 @@
                 "{{base_url}}"
               ],
               "path": [
-                "auditoria?limite=50"
+                "auditoria"
+              ],
+              "query": [
+                {
+                  "key": "limite",
+                  "value": "50"
+                }
               ]
             },
             "description": ""
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Auditoría como FHIR AuditEvent",
           "request": {
             "method": "GET",
             "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
               {
                 "key": "Authorization",
                 "value": "Bearer {{token_admin}}"
@@ -1085,39 +2415,18 @@
               ]
             },
             "description": ""
-          }
-        }
-      ]
-    },
-    {
-      "name": "7. Corte 2 · FHIR reactivo",
-      "item": [
-        {
-          "name": "Laboratorio externo publica glucosa (R21, paso 4 del guion)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/fhir+json"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+                ]
               }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"resourceType\": \"Observation\",\n  \"status\": \"final\",\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"http://terminology.hl7.org/CodeSystem/observation-category\",\n          \"code\": \"laboratory\"\n        }\n      ]\n    }\n  ],\n  \"code\": {\n    \"coding\": [\n      {\n        \"system\": \"http://loinc.org\",\n        \"code\": \"2339-0\",\n        \"display\": \"Glucose [Mass/volume] in Blood\"\n      }\n    ]\n  },\n  \"subject\": {\n    \"identifier\": {\n      \"system\": \"http://hsanrafael.co/fhir/identifier\",\n      \"value\": \"{{documento_paciente}}\"\n    }\n  },\n  \"valueQuantity\": {\n    \"value\": 42,\n    \"unit\": \"mg/dL\",\n    \"system\": \"http://unitsofmeasure.org\",\n    \"code\": \"mg/dL\"\n  }\n}"
-            },
-            "url": {
-              "raw": "{{url_publica}}/fhir/Observation",
-              "host": [
-                "{{url_publica}}"
-              ],
-              "path": [
-                "fhir",
-                "Observation"
-              ]
-            },
-            "description": "Sin token: la puerta de nginx solo deja pasar POST de Observation. El médico responsable del paciente recibe el aviso en vivo y queda un evento auditado con origen FHIR. Poner en documento_paciente la cédula del paciente de la demo."
-          }
+            }
+          ]
         }
       ]
     }

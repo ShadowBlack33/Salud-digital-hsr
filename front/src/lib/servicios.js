@@ -153,3 +153,5 @@ export const programarCirugia = (datos) => api("/cirugias", { method: "POST", js
 export const reprogramarCirugia = (id, datos) => api(`/cirugias/${id}/reprogramar`, { method: "PATCH", json: datos });
 export const cancelarCirugia = (id, datos) => api(`/cirugias/${id}/cancelar`, { method: "POST", json: datos });
 export const miResumen = () => api("/mi-resumen");
+export const misDatos = () => api("/mis-datos");
+export const actualizarMisDatos = (datos) => api("/mis-datos", { method: "PATCH", json: datos });
