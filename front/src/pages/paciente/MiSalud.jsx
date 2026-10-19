@@ -7,12 +7,13 @@ import Esqueleto from "../../components/Esqueleto";
 import GaleriaImagenes from "../../components/GaleriaImagenes";
 import BotonHistoriaPDF from "../../components/BotonHistoriaPDF";
 import MisCobros from "../../components/MisCobros";
+import MisDatos from "../../components/MisDatos";
 import * as S from "../../lib/servicios";
 import { useReloj, useUsuario } from "../../lib/hooks";
 import { duracion, fechaYHora, iniciales, minutosDesde } from "../../lib/format";
 
 const TIPO = { cirugia: "Cirugía", consulta_externa: "Consulta", hospitalizacion: "Hospitalización", urgencias: "Urgencias" };
-const SECCIONES = [["resumen", "Resumen"], ["resultados", "Resultados"], ["imagenes", "Imágenes"], ["cobros", "Cobros"], ["historial", "Historial"]];
+const SECCIONES = [["resumen", "Resumen"], ["resultados", "Resultados"], ["imagenes", "Imágenes"], ["cobros", "Cobros"], ["historial", "Historial"], ["datos", "Mis datos"]];
 
 /** Explica un reporte de IA aprobado en lenguaje sencillo, sin jerga. */
 function explicar(r) {
@@ -231,6 +232,8 @@ export default function MiSalud() {
           </ol>
         </section>
       )}
+
+      <div id="datos" className="scroll-mt-40"><MisDatos /></div>
 
       <BotonHistoriaPDF pacienteId={pid} nombre={nombre} ancho texto="Descargar mi historia clínica (PDF)" />
     </div>

@@ -16,13 +16,15 @@ import os
 
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.core.crypto import descifrar, enmascarar
+from app.core.crypto import cifrar, descifrar, enmascarar
 from app.core.deps import ContextoAcceso, RequierePermiso, get_db
 from app.models import Paciente, Personal
+from app.services.auditoria import registrar, soft_edit
 
 router = APIRouter(tags=["Vistas por perfil"])
 
@@ -702,3 +704,69 @@ def mi_resumen(ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "read")
             "profesional": nombres(e["medico_responsable_id"]),
         } for e in encuentros if e["estado"] not in ("planned",)][:15],
     }
+
+
+# ================================================================ MIS DATOS (paciente)
+# Ley 1581 de 2012 (art. 8): el titular puede conocer, actualizar y rectificar
+# sus datos. El paciente edita sus datos de contacto; los de identidad (nombre,
+# documento, fecha de nacimiento) se corrigen en admisiones con el documento en
+# mano. Cada cambio queda en historial_cambios y en la auditoría (soft edit).
+CAMPOS_CONTACTO = {"telefono": "telefono_cifrado", "email": "email_cifrado", "direccion": "direccion_cifrada"}
+
+
+class MisDatosActualizar(BaseModel):
+    telefono: str | None = Field(None, pattern=r"^\+?[0-9 ]{7,15}$", examples=["3001234567"])
+    email: str | None = Field(None, max_length=120, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    direccion: str | None = Field(None, min_length=5, max_length=200)
+
+
+def _mi_paciente(ctx: ContextoAcceso, db: Session) -> Paciente:
+    if ctx.alcance != "self":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Esta vista es solo para el paciente")
+    pid = ctx.payload.get("paciente_id")
+    p = db.get(Paciente, pid) if pid else None
+    if p is None or not p.activo:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
+    return p
+
+
+def _mis_datos(p: Paciente) -> dict:
+    def leer(col: str, campo: str):
+        v = getattr(p, col, None)
+        return descifrar(v, f"pacientes.{campo}") if v else None
+    return {
+        "nombre": descifrar(p.nombre_cifrado, "pacientes.nombre"),
+        "apellido": descifrar(p.apellido_cifrado, "pacientes.apellido"),
+        "tipo_documento": p.tipo_documento,
+        "documento": enmascarar(descifrar(p.documento_cifrado, "pacientes.documento")),
+        "fecha_nacimiento": p.fecha_nacimiento,
+        **{campo: leer(col, campo) for campo, col in CAMPOS_CONTACTO.items()},
+    }
+
+
+@router.get("/mis-datos", summary="Mis datos personales (solo el paciente)")
+def ver_mis_datos(request: Request, ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "read")),
+                  db: Session = Depends(get_db)):
+    p = _mi_paciente(ctx, db)
+    registrar(db, ctx.usuario, "paciente", p.id, "read", request=request)
+    db.commit()
+    return _mis_datos(p)
+
+
+@router.patch("/mis-datos", summary="Actualizar mis datos de contacto (solo el paciente)")
+def actualizar_mis_datos(datos: MisDatosActualizar, request: Request,
+                         ctx: ContextoAcceso = Depends(RequierePermiso("paciente", "read")),
+                         db: Session = Depends(get_db)):
+    """
+    Solo sobre su propio registro (alcance 'self'): no recibe id, así que un
+    paciente no puede tocar los datos de otro. Lo que no se envía no cambia.
+    """
+    p = _mi_paciente(ctx, db)
+    cambios = {CAMPOS_CONTACTO[c]: cifrar(v.strip(), f"pacientes.{c}")
+               for c, v in datos.model_dump(exclude_unset=True).items() if v is not None and v.strip()}
+    if not cambios:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No se enviaron cambios")
+    soft_edit(db, p, cambios, ctx.usuario, "paciente", request=request)
+    db.commit()
+    db.refresh(p)
+    return _mis_datos(p)

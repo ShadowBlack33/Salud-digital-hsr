@@ -10,6 +10,7 @@ la API le manda solo variables clínicas y un identificador seudónimo. Además,
 aquí se rechaza (422) cualquier llave que no sea una variable del modelo, como
 segunda barrera por si la capa de seudonimización de la API fallara.
 """
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -51,6 +52,20 @@ class Solicitud(BaseModel):
 def salud():
     return {"ml": "ok", "modelo_cargado": bool(ART), "version": ART.get("version"),
             "variables": ART.get("variables"), "umbral": ART.get("umbral")}
+
+
+@app.get("/metricas")
+def metricas():
+    """Desempeño en prueba (solo cifras agregadas, sin pacientes) para el tablero del admin."""
+    ruta = Path(__file__).parent / "modelo" / "metricas.json"
+    if not ruta.exists():
+        raise HTTPException(404, "Aún no hay métricas: falta modelo/metricas.json")
+    m = json.loads(ruta.read_text(encoding="utf-8"))
+    g = m.get("global", {})
+    return {"modelo": m.get("version"), "umbral": m.get("umbral"), "auc": g.get("auc"),
+            "sensibilidad": g.get("sensibilidad"), "especificidad": g.get("especificidad"),
+            "vpp": g.get("vpp"), "casos_de_prueba": g.get("n"),
+            "criterio_umbral": m.get("criterio_umbral")}
 
 
 @app.post("/predict")

@@ -416,6 +416,16 @@ check("El paciente ve qué se le cobra a él y a su entidad",
       r.status_code == 200 and {"cobertura", "servicios", "totales"} <= set(r.json()), r.text[:120])
 check("Un médico no puede abrir 'mi cuenta' de paciente -> 403",
       client.get("/mi-cuenta", headers=h(tok_m01)).status_code == 403)
+r = client.patch("/mis-datos", json={"telefono": "3109876543", "direccion": "Calle 5 # 38-20, Cali"},
+                 headers=h(tok_paciente))
+check("El paciente actualiza sus propios datos de contacto (Ley 1581, art. 8)",
+      r.status_code == 200 and r.json().get("telefono") == "3109876543", r.text[:120])
+check("Sus datos actualizados se leen de nuevo (cifrados en la base)",
+      client.get("/mis-datos", headers=h(tok_paciente)).json().get("direccion") == "Calle 5 # 38-20, Cali")
+check("Un correo inválido se rechaza -> 422",
+      client.patch("/mis-datos", json={"email": "no-es-correo"}, headers=h(tok_paciente)).status_code == 422)
+check("Un médico no usa 'mis datos' de paciente -> 403",
+      client.patch("/mis-datos", json={"telefono": "3000000000"}, headers=h(tok_m01)).status_code == 403)
 
 # ---------------------------------------------------------- 15. Remisiones (R08)
 print("\n[15] Remisión del médico al especialista")
