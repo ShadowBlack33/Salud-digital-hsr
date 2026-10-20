@@ -20,10 +20,10 @@ equipo:
 
 # URL pública del túnel (cloudflared dentro del docker-compose, R04).
 # No reiniciar el contenedor cloudflared hasta después de la sustentación.
-url_publica: "https://new-sao-filed-scheduled.trycloudflare.com"
+url_publica: "https://closely-damaged-divx-care.trycloudflare.com"
 # La API está detrás de nginx en /api; el servidor FHIR en /fhir.
-api_base: "https://new-sao-filed-scheduled.trycloudflare.com/api"
-fhir_base: "https://new-sao-filed-scheduled.trycloudflare.com/fhir"
+api_base: "https://closely-damaged-divx-care.trycloudflare.com/api"
+fhir_base: "https://closely-damaged-divx-care.trycloudflare.com/fhir"
 
 autenticacion:
   login:
