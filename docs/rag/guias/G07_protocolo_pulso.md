@@ -4,6 +4,7 @@ titulo: Protocolo interno de Pulso para alertas críticas, reportes de IA y remi
 fuente: Equipo Pulso (Universidad Autónoma de Occidente). Documentación del proyecto: ml/UMBRAL.md, docs/EVENTOS.md y docs/NORMATIVA.md, 2026.
 url: https://github.com/ShadowBlack33/Salud-digital-hsr
 tipo: guia
+audiencia: operativa
 ---
 
 # Protocolo interno de Pulso para alertas críticas, reportes de IA y remisiones
@@ -24,11 +25,11 @@ El reporte de IA nace pendiente y no entra a la historia clínica. Un médico o 
 
 ## Alerta crítica y escalamiento
 
-Si la probabilidad supera el umbral, se crea una alerta crítica para el clínico que pidió el análisis. La alerta sigue activa hasta que un médico o especialista la reconoce escribiendo la conducta tomada. Si nadie la reconoce en 5 minutos, escala al administrador y a otro clínico del paciente.
+Si la probabilidad supera el umbral, se crea una alerta crítica para el clínico que pidió el análisis. La alerta sigue activa hasta que un médico o especialista la reconoce escribiendo la conducta tomada. Si nadie la reconoce en 5 minutos, escala a los otros médicos y especialistas a cargo del paciente, que son quienes pueden resolverla; no se escala al administrador. El coordinador del hospital ve un contador de alertas sin atender por médico, sin datos del paciente, para saber quién tiene alertas pendientes y desde hace cuánto.
 
 ## Remisiones
 
-El médico remite al especialista indicando motivo y prioridad: rutinaria, prioritaria o urgente. El especialista recibe el aviso en vivo y acepta o rechaza; el médico remitente recibe la respuesta. Un paciente puede tener varios especialistas a la vez.
+El médico remite a una especialidad indicando para qué necesita al especialista (valoración, diagnóstico, tratamiento, procedimiento o seguimiento), el motivo y la prioridad: rutinaria, prioritaria o urgente. El sistema asigna el especialista de esa especialidad con menos remisiones abiertas, para repartir la carga. El especialista no puede rechazar la remisión: si el médico la pidió es porque el paciente la necesita. La acepta y, cuando atiende al paciente, la cierra como atendida. Un paciente puede tener varios especialistas a la vez.
 
 ## Factura automática
 

@@ -49,13 +49,13 @@ paciente o un contable **nunca** recibe un evento clínico.
 |---|---|---|---|---|
 | `remision_nueva` | El médico remite (`POST /remisiones`) → `al_remitir` | El especialista destinatario (bandeja + canal) | Paciente, contable, quien remitió | Sube `remisiones_recibidas` del especialista |
 | `remision_aceptada` | El especialista acepta → `al_aceptar` | El médico remitente | Paciente, contable | Baja `remisiones_recibidas` del especialista |
-| `remision_rechazada` | El especialista rechaza (con motivo) → `al_rechazar` | El médico remitente | Paciente, contable | Baja `remisiones_recibidas`; el especialista pierde acceso a la ficha |
+| `remision_rechazada` | Ya no ocurre: desde la revisión del Corte 2 el especialista no puede rechazar una remisión | | | Se conserva para las remisiones viejas |
 | `reporte_pendiente` | El análisis de IA crea un reporte `pendiente` → `al_reporte_pendiente` | El clínico que pidió el análisis | Paciente, contable | Sube `reportes_por_revisar` |
 | `factura_creada` | Se **aprueba** un reporte de IA → `al_aprobar_reporte` | Los contables | Médicos, paciente | Crea sola la factura en MongoDB con `reporte_id` (una por reporte) |
 | `factura_fallida` | Mongo no respondió al facturar | Contables y admin | Clínicos, paciente | Auditoría con `resultado=error`; no se pierde en silencio |
 | `cuenta_bloqueada` | 3 intentos fallidos de contraseña → `al_bloquear` | Los admin (con el usuario afectado) | Todos los demás roles | El admin la desbloquea en Administración |
 | `alerta_critica` | El modelo clasifica un caso como crítico → `al_alerta_critica` | El clínico responsable (`dirigida_a_usuario` de la alerta) | Paciente, contable, otros clínicos | Alerta `activa`: aviso persistente hasta que se reconozca con nota |
-| `alerta_escalada` | La alerta lleva N min sin reconocer (servidor) | Los admin | Paciente, contable | Auditoría `escalar`; el clínico sigue viéndola activa |
+| `alerta_escalada` | La alerta lleva N min sin reconocer (servidor) | Los otros médicos y especialistas del paciente | Admin, paciente, contable | Auditoría `escalar`; el clínico sigue viéndola activa; el coordinador la ve en `/alertas/sin-atender` |
 | `fhir_observation` | Llega una Observation a HAPI (Subscription) | Los clínicos responsables del paciente | Paciente, contable | Auditoría con origen FHIR; el aviso dice qué llegó (p. ej. glucosa, LOINC 2339-0) |
 
 Los avisos **no llevan nombre, documento ni texto clínico libre**: identifican
@@ -98,7 +98,7 @@ no se acumulan aparte, así que suben al nacer el trabajo y bajan al resolverse:
 
 - `remisiones_recibidas`: remisiones `pendiente` dirigidas al personal del usuario.
 - `reportes_por_revisar`: reportes de IA `pendiente` de los pacientes del clínico (alcance `assigned`).
-- `alertas_activas`: alertas críticas `activa` del clínico; para el admin, las activas ya escaladas.
+- `alertas_activas`: alertas críticas `activa` del clínico; para el admin y el coordinador, las activas ya vencidas (el detalle por médico está en `GET /alertas/sin-atender`).
 
 ## 5. Alertas críticas y escalamiento (R20)
 
@@ -184,7 +184,7 @@ Tablas que este módulo lee y debe respetar el módulo de IA:
 
 - `alertas` (extendida por `db/historial/13_ia.sql`): `dirigida_a_usuario`, `paciente_id`,
   `estado` (`activa` | `reconocida`), `escalada_at`. `/pendientes` cuenta las
-  `activa` del clínico y, para el admin, las `activa` con `escalada_at`.
+  `activa` del clínico y, para el admin y el coordinador, las `activa` con `escalada_at`.
 - `reportes_ia` (`db/historial/13_ia.sql`): `/pendientes` cuenta las filas con `estado = 'pendiente'` y
   `paciente_id` entre los pacientes del clínico (nombre de tabla en
   `app/api/eventos.py: TABLA_REPORTES_IA`). Si la tabla aún no existe, el

@@ -1,11 +1,14 @@
 """
 POST /rag/preguntar · Asistente con recuperación aumentada (Semana 12).
 
-  · Control de rol: usa el permiso ia:read (db/historial/13_ia.sql). Médicos y
-    especialistas (sus pacientes) y admin (todos). El paciente (alcance
-    'self') y los roles sin ia:read (contable, coordinador...) reciben 403,
-    auditado.
-  · Filtro clínico antes de rankear (ver app/services/rag.py).
+  · Lo usan todos los perfiles, pero cada uno solo recupera lo que le
+    corresponde (filtro en SQL antes de rankear, app/services/rag.py):
+      - guías: según la audiencia de cada una (clínicas para el personal
+        asistencial, el protocolo de Pulso también para el coordinador, la de
+        facturación para el contable);
+      - historias aprobadas: según el permiso ia:read que ya existe (médico y
+        especialista sus pacientes, admin todos, paciente la suya, el resto
+        ninguna).
   · Citas: cada respuesta trae los fragmentos que la sustentan.
   · Abstención: sin evidencia suficiente no se llama al modelo.
   · Auditoría: cada consulta queda en rag_consultas y en el log de auditoría.
@@ -20,7 +23,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.deps import ContextoAcceso, RequierePermiso, get_db
+from app.core.deps import ContextoAcceso, get_db, get_token_payload, get_usuario_actual
+from app.core.security import tiene_permiso
 from app.models import Paciente
 from app.services import rag as svc
 from app.services.auditoria import registrar
@@ -35,25 +39,41 @@ class Pregunta(BaseModel):
     metodo: Literal["hibrido", "bm25", "denso"] = "hibrido"
 
 
+def contexto_rag(request: Request, payload: dict = Depends(get_token_payload),
+                 usuario=Depends(get_usuario_actual), db: Session = Depends(get_db)) -> ContextoAcceso:
+    """Cualquier usuario autenticado. El alcance sobre historias es el de ia:read (o None)."""
+    return ContextoAcceso(usuario=usuario, payload=payload,
+                          alcance=tiene_permiso(payload.get("permisos", []), "ia", "read"),
+                          recurso="ia", accion="read", db=db, request=request)
+
+
+def _denegar(db: Session, ctx: ContextoAcceso, request: Request, mensaje: str):
+    registrar(db, ctx.usuario, "rag_consulta", None, "rag_preguntar", resultado="denegado", request=request)
+    db.commit()
+    raise HTTPException(status.HTTP_403_FORBIDDEN, mensaje)
+
+
 @router.post("/preguntar", summary="Preguntar a las guías y a la historia aprobada, con citas")
 def preguntar(datos: Pregunta, request: Request,
-              ctx: ContextoAcceso = Depends(RequierePermiso("ia", "read")),   # nivel 1
+              ctx: ContextoAcceso = Depends(contexto_rag),
               db: Session = Depends(get_db)):
-    if ctx.alcance == "self":
-        registrar(db, ctx.usuario, "rag_consulta", None, "rag_preguntar", resultado="denegado", request=request)
-        db.commit()
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "El asistente es solo para el equipo clínico")
-
-    if datos.paciente_id:                                                   # nivel 2
-        p = db.query(Paciente).filter(Paciente.documento_bidx == datos.paciente_id,
-                                      Paciente.activo.is_(True)).first()
-        if p is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
-        ctx.verificar_registro(p)
+    if datos.paciente_id:                       # preguntar por un paciente concreto
+        if ctx.alcance is None:
+            _denegar(db, ctx, request, "Su perfil no consulta historias clínicas")
+        if ctx.alcance == "self":
+            if datos.paciente_id != ctx.payload.get("paciente_id"):
+                _denegar(db, ctx, request, "Solo puede preguntar por su propia historia")
+        else:
+            p = db.query(Paciente).filter(Paciente.documento_bidx == datos.paciente_id,
+                                          Paciente.activo.is_(True)).first()
+            if p is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
+            ctx.verificar_registro(p)
 
     hallazgo = svc.buscar(db, ctx, datos.pregunta, datos.paciente_id, datos.metodo)
     frags = hallazgo["fragmentos"]
-    resp = svc.responder(datos.pregunta, frags)
+    rol = ctx.payload.get("rol")
+    resp = svc.responder(datos.pregunta, frags, rol)
 
     citas = []
     for n in resp["citas_usadas"]:
@@ -65,7 +85,6 @@ def preguntar(datos: Pregunta, request: Request,
             "extracto": f["texto"][:300],
         })
 
-    rol = getattr(getattr(ctx.usuario, "rol", None), "codigo", None)
     consulta_id = db.execute(text("""
         INSERT INTO rag_consultas (usuario_id, rol, pregunta, paciente_id, metodo, fuentes, abstencion,
                                    confianza, generador)

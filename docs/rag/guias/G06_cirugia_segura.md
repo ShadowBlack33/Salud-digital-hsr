@@ -4,6 +4,7 @@ titulo: Lista de verificación de la seguridad de la cirugía de la OMS
 fuente: Organización Mundial de la Salud. Lista OMS de verificación de la seguridad de la cirugía, 2009. Evidencia: Haynes AB, et al. A Surgical Safety Checklist to Reduce Morbidity and Mortality in a Global Population. N Engl J Med. 2009;360(5):491-499.
 url: https://doi.org/10.1056/NEJMsa0810119
 tipo: guia
+audiencia: clinica
 ---
 
 # Lista de verificación de la seguridad de la cirugía de la OMS

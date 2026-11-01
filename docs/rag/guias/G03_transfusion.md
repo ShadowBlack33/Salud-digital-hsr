@@ -4,6 +4,7 @@ titulo: Anemia y umbrales de transfusión de glóbulos rojos
 fuente: Carson JL, et al. Red Blood Cell Transfusion: 2023 AABB International Guidelines. JAMA. 2023;330(19):1892-1902. doi:10.1001/jama.2023.12914
 url: https://pubmed.ncbi.nlm.nih.gov/37824153/
 tipo: guia
+audiencia: clinica
 ---
 
 # Anemia y umbrales de transfusión de glóbulos rojos

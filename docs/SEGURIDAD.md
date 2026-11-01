@@ -265,12 +265,17 @@ Reconocerlas explícitamente es parte del rigor del trabajo:
 5. **Blind index solo soporta igualdad exacta.** Ver sección 3.
 6. **HAPI FHIR sin autenticación propia; la pone nginx.** Toda petición a
    `/fhir` pasa antes por `auth_request` hacia la API
-   (`app/api/puerta_fhir.py`). Público solo `POST /fhir/Observation` (lo
-   exige R21), `GET /fhir/metadata` y la búsqueda exacta
-   `GET /fhir/Patient?identifier=<valor>` (R15; listar o leer por id sigue cerrado); leer pide token con `fhir:read`,
-   escribir otros recursos pide `fhir:sync:write` (cuenta de integración) y
-   `DELETE` se rechaza siempre. El POST público tiene límite de tasa y de
-   tamaño (256 KB). Falta SMART on FHIR (punto 4).
+   (`app/api/puerta_fhir.py`). Público solo `GET /fhir/metadata`; leer pide
+   token con `fhir:read`, escribir (también publicar una Observation de un
+   laboratorio externo, R21) pide `fhir:sync:write` (cuenta de integración) y
+   `DELETE` se rechaza siempre. Antes eran públicas la búsqueda de un paciente
+   por cédula y la publicación de Observations: con solo una cédula se podían
+   leer los datos del paciente o meterle resultados falsos a su historia. Se
+   cerraron en la revisión del Corte 2, y el `Patient` que se publica en HAPI ya
+   no lleva la cédula ni el teléfono: se identifica con el número de historia
+   del hospital (MRN, un uuid sin significado afuera). Un resultado externo se
+   asocia al paciente solo por `Patient/{id}` o por ese MRN. Límite de tasa y de
+   tamaño (256 KB) en nginx. Falta SMART on FHIR (punto 4).
 7. **Quick tunnel de Cloudflare.** La URL pública cambia si el contenedor
    `cloudflared` se reinicia. Un túnel con nombre daría una URL fija.
 8. **La llave primaria del paciente es su índice ciego.** Si se corrige un

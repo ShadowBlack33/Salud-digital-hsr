@@ -1,16 +1,25 @@
 """
 Remisiones entre médicos (R08).
 
-  POST /remisiones                 el médico remite a un especialista (devuelve id)
+  POST /remisiones                 el médico remite a una especialidad diciendo para qué
+                                   (tipo_solicitud) y por qué (motivo); el sistema asigna
+                                   el especialista con menos remisiones abiertas
   GET  /remisiones                 las que envié o recibí (admin: todas)
-  POST /remisiones/{id}/aceptar    el especialista destinatario la acepta
-  POST /remisiones/{id}/rechazar   ... o la rechaza con un motivo (pierde el acceso)
+  POST /remisiones/{id}/aceptar    el especialista asignado la acepta
   POST /remisiones/{id}/atender    la cierra como atendida (acceso por unos días más)
-  GET  /especialistas              a quién se puede remitir
+  GET  /especialidades/remision    especialidades a las que se puede remitir, con su carga
+  GET  /especialistas              especialistas y su carga actual
 
-Al remitir, el paciente pasa a contar como paciente del especialista (puede
-abrir su ficha e imágenes para revisarlo). El acceso se acaba si la rechaza, o
-REMISION_ACCESO_DIAS después de cerrarla como atendida (app/core/deps.py).
+El especialista NO puede rechazar: si el médico la pidió es porque el paciente
+la necesita (decisión de la revisión del Corte 2). Al remitir, el paciente pasa a
+contar como paciente del especialista (puede abrir su ficha e imágenes); el
+acceso se acaba REMISION_ACCESO_DIAS después de cerrarla como atendida.
+
+Reparto de carga: entre los especialistas activos de la especialidad pedida
+(con cuenta para entrar al sistema), el que tenga menos remisiones pendientes o
+aceptadas; a igualdad, el que lleve más tiempo sin recibir una. Un candado de
+la transacción evita que dos remisiones simultáneas lean la misma carga.
+`especialista_id` explícito se acepta solo para integraciones (el tester).
 Cada transición es atómica: el UPDATE exige el estado de origen, así dos
 clics simultáneos no la cambian dos veces. Paciente y contable no tienen
 ningún permiso sobre remisiones: reciben 403.
@@ -34,11 +43,48 @@ from app.services.auditoria import registrar
 router = APIRouter(tags=["Remisiones"])
 
 
+TIPOS_SOLICITUD = {
+    "valoracion": "Valoración por la especialidad",
+    "diagnostico": "Apoyo diagnóstico",
+    "tratamiento": "Manejo o tratamiento",
+    "procedimiento": "Procedimiento o cirugía",
+    "seguimiento": "Seguimiento",
+}
+
+
 class RemisionCrear(BaseModel):
     paciente_id: str
-    especialista_id: int = Field(..., description="Registro de personal del especialista")
+    especialidad_id: int | None = Field(None, description="Especialidad a la que se remite (reparto automático)")
+    tipo_solicitud: str = Field("valoracion", pattern="^(valoracion|diagnostico|tratamiento|procedimiento|seguimiento)$",
+                                description="Para qué necesita al especialista")
     motivo: str = Field(..., min_length=5, max_length=1000)
     prioridad: str = Field("prioritaria", pattern="^(rutinaria|prioritaria|urgente)$")
+    especialista_id: int | None = Field(None, description="Solo integraciones: especialista fijo (personal.id)")
+
+
+CARGA_SQL = """
+    SELECT p.id, p.especialidad_id,
+           COUNT(r.id) FILTER (WHERE r.estado IN ('pendiente', 'aceptada')) AS abiertas,
+           MAX(r.created_at) AS ultima
+    FROM personal p
+    LEFT JOIN remisiones r ON r.especialista_id = p.id
+    WHERE p.activo AND p.tipo_personal = 'medico_especialista'
+      AND EXISTS (SELECT 1 FROM usuarios u JOIN roles ro ON ro.id = u.rol_id
+                  WHERE u.personal_id = p.id AND u.activo AND ro.codigo = 'especialista')
+    GROUP BY p.id, p.especialidad_id
+"""
+
+
+def asignar_especialista(db: Session, especialidad_id: int, excluir: int | None) -> int | None:
+    """El especialista de la especialidad con menos remisiones abiertas (ver el docstring)."""
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtext('pulso_reparto_remisiones'))"))
+    fila = db.execute(text(f"""
+        SELECT id FROM ({CARGA_SQL}) c
+        WHERE c.especialidad_id = :e AND c.id IS DISTINCT FROM :yo
+        ORDER BY c.abiertas, c.ultima NULLS FIRST, c.id
+        LIMIT 1
+    """), {"e": especialidad_id, "yo": excluir}).first()
+    return fila[0] if fila else None
 
 
 class _Fila:
@@ -64,6 +110,8 @@ def _vista(db: Session, r: dict, yo: int | None) -> dict:
         "especialista_id": r["especialista_id"],
         "especialista": "Usted" if yo and r["especialista_id"] == yo else _nombre_personal(db, r["especialista_id"]),
         "especialidad": esp.especialidad.nombre if esp and esp.especialidad else None,
+        "tipo_solicitud": r.get("tipo_solicitud"),
+        "tipo_solicitud_texto": TIPOS_SOLICITUD.get(r.get("tipo_solicitud") or ""),
         "motivo": r["motivo"], "prioridad": r["prioridad"], "estado": r["estado"],
         "created_at": r["created_at"], "aceptada_at": r["aceptada_at"],
         "respuesta": r.get("respuesta"), "cerrada_at": r.get("cerrada_at"),
@@ -88,7 +136,8 @@ def _publicar_fhir(remision_id: int) -> None:
             recurso = fhir_svc.remision_a_fhir(
                 dict(r), p.fhir_patient_id if p else None, _nombre_personal(db, r["medico_id"]),
                 _nombre_personal(db, r["especialista_id"]),
-                esp.especialidad.nombre if esp and esp.especialidad else None)
+                esp.especialidad.nombre if esp and esp.especialidad else None,
+                mrn=str(p.uuid) if p else None)
         c = fhir_svc.ClienteFHIR()
         httpx.put(f"{c.base}/ServiceRequest", params={"identifier": f"{fhir_svc.SYS_REMISION}|{remision_id}"},
                   json=recurso, headers=c._headers(), timeout=c.timeout)
@@ -108,7 +157,20 @@ def remision_fhir(remision_id: int, ctx: ContextoAcceso = Depends(RequierePermis
     esp = db.get(Personal, r["especialista_id"])
     return fhir_svc.remision_a_fhir(dict(r), p.fhir_patient_id if p else None,
                                     _nombre_personal(db, r["medico_id"]), _nombre_personal(db, r["especialista_id"]),
-                                    esp.especialidad.nombre if esp and esp.especialidad else None)
+                                    esp.especialidad.nombre if esp and esp.especialidad else None,
+                                    mrn=str(p.uuid) if p else None)
+
+
+@router.get("/especialidades/remision", summary="Especialidades a las que se puede remitir, con su carga")
+def especialidades_remision(ctx: ContextoAcceso = Depends(RequierePermiso("remision", "create")),
+                            db: Session = Depends(get_db)):
+    filas = db.execute(text(f"""
+        SELECT e.id, e.nombre, COUNT(c.id) AS especialistas, COALESCE(SUM(c.abiertas), 0) AS abiertas
+        FROM especialidades e JOIN ({CARGA_SQL}) c ON c.especialidad_id = e.id
+        GROUP BY e.id, e.nombre ORDER BY e.nombre
+    """)).mappings().all()
+    return {"especialidades": [dict(f) for f in filas],
+            "tipos_solicitud": [{"codigo": k, "nombre": v} for k, v in TIPOS_SOLICITUD.items()]}
 
 
 @router.get("/especialistas", summary="Especialistas a los que se puede remitir")
@@ -135,7 +197,9 @@ def especialistas(ctx: ContextoAcceso = Depends(RequierePermiso("remision", "cre
     salida.sort(key=lambda e: (e["_ultimo"] is None, -(e["_ultimo"].timestamp() if e["_ultimo"] else 0),
                                e["especialidad"] or "", e["nombre"]))
     hace_un_rato = datetime.now(timezone.utc) - timedelta(minutes=30)
+    carga = {i: a for i, a in db.execute(text(f"SELECT id, abiertas FROM ({CARGA_SQL}) c")).all()}
     for e in salida:
+        e["remisiones_abiertas"] = carga.get(e["id"], 0)
         ultimo = e.pop("_ultimo")
         e["activo_reciente"] = ultimo is not None
         e["conectado"] = bool(ultimo and ultimo > hace_un_rato)   # entró en los últimos 30 min
@@ -150,19 +214,33 @@ def remitir(datos: RemisionCrear, request: Request, tareas: BackgroundTasks,
     if p is None or not p.activo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
     ctx.verificar_registro(p)   # solo se remite a un paciente propio
-    esp = db.get(Personal, datos.especialista_id)
+    yo = ctx.payload.get("personal_id")
+    if datos.especialista_id is None and datos.especialidad_id is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indique la especialidad a la que remite")
+    if datos.especialista_id is not None:
+        esp_id = datos.especialista_id
+    else:
+        esp_id = asignar_especialista(db, datos.especialidad_id, yo)
+        if esp_id is None:
+            raise HTTPException(status.HTTP_409_CONFLICT,
+                                "No hay especialistas activos de esa especialidad para recibir la remisión")
+    esp = db.get(Personal, esp_id)
     if esp is None or not esp.activo or esp.tipo_personal != "medico_especialista":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ese especialista no existe")
-    yo = ctx.payload.get("personal_id")
     if yo == esp.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No puede remitirse un paciente a sí mismo")
     fila = db.execute(text("""
-        INSERT INTO remisiones (paciente_id, medico_id, remitido_por, especialista_id, motivo, prioridad)
-        VALUES (:p, :m, :u, :e, :mo, :pr) RETURNING *
+        INSERT INTO remisiones (paciente_id, medico_id, remitido_por, especialista_id, especialidad_id,
+                                tipo_solicitud, motivo, prioridad)
+        VALUES (:p, :m, :u, :e, :ed, :ts, :mo, :pr) RETURNING *
     """), {"p": p.documento_bidx, "m": yo, "u": ctx.usuario.id, "e": esp.id,
+           "ed": esp.especialidad_id, "ts": datos.tipo_solicitud,
            "mo": datos.motivo.strip(), "pr": datos.prioridad}).mappings().first()
     registrar(db, ctx.usuario, "remision", fila["id"], "create",
-              valor_nuevo={"especialista_id": esp.id, "prioridad": datos.prioridad}, request=request)
+              valor_nuevo={"especialista_id": esp.id, "especialidad_id": esp.especialidad_id,
+                           "tipo_solicitud": datos.tipo_solicitud, "prioridad": datos.prioridad,
+                           "asignacion": "fija" if datos.especialista_id is not None else "reparto_de_carga"},
+              request=request)
     try:
         reactores.al_remitir(db, _Fila(dict(fila)))
     except Exception:  # noqa: BLE001 -- un aviso que falla no tumba la remisión
@@ -215,7 +293,7 @@ def aceptar(remision_id: int, request: Request, tareas: BackgroundTasks,
         UPDATE remisiones SET estado = 'aceptada', aceptada_at = :t, aceptada_por = :u
         WHERE id = :i AND estado = 'pendiente' RETURNING *
     """), {"t": datetime.now(timezone.utc), "u": ctx.usuario.id, "i": remision_id}).mappings().first()
-    if fila is None:   # alguien la aceptó o rechazó entre la lectura y el UPDATE
+    if fila is None:   # alguien la aceptó entre la lectura y el UPDATE
         raise HTTPException(status.HTTP_409_CONFLICT, "La remisión ya no está pendiente")
     registrar(db, ctx.usuario, "remision", remision_id, "update",
               valor_anterior={"estado": "pendiente"}, valor_nuevo={"estado": "aceptada"}, request=request)
@@ -254,20 +332,9 @@ def _transicion(db: Session, ctx: ContextoAcceso, request: Request, tareas: Back
                             f"La remisión está {r['estado']}: solo se puede pasar a {hacia} desde {desde}")
     registrar(db, ctx.usuario, "remision", remision_id, "update",
               valor_anterior={"estado": desde}, valor_nuevo={"estado": hacia}, request=request)
-    if hacia == "rechazada":
-        reactores.al_rechazar(db, _Fila(dict(fila)))   # nunca lanza: corre en un savepoint
     db.commit()
     tareas.add_task(_publicar_fhir, remision_id)
     return _vista(db, dict(fila), yo)
-
-
-@router.post("/remisiones/{remision_id}/rechazar", summary="Rechazar una remisión recibida (con motivo)")
-def rechazar(remision_id: int, datos: Cierre, request: Request, tareas: BackgroundTasks,
-             ctx: ContextoAcceso = Depends(RequierePermiso("remision", "update")),
-             db: Session = Depends(get_db)):
-    if not datos.motivo or len(datos.motivo.strip()) < 5:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indica el motivo del rechazo (mínimo 5 caracteres)")
-    return _transicion(db, ctx, request, tareas, remision_id, "pendiente", "rechazada", datos.motivo.strip())
 
 
 @router.post("/remisiones/{remision_id}/atender", summary="Cerrar como atendida una remisión aceptada")

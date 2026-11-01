@@ -10,9 +10,15 @@ Cómo se entera el sistema de un dato nuevo:
      dispositivo, otro sistema, o Postman), HAPI llama a
      POST {HOOK_URL_BASE}/fhir-hook/observation con la Observation en el cuerpo
      y el secreto compartido en la cabecera X-Hook-Secret.
-  3. procesar_observacion() identifica al paciente por `subject.reference`,
-     busca a sus clínicos responsables, les notifica (bandeja + canal en vivo)
-     y deja un evento auditado con origen FHIR.
+  3. procesar_observacion() identifica al paciente por `subject.reference`
+     (Patient/{id}) o por su número de historia (MRN), GUARDA el resultado en
+     `observaciones` (origen 'fhir_externo', ligado al encuentro activo si
+     hay uno), avisa a sus clínicos responsables (bandeja + canal en vivo) y
+     deja un evento auditado con origen FHIR.
+
+Ya no se acepta la cédula como identificador: quien la conociera podía
+mandarle resultados a cualquier paciente. Publicar en /fhir exige además el
+token de la cuenta de integración (app/api/puerta_fhir.py).
 
 No hay sondeo: HAPI empuja. Dos protecciones evitan reacciones de más:
   · duplicados: HAPI reintenta si no recibe 2xx; la llave única
@@ -32,7 +38,6 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import text
 
 from app.core.config import get_settings
-from app.core.crypto import blind_index
 from app.services import bandeja
 from app.services import fhir as fhir_svc
 from app.services.auditoria import registrar
@@ -135,8 +140,15 @@ async def mantener_suscripcion() -> None:
 
 
 # -------------------------------------------------------------- Observation
+_UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
 def _paciente_de(db, obs: dict) -> str | None:
-    """documento_bidx del paciente al que se refiere la Observation, o None."""
+    """
+    documento_bidx del paciente al que se refiere la Observation, o None.
+    Solo por Patient/{id} del servidor FHIR o por el MRN del hospital (uuid);
+    nunca por cédula.
+    """
     sujeto = obs.get("subject") or {}
     ref = sujeto.get("reference") or ""
     m = re.search(r"Patient/([A-Za-z0-9\-.]{1,64})", ref)
@@ -146,15 +158,73 @@ def _paciente_de(db, obs: dict) -> str | None:
         if fila:
             return fila[0]
     ident = sujeto.get("identifier") or {}
-    valor = ident.get("value")
-    if valor:
-        # El identificador del hospital es el propio índice ciego; el de la cédula, su valor.
-        for candidato in (str(valor).strip(), blind_index(str(valor), "pacientes.documento")):
-            fila = db.execute(text("SELECT documento_bidx FROM pacientes WHERE documento_bidx = :b AND activo"),
-                              {"b": candidato}).first()
-            if fila:
-                return fila[0]
+    valor = str(ident.get("value") or "").strip()
+    if ident.get("system") == fhir_svc.SYS_MRN and _UUID.match(valor):
+        fila = db.execute(text("SELECT documento_bidx FROM pacientes WHERE uuid = CAST(:u AS uuid) AND activo"),
+                          {"u": valor}).first()
+        if fila:
+            return fila[0]
     return None
+
+
+# ------------------------------------------------------- guardar el resultado
+ESTADOS_OBS = {"registered": "registered", "preliminary": "preliminary", "final": "final",
+               "amended": "amended", "corrected": "amended", "cancelled": "cancelled"}
+# Valores críticos por LOINC (además de lo que diga interpretation): (bajo, alto).
+CRITICOS = {"2339-0": (54, 400), "2345-7": (54, 400), "15074-8": (54, 400),
+            "2823-3": (2.5, 6.0), "718-7": (7.0, None), "59408-5": (88, None), "2708-6": (88, None)}
+
+
+def _critico(obs: dict, cod: str | None, valor: float | None) -> bool:
+    for i in obs.get("interpretation") or []:
+        for c in i.get("coding") or []:
+            if c.get("code") in ("HH", "LL", "AA", "H>", "L<"):
+                return True
+    if cod in CRITICOS and valor is not None:
+        bajo, alto = CRITICOS[cod]
+        return (bajo is not None and valor < bajo) or (alto is not None and valor >= alto)
+    return False
+
+
+def guardar_resultado(db, obs: dict, paciente_id: str, oid: str) -> int | None:
+    """
+    Inserta la Observation externa en `observaciones` (una sola vez por id de
+    FHIR). Se liga al encuentro activo más reciente del paciente, si tiene.
+    """
+    codigos = (obs.get("code") or {}).get("coding") or []
+    loinc = next((c for c in codigos if c.get("system") == fhir_svc.SYS_LOINC), None) or (codigos[0] if codigos else {})
+    cod = str(loinc.get("code") or "")[:20] or "sin-codigo"
+    display = (loinc.get("display") or LOINC_NOMBRES.get(cod) or (obs.get("code") or {}).get("text") or "")[:150] or None
+    cantidad = obs.get("valueQuantity") or {}
+    valor = cantidad.get("value")
+    try:
+        valor = float(valor) if valor is not None else None
+    except (TypeError, ValueError):
+        valor = None
+    texto = None if valor is not None else (str(obs.get("valueString"))[:200] if obs.get("valueString") else None)
+    categoria = "laboratory"
+    for cat in obs.get("category") or []:
+        for c in cat.get("coding") or []:
+            if c.get("code") in ("laboratory", "vital-signs"):
+                categoria = c["code"]
+    fecha = obs.get("effectiveDateTime") or obs.get("issued")
+    encuentro = db.execute(text("""
+        SELECT id FROM encuentros WHERE paciente_id = :p AND activo AND estado NOT IN ('finished', 'cancelled')
+        ORDER BY COALESCE(hora_real_inicio, hora_programada_inicio, created_at) DESC LIMIT 1
+    """), {"p": paciente_id}).scalar()
+    fila = db.execute(text("""
+        INSERT INTO observaciones (encuentro_id, paciente_id, categoria, codigo_loinc, display_loinc,
+                                   valor_numerico, valor_texto, unidad_ucum, estado, es_critico, fecha_hora,
+                                   fhir_observation_id, origen)
+        VALUES (:e, :p, :cat, :cod, :disp, :v, :t, :u, :est, :crit, COALESCE(CAST(:f AS timestamptz), NOW()),
+                :oid, 'fhir_externo')
+        ON CONFLICT (fhir_observation_id) WHERE origen = 'fhir_externo' DO NOTHING
+        RETURNING id
+    """), {"e": encuentro, "p": paciente_id, "cat": categoria, "cod": cod, "disp": display, "v": valor,
+           "t": texto, "u": str(cantidad.get("unit") or cantidad.get("code") or "")[:20] or None,
+           "est": ESTADOS_OBS.get(obs.get("status") or "final", "final"), "crit": _critico(obs, cod, valor),
+           "f": fecha, "oid": oid[:64]}).first()
+    return fila[0] if fila else None
 
 
 def _clinicos_responsables(db, paciente_id: str) -> list[int]:
@@ -229,9 +299,19 @@ def procesar_observacion(db, obs: dict) -> dict:
         return {"resultado": "sin_paciente"}
 
     db.execute(text("UPDATE eventos_fhir SET paciente_id = :p WHERE id = :i"), {"p": paciente_id, "i": nuevo[0]})
+    try:
+        with db.begin_nested():
+            observacion_id = guardar_resultado(db, obs, paciente_id, oid)
+    except Exception:  # noqa: BLE001 -- un dato mal formado no impide avisar
+        log.exception("No se pudo guardar la Observation %s", oid)
+        observacion_id = None
     destinatarios = _clinicos_responsables(db, paciente_id)
-    bandeja.notificar(db, destinatarios, "fhir_observation", mensaje, paciente_id=paciente_id,
-                      datos={"observation_id": oid, "codigo": codigo, "origen": "fhir"})
+    bandeja.notificar(db, destinatarios, "fhir_observation",
+                      mensaje + (" Quedó en la historia del paciente." if observacion_id else ""),
+                      paciente_id=paciente_id,
+                      datos={"observation_id": oid, "codigo": codigo, "origen": "fhir",
+                             "observacion_id": observacion_id})
     registrar(db, None, "paciente", paciente_id, "evento_fhir",
-              valor_nuevo={**base, "paciente_id": paciente_id, "notificados": len(destinatarios)})
-    return {"resultado": "procesada", "notificados": len(destinatarios)}
+              valor_nuevo={**base, "paciente_id": paciente_id, "notificados": len(destinatarios),
+                           "observacion_id": observacion_id})
+    return {"resultado": "procesada", "notificados": len(destinatarios), "observacion_id": observacion_id}

@@ -62,6 +62,7 @@ class Documento:
     texto: str
     url: str = ""
     paciente: str | None = None    # seudónimo (solo historias)
+    audiencia: str = "clinica"     # guías: a qué grupo de perfiles va (app/services/rag.py)
 
 
 @dataclass
@@ -89,7 +90,7 @@ def leer_documento(ruta: str | Path) -> Documento:
                 meta[k.strip()] = v.strip()
     return Documento(id=meta["id"], titulo=meta.get("titulo", meta["id"]), fuente=meta.get("fuente", ""),
                      tipo=meta.get("tipo", "guia"), texto=cuerpo.strip(), url=meta.get("url", ""),
-                     paciente=meta.get("paciente"))
+                     paciente=meta.get("paciente"), audiencia=meta.get("audiencia", "clinica"))
 
 
 def fragmentar(doc: Documento) -> list[Fragmento]:
