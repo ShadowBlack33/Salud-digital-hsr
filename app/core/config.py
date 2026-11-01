@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     xai_model: str = "grok-4.3"           # XAI_MODEL (confirmar en console.x.ai)
     xai_base_url: str = "https://api.x.ai/v1"
     rag_umbral_denso: float = 0.45        # RAG_UMBRAL_DENSO (calibrar con scripts/evaluar_rag.py)
-    rag_umbral_bm25: float = 4.5          # RAG_UMBRAL_BM25
+    rag_umbral_bm25: float = 5.0          # RAG_UMBRAL_BM25
 
     @property
     def cors_origenes(self) -> list[str]:

@@ -98,6 +98,16 @@ def main() -> None:
         lineas.append(f"- Preguntas sin respuesta en el corpus: máximo {sin[-1]:.2f}.")
         lineas.append("- El umbral `RAG_UMBRAL_DENSO` debe quedar entre esos dos valores.")
 
+        # El híbrido se abstiene si CUALQUIERA de las dos señales queda bajo su umbral.
+        u_d = float(os.getenv("RAG_UMBRAL_DENSO", "0.45"))
+        u_b = float(os.getenv("RAG_UMBRAL_BM25", "5.0"))
+        pasa = lambda p: max_sim(p["id"]) >= u_d and top_bm25(p["pregunta"]) >= u_b
+        malas_con = [p["id"] for p in con_respuesta if not pasa(p)]
+        malas_sin = [p["id"] for p in sin_respuesta if pasa(p)]
+        lineas.append(f"\n## Abstención del híbrido (denso ≥ {u_d} y BM25 ≥ {u_b})\n")
+        lineas.append(f"- Preguntas con respuesta que se abstendrían por error: {', '.join(malas_con) or 'ninguna'}.")
+        lineas.append(f"- Preguntas sin respuesta que se responderían por error: {', '.join(malas_sin) or 'ninguna'}.")
+
     salida = "\n".join(lineas) + "\n"
     print(salida)
     (RAIZ / "docs/rag/eval/RESULTADOS.md").write_text(salida, encoding="utf-8")
