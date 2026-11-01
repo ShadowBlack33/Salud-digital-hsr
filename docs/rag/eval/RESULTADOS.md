@@ -25,3 +25,8 @@ Corpus: 11 documentos (8 guías, 3 historias de evaluación), 64 fragmentos. Pre
 - Preguntas con respuesta: mínimo 0.49, mediana 0.72.
 - Preguntas sin respuesta en el corpus: máximo 0.57.
 - El umbral `RAG_UMBRAL_DENSO` debe quedar entre esos dos valores.
+
+## Abstención del híbrido (denso ≥ 0.45 y BM25 ≥ 5.0)
+
+- Preguntas con respuesta que se abstendrían por error: ninguna.
+- Preguntas sin respuesta que se responderían por error: ninguna.
