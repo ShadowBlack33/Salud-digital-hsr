@@ -4,6 +4,7 @@ titulo: Clasificación del estado físico ASA
 fuente: American Society of Anesthesiologists. ASA Physical Status Classification System. Definiciones aprobadas por la Cámara de Delegados de la ASA, última aprobación el 15 de octubre de 2014.
 url: https://asahq.org/resources/clinical-information/asa-physical-status-classification-system
 tipo: guia
+audiencia: clinica
 ---
 
 # Clasificación del estado físico ASA

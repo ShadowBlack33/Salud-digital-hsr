@@ -11,6 +11,10 @@
 #   FHIR .......... http://localhost:8080/fhir   (solo desde este equipo)
 #   PACS .......... http://localhost:8042        (solo desde este equipo)
 #
+# Cada sistema tiene su propia base de datos: la API (Neon o "postgres"),
+# HAPI FHIR ("fhir-db") y el índice del PACS ("pacs-db"); los archivos DICOM
+# van en su propio volumen ("orthanc_dicom"), no en ninguna base.
+#
 # Los secretos salen del .env de esta carpeta (ver .env.example). El .env NO se
 # copia dentro de ninguna imagen.
 #
@@ -58,22 +62,55 @@ services:
       # Subscription (canal rest-hook hacia http://api:8000/fhir-hook/...).
       hapi.fhir.subscription.resthook_enabled: "true"
 
+  # Base de datos propia del PACS: el índice de Orthanc (pacientes, estudios,
+  # series, instancias y sus etiquetas DICOM). Va aparte de los archivos DICOM
+  # (volumen orthanc_dicom) y aparte de las bases de la API y de FHIR, como en
+  # un entorno hospitalario: cada sistema con su base.
+  pacs-db:
+    image: postgres:16-alpine
+    container_name: hsr-pacs-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: orthanc
+      POSTGRES_USER: orthanc
+      POSTGRES_PASSWORD: ${PACS_DB_PASSWORD:-cambiar_en_produccion}
+    volumes:
+      - pacs_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orthanc -d orthanc"]
+      interval: 10s
+      retries: 5
+
   # Servidor PACS (DICOM) para imágenes médicas. El navegador nunca lo toca:
   # solo la API le habla, por eso el puerto solo se publica en 127.0.0.1.
+  # Índice en pacs-db (plugin PostgreSQL de Orthanc); los archivos DICOM en su
+  # propio volumen (EnableStorage=false: las imágenes no van a la base).
   orthanc:
     image: orthancteam/orthanc:25.5.1
     container_name: hsr-orthanc
     restart: unless-stopped
+    depends_on:
+      pacs-db:
+        condition: service_healthy
     environment:
       ORTHANC__NAME: "Hospital San Rafael - PACS"
       ORTHANC__AUTHENTICATION_ENABLED: "true"
       ORTHANC__REMOTE_ACCESS_ALLOWED: "true"
       ORTHANC__REGISTERED_USERS: |
         {"api": "${ORTHANC_PASSWORD:-orthanc_dev_2026}"}
+      POSTGRESQL_PLUGIN_ENABLED: "true"
+      ORTHANC__POSTGRESQL__HOST: pacs-db
+      ORTHANC__POSTGRESQL__PORT: "5432"
+      ORTHANC__POSTGRESQL__DATABASE: orthanc
+      ORTHANC__POSTGRESQL__USERNAME: orthanc
+      ORTHANC__POSTGRESQL__PASSWORD: ${PACS_DB_PASSWORD:-cambiar_en_produccion}
+      ORTHANC__POSTGRESQL__ENABLE_INDEX: "true"
+      ORTHANC__POSTGRESQL__ENABLE_STORAGE: "false"
+      ORTHANC__STORAGE_DIRECTORY: /var/lib/orthanc/dicom
     ports:
       - "127.0.0.1:8042:8042"
     volumes:
-      - orthanc_data:/var/lib/orthanc/db
+      - orthanc_dicom:/var/lib/orthanc/dicom
 
   # PostgreSQL propio del sistema (R05). Ver el encabezado: mientras el equipo
   # use Neon, este servicio corre pero la API no lo usa. Al crear el volumen
@@ -261,6 +298,7 @@ services:
 
 volumes:
   fhir_pgdata:
-  orthanc_data:
+  pacs_pgdata:
+  orthanc_dicom:
   hsr_pgdata:
   mongo_data:

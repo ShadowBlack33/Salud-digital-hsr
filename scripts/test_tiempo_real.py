@@ -141,9 +141,10 @@ print("=" * 70)
 
 # ------------------------------------------------------------ cuentas y datos
 tok = {rol: entrar(u) for rol, u in {"admin": "admin", "medico": "medico01", "especialista": "especialista01",
-                                       "contable": "contable01", "paciente": "paciente_demo"}.items()}
+                                       "contable": "contable01", "paciente": "paciente_demo",
+                                       "coordinador": "coordinador"}.items()}
 print("\n[0] Preparación")
-check("Los cinco roles inician sesión", all(tok.values()), str({k: bool(v) for k, v in tok.items()}))
+check("Los seis roles inician sesión", all(tok.values()), str({k: bool(v) for k, v in tok.items()}))
 if not all(tok.values()):
     print("Faltan cuentas de demostración (scripts/generar_datos.py y scripts/casos_demo.py).")
     sys.exit(2)
@@ -238,7 +239,7 @@ check("Sin token no hay bandeja (401)", http.get("/notificaciones").status_code 
 check("Sin token no hay pendientes (401)", http.get("/pendientes").status_code == 401)
 
 # ------------------------------------------------------ [4] aceptar / rechazar
-print("\n[4] El especialista acepta y rechaza: el médico se entera (R19)")
+print("\n[4] El especialista acepta (no puede rechazar): el médico se entera (R19)")
 r = http.post(f"/remisiones/{rem_id}/aceptar", headers=h(tok["especialista"]))
 check("El especialista acepta (2xx)", r.status_code == 200, r.text[:120])
 ev = canales["medico"].esperar(tipo("remision_aceptada"))
@@ -253,10 +254,9 @@ r = http.post("/remisiones", headers=h(tok["medico"]),
 rem2 = r.json().get("id")
 canales["especialista"].esperar(lambda e: e["tipo"] == "remision_nueva" and e.get("remision_id") == rem2)
 r = http.post(f"/remisiones/{rem2}/rechazar", headers=h(tok["especialista"]), json={"motivo": "No es de mi especialidad"})
-check("El especialista la rechaza con motivo (2xx)", r.status_code == 200, r.text[:120])
-ev = canales["medico"].esperar(lambda e: e["tipo"] == "remision_rechazada" and e.get("remision_id") == rem2)
-check("El médico recibe 'remision_rechazada' en vivo", ev is not None, str(ev))
-check("El aviso del rechazo no copia el motivo clínico", bool(ev) and "especialidad" not in ev["mensaje"])
+check("El especialista no puede rechazarla (la ruta no existe)", r.status_code in (404, 405), r.text[:120])
+check("Nadie recibe 'remision_rechazada'",
+      not canales["medico"].recibio(lambda e: e["tipo"] == "remision_rechazada" and e.get("remision_id") == rem2))
 check("Aceptar sin ser el destinatario sigue prohibido",
       http.post(f"/remisiones/{rem2}/aceptar", headers=h(tok["medico"])).status_code in (403, 409))
 
@@ -352,11 +352,16 @@ if not {"estado", "escalada_at", "paciente_id", "dirigida_a_usuario"} <= cols:
 else:
     MENSAJE = "El modelo estima 87% de riesgo (umbral 70%). Revise y reconozca la alerta."
     with SessionLocal() as db:
+        # Como en la realidad, la alerta nace de un reporte de IA (pendiente).
+        rep_id = db.execute(text("""
+            INSERT INTO reportes_ia (paciente_id, creado_por, estado, probabilidad, critico, payload_enviado)
+            VALUES (:p, :u, 'pendiente', 0.87, TRUE, '{"prueba": "tiempo_real"}'::jsonb) RETURNING id
+        """), {"p": pid, "u": ids["medico01"]}).scalar()
         fila = db.execute(text("""
-            INSERT INTO alertas (tipo, severidad, titulo, mensaje, dirigida_a_usuario, paciente_id, estado)
-            VALUES ('alerta_critica_ia', 'critica', 'Riesgo crítico de UCI posoperatoria', :m, :u, :p, 'activa')
+            INSERT INTO alertas (tipo, severidad, titulo, mensaje, dirigida_a_usuario, paciente_id, estado, reporte_id)
+            VALUES ('alerta_critica_ia', 'critica', 'Riesgo crítico de UCI posoperatoria', :m, :u, :p, 'activa', :r)
             RETURNING *
-        """), {"m": MENSAJE, "u": ids["medico01"], "p": pid}).mappings().first()
+        """), {"m": MENSAJE, "u": ids["medico01"], "p": pid, "r": rep_id}).mappings().first()
         aid = fila["id"]
         reactores.al_alerta_critica(db, {**dict(fila), "nivel": "critica"})
         db.commit()
@@ -370,17 +375,30 @@ else:
     check("El admin aún no la ve (no se ha escalado)",
           http.get("/pendientes", headers=h(tok["admin"])).json()["alertas_activas"] == 0)
 
-    # Lo que hace app/api/alertas.py al vencer el plazo: marca escalada_at, audita y llama al reactor.
+    # Plazo vencido: lo que hace app/api/alertas.py (escalar_vencidas) con esta alerta.
+    from app.api import alertas as modulo_alertas
     with SessionLocal() as db:
-        db.execute(text("UPDATE alertas SET escalada_at = NOW() WHERE id = :i"), {"i": aid})
-        admins = bandeja.usuarios_con_rol(db, "admin")
-        reactores.al_alerta_escalada(db, {**dict(fila), "destinatarios": admins})
+        db.execute(text("UPDATE alertas SET created_at = NOW() - INTERVAL '1 hour' WHERE id = :i"), {"i": aid})
+        # especialista01 queda a cargo del paciente (remisión abierta): es "otro clínico".
+        db.execute(text("""INSERT INTO remisiones (paciente_id, medico_id, remitido_por, especialista_id, motivo)
+                           SELECT :p, NULL, :u, personal_id, 'Prueba de escalamiento' FROM usuarios
+                           WHERE username = 'especialista01'"""), {"p": pid, "u": ids["medico01"]})
         db.commit()
-    ev = canales["admin"].esperar(lambda e: e["tipo"] == "alerta_escalada" and e.get("alerta_id") == aid)
-    check("El admin recibe 'alerta_escalada' en vivo", ev is not None, str(ev))
+    modulo_alertas.escalar_vencidas()
+    ev = canales["especialista"].esperar(lambda e: e["tipo"] == "alerta_escalada" and e.get("alerta_id") == aid)
+    check("Escala a otro clínico del paciente (especialista01) en vivo", ev is not None, str(ev))
+    check("El admin NO recibe el escalamiento (no atiende pacientes)",
+          not canales["admin"].recibio(lambda e: e["tipo"] == "alerta_escalada" and e.get("alerta_id") == aid))
     check("El contable no recibe el escalamiento", not canales["contable"].recibio(tipo("alerta_escalada")))
     check("El paciente no recibe el escalamiento", not canales["paciente"].recibio(tipo("alerta_escalada")))
-    check("Escalada, el admin la cuenta como activa",
+    r = http.get("/alertas/sin-atender", headers=h(tok["coordinador"]))
+    fila_m = next((m for m in r.json().get("medicos", []) if m["usuario"] == "medico01"), None) if r.status_code == 200 else None
+    check("El coordinador ve el contador: medico01 tiene alertas vencidas sin atender",
+          fila_m is not None and fila_m["vencidas"] >= 1 and fila_m["minutos_mas_antigua"] >= 59, r.text[:200])
+    check("... sin datos del paciente", r.status_code == 200 and "paciente" not in r.text, r.text[:200])
+    check("El médico no ve el contador de supervisión -> 403",
+          http.get("/alertas/sin-atender", headers=h(tok["medico"])).status_code == 403)
+    check("Vencida, el admin la cuenta en /pendientes",
           http.get("/pendientes", headers=h(tok["admin"])).json()["alertas_activas"] >= 1)
     check("... y el clínico la sigue viendo activa",
           http.get("/pendientes", headers=h(tok["medico"])).json()["alertas_activas"] >= 1)
@@ -427,6 +445,16 @@ with SessionLocal() as db:
                           "AND operacion = 'evento_fhir'"), {"p": pid}).scalars().all()
 check("Quedó auditado con origen FHIR y el id del paciente",
       len(aud) == 1 and aud[0].get("origen") == "fhir" and aud[0].get("observation_id") == oid, str(aud))
+with SessionLocal() as db:
+    guardada = db.execute(text("""SELECT codigo_loinc, valor_numerico, origen, paciente_id, fhir_observation_id
+                                  FROM observaciones WHERE fhir_observation_id = :o"""), {"o": oid}).mappings().all()
+check("El resultado externo QUEDA GUARDADO en observaciones (origen fhir_externo)",
+      len(guardada) == 1 and guardada[0]["origen"] == "fhir_externo" and guardada[0]["codigo_loinc"] == "2339-0"
+      and float(guardada[0]["valor_numerico"]) == 238 and guardada[0]["paciente_id"] == pid, str(guardada))
+hist = http.get(f"/pacientes/{pid}/historia", headers=h(tok["medico"]))
+check("... y aparece en la historia del paciente",
+      hist.status_code == 200 and any(o.get("codigo_loinc") == "2339-0" and o.get("valor") == 238
+                                      for o in hist.json().get("observaciones", [])), hist.text[:150])
 r = http.put(f"/fhir-hook/Observation/{oid}", json=observacion(oid), headers={"X-Hook-Secret": SECRETO})
 check("Si HAPI reintenta la misma Observation, no reacciona dos veces", r.json().get("resultado") == "duplicada", r.text[:100])
 check("... y el médico no recibe un segundo aviso", sum(1 for e in canales["medico"].eventos if e["tipo"] == "fhir_observation") == 1)
@@ -436,6 +464,16 @@ check("Lo que escribió la propia API (eco) no dispara nada", r.json().get("resu
 r = http.post("/fhir-hook/observation", headers={"X-Hook-Secret": SECRETO},
               json=observacion(f"{oid}-huerfana", subject={"reference": "Patient/no-existe-9"}))
 check("Una Observation de un paciente desconocido se audita sin avisar a nadie", r.json().get("resultado") == "sin_paciente", r.text[:100])
+with SessionLocal() as db:
+    mrn = str(db.execute(text("SELECT uuid FROM pacientes WHERE documento_bidx = :p"), {"p": pid}).scalar())
+r = http.post("/fhir-hook/observation", headers={"X-Hook-Secret": SECRETO},
+              json=observacion(f"{oid}-mrn", subject={"identifier": {"system": "http://hsanrafael.co/fhir/identifier/mrn",
+                                                                       "value": mrn}}))
+check("Se identifica al paciente por su número de historia (MRN)", r.json().get("resultado") == "procesada", r.text[:100])
+r = http.post("/fhir-hook/observation", headers={"X-Hook-Secret": SECRETO},
+              json=observacion(f"{oid}-cedula", subject={"identifier": {"system": "http://hsanrafael.co/fhir/identifier",
+                                                                          "value": pid}}))
+check("Por cédula o índice ciego ya NO se identifica a nadie", r.json().get("resultado") == "sin_paciente", r.text[:100])
 check("Un ping sin cuerpo no rompe el receptor", http.post("/fhir-hook/observation", headers={"X-Hook-Secret": SECRETO}).status_code == 200)
 
 # --- registro de la Subscription en HAPI (transporte simulado)

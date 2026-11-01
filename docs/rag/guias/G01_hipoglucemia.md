@@ -4,6 +4,7 @@ titulo: Hipoglucemia en el adulto hospitalizado
 fuente: American Diabetes Association. Standards of Care in Diabetes—2025, sección 6 "Glycemic Goals and Hypoglycemia". Diabetes Care 2025;48(Suppl 1).
 url: https://professional.diabetes.org/sites/dpro/files/2025-05/hypoglycemia-hcp-5-27-25.pdf
 tipo: guia
+audiencia: clinica
 ---
 
 # Hipoglucemia en el adulto hospitalizado

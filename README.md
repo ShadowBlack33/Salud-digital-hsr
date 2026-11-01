@@ -68,13 +68,13 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  R[Médico remite] --> N1[Aviso en vivo al especialista]
+  R[Médico remite a una especialidad] --> RC[Reparto de carga] --> N1[Aviso en vivo al especialista]
   A[Especialista acepta] --> N2[Aviso al médico]
   AP[Clínico aprueba reporte de IA] --> F[Factura automática en MongoDB]
   B[3 intentos fallidos] --> N3[Bloqueo y aviso al admin]
   C[IA marca caso crítico] --> AL[Alerta activa en vivo] --> E{¿Reconocida a tiempo?}
-  E -- no --> ES[Escala al admin]
-  O[Observation nueva en FHIR] --> N4[Aviso al médico y auditoría]
+  E -- no --> ES[Aviso a los otros médicos del paciente y contador para el coordinador]
+  O[Observation de un laboratorio externo, con token] --> G[Se guarda en observaciones] --> N4[Aviso al médico y auditoría]
 ```
 
 El catálogo completo de eventos está en [`docs/EVENTOS.md`](docs/EVENTOS.md).

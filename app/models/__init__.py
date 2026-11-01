@@ -316,7 +316,7 @@ class Observacion(Base):
     __tablename__ = "observaciones"
     id = Column(Integer, primary_key=True)
     uuid = Column(UUID(as_uuid=True), server_default=func.gen_random_uuid())
-    encuentro_id = Column(Integer, ForeignKey("encuentros.id"), nullable=False)
+    encuentro_id = Column(Integer, ForeignKey("encuentros.id"))   # NULL solo en resultados externos
     paciente_id = Column(String(64), ForeignKey("pacientes.documento_bidx"), nullable=False)
     categoria = Column(String(25), default="vital-signs")
     codigo_loinc = Column(String(20), nullable=False)
@@ -329,6 +329,7 @@ class Observacion(Base):
     fecha_hora = Column(DateTime(timezone=True), server_default=func.now())
     registrado_por = Column(Integer, ForeignKey("personal.id"))
     fhir_observation_id = Column(String(64))
+    origen = Column(String(15), default="interno")   # interno | fhir_externo
     activo = Column(Boolean, default=True)
     deleted_at = Column(DateTime(timezone=True))
     deleted_by = Column(Integer)

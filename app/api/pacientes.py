@@ -74,6 +74,7 @@ class PacienteRespuesta(BaseModel):
     riesgo_asa: int | None = None
     activo: bool
     fhir_patient_id: str | None = None
+    mrn: str | None = None     # número de historia: identifica al paciente en FHIR (no la cédula)
     created_by: int | None = None
 
 
@@ -98,6 +99,7 @@ def _a_respuesta(p: Paciente, enmascarar_doc: bool = False) -> PacienteRespuesta
         riesgo_asa=p.riesgo_asa,
         activo=bool(p.activo),
         fhir_patient_id=p.fhir_patient_id,
+        mrn=str(p.uuid) if p.uuid else None,
         created_by=p.created_by,
     )
 

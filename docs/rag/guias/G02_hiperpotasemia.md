@@ -4,6 +4,7 @@ titulo: Hiperpotasemia aguda en el adulto
 fuente: UK Renal Association (hoy UK Kidney Association). Clinical Practice Guidelines: Treatment of Acute Hyperkalaemia in Adults. 2020. Consultada a través de un resumen secundario; verificar contra el documento original de la UK Kidney Association.
 url: https://www.iatrox.com/academy/ukmla/hyperkalaemia-emergency
 tipo: guia
+audiencia: clinica
 ---
 
 # Hiperpotasemia aguda en el adulto

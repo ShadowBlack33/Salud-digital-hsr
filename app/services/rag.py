@@ -167,20 +167,33 @@ def texto_historia_aprobada(db: Session, p: Paciente) -> str | None:
     return "\n\n".join(partes) if (encuentros or reportes) else None
 
 
+# ================================================================== perfiles por guía
+# Cada guía declara en su encabezado (audiencia: ...) a qué grupo va. Las
+# historias no usan esto: se filtran por paciente con el permiso ia:read.
+_CLINICOS = ["admin", "medico", "especialista", "anestesiologo", "enfermero_jefe", "enfermero",
+             "instrumentador", "auxiliar_enfermeria"]
+AUDIENCIAS = {
+    "clinica": _CLINICOS,                         # guías de manejo clínico (G01-G06)
+    "operativa": _CLINICOS + ["coordinador"],     # protocolo interno de Pulso (G07)
+    "facturacion": ["contable", "admin"],          # facturación (G08)
+}
+
+
 # ================================================================== escritura del índice
 def _vector_sql(v: list[float]) -> str:
     return "[" + ",".join(f"{x:.6f}" for x in v) + "]"
 
 
-def _guardar(db: Session, frags: list[core.Fragmento], paciente_id: str | None, estado: str) -> int:
+def _guardar(db: Session, frags: list[core.Fragmento], paciente_id: str | None, estado: str,
+             audiencia: list[str] | None = None) -> int:
     vectores = core.embeber([f.texto for f in frags])
     for i, f in enumerate(frags):
         db.execute(text("""
             INSERT INTO rag_fragmentos (documento_id, tipo, paciente_id, estado, titulo, seccion, fuente, texto,
-                                        embedding, modelo_embedding)
+                                        embedding, modelo_embedding, audiencia)
             VALUES (:doc, :tipo, :pid, :estado, :titulo, :seccion, :fuente, :texto,
-                    CAST(:vec AS vector), :modelo)
-        """), {"doc": f.documento_id, "tipo": f.tipo, "pid": paciente_id, "estado": estado,
+                    CAST(:vec AS vector), :modelo, :audiencia)
+        """), {"doc": f.documento_id, "tipo": f.tipo, "pid": paciente_id, "estado": estado, "audiencia": audiencia,
                "titulo": f.titulo, "seccion": f.seccion, "fuente": f.fuente, "texto": f.texto,
                "vec": _vector_sql(vectores[i]) if vectores else None,
                "modelo": core.MODELO_EMBEDDING if vectores else None})
@@ -193,7 +206,9 @@ def indexar_guias(db: Session) -> int:
     for ruta in sorted(CARPETA_GUIAS.glob("*.md")):
         doc = core.leer_documento(ruta)
         db.execute(text("DELETE FROM rag_fragmentos WHERE documento_id = :d"), {"d": doc.id})
-        total += _guardar(db, core.fragmentar(doc), None, "aprobado")
+        if doc.audiencia not in AUDIENCIAS:
+            raise ValueError(f"{ruta.name}: audiencia '{doc.audiencia}' desconocida (opciones: {sorted(AUDIENCIAS)})")
+        total += _guardar(db, core.fragmentar(doc), None, "aprobado", AUDIENCIAS[doc.audiencia])
     db.commit()
     return total
 
@@ -227,18 +242,31 @@ def indexar_paciente(db: Session, paciente_id: str) -> int:
 # ================================================================== recuperación filtrada
 def _filtro(db: Session, ctx, paciente_id: str | None) -> tuple[str, dict]:
     """
-    WHERE del filtro clínico. Se aplica en SQL, antes de cualquier ranking:
-    guías siempre; historias solo aprobadas y solo de pacientes permitidos.
+    WHERE del filtro por perfil. Se aplica en SQL, antes de cualquier ranking:
+      · guías: solo las que tienen el rol del usuario en su audiencia;
+      · historias: solo aprobadas y solo de los pacientes que el permiso ia:read
+        le deja ver (all: todos, assigned: los suyos, self: la propia; sin el
+        permiso, ninguna).
     """
+    rol = ctx.payload.get("rol") or ""
+    guias = "(f.tipo = 'guia' AND :rol = ANY(f.audiencia))"
+    params: dict = {"rol": rol}
+    historia = "(f.tipo = 'historia' AND f.estado = 'aprobado'"
     if paciente_id:
-        return ("(f.tipo = 'guia' OR (f.tipo = 'historia' AND f.estado = 'aprobado' AND f.paciente_id = :pid))",
-                {"pid": paciente_id})
+        return f"({guias} OR {historia} AND f.paciente_id = :pid))", {**params, "pid": paciente_id}
     if ctx.alcance == "all":
-        return "(f.tipo = 'guia' OR (f.tipo = 'historia' AND f.estado = 'aprobado'))", {}
-    sub = ctx.pacientes_asignados_subq()
-    permitidos = [r[0] for r in db.execute(select(sub.c[0])).all()]
-    return ("(f.tipo = 'guia' OR (f.tipo = 'historia' AND f.estado = 'aprobado' "
-            "AND f.paciente_id = ANY(:permitidos)))", {"permitidos": permitidos})
+        return f"({guias} OR {historia}))", params
+    if ctx.alcance == "self":
+        propio = ctx.payload.get("paciente_id")
+        if not propio:
+            return guias, params
+        return f"({guias} OR {historia} AND f.paciente_id = :propio))", {**params, "propio": propio}
+    if ctx.alcance == "assigned":
+        sub = ctx.pacientes_asignados_subq()
+        permitidos = [r[0] for r in db.execute(select(sub.c[0])).all()]
+        return (f"({guias} OR {historia} AND f.paciente_id = ANY(:permitidos)))",
+                {**params, "permitidos": permitidos})
+    return guias, params
 
 
 def buscar(db: Session, ctx, pregunta: str, paciente_id: str | None = None,
@@ -323,7 +351,16 @@ def _extractiva(pregunta: str, frags: list[dict]) -> str:
     return " ".join(frases[i] for i in mejores if puntaje[i] > 0 or i == mejores[0]) + " [F1]"
 
 
-def _grok(pregunta: str, frags: list[dict]) -> str | None:
+# Lo que se agrega al prompt según quién pregunta.
+POR_PERFIL = {
+    "paciente": "Quien pregunta es el propio paciente: explica en lenguaje sencillo, sin tecnicismos, "
+                "no des indicaciones de tratamiento ni de medicamentos y recomienda hablar con su médico.",
+    "contable": "Quien pregunta es del área de facturación: responde solo sobre cobros y facturas.",
+    "coordinador": "Quien pregunta coordina el hospital: responde sobre procesos, no sobre pacientes.",
+}
+
+
+def _grok(pregunta: str, frags: list[dict], rol: str | None = None) -> str | None:
     clave = get_settings().xai_api_key
     if not clave:
         return None
@@ -331,19 +368,20 @@ def _grok(pregunta: str, frags: list[dict]) -> str | None:
     r = httpx.post(f"{XAI_URL}/chat/completions", timeout=45,
                    headers={"Authorization": f"Bearer {clave}"},
                    json={"model": XAI_MODELO, "temperature": 0, "max_tokens": 500,
-                         "messages": [{"role": "system", "content": SISTEMA},
+                         "messages": [{"role": "system", "content": SISTEMA + (
+                                           "\n6. " + POR_PERFIL[rol] if rol in POR_PERFIL else "")},
                                       {"role": "user", "content": f"{_contexto(frags)}\n\nPregunta: {pregunta}"}]})
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"].strip()
 
 
-def responder(pregunta: str, frags: list[dict]) -> dict:
+def responder(pregunta: str, frags: list[dict], rol: str | None = None) -> dict:
     """Redacta la respuesta y devuelve solo las citas que realmente usa."""
     if not frags:
         return {"respuesta": "No encuentro información suficiente en las fuentes autorizadas para responder.",
                 "abstencion": True, "citas_usadas": [], "generador": "ninguno"}
     try:
-        texto, generador = _grok(pregunta, frags), f"xai:{XAI_MODELO}"
+        texto, generador = _grok(pregunta, frags, rol), f"xai:{XAI_MODELO}"
     except Exception:  # noqa: BLE001 -- sin red o error del proveedor: no se cae la consulta
         texto = None
     if texto is None:

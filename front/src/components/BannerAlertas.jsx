@@ -5,14 +5,14 @@ import { useTiempoReal } from "../lib/tiempoReal";
 import { useAvisos } from "./Avisos";
 import { haceCuanto } from "../lib/format";
 
-// Minutos sin reconocer antes de escalar al admin (R20). Debe coincidir con el
+// Minutos sin reconocer antes de avisar a los otros médicos del paciente (R20). Debe coincidir con el
 // valor del backend; si la API manda `escala_en`, se usa ese.
 const MINUTOS_ESCALAMIENTO = Number(import.meta.env.VITE_MINUTOS_ESCALAMIENTO) || 5;
 
 function Escalamiento({ alerta }) {
   const ahora = useReloj(1000);
   if (alerta.escalada_at) {
-    return <p className="flex items-center gap-1.5 text-xs font-semibold text-coral-ink"><Timer size={13} aria-hidden="true" />Escalada al administrador</p>;
+    return <p className="flex items-center gap-1.5 text-xs font-semibold text-coral-ink"><Timer size={13} aria-hidden="true" />Avisada a los otros médicos del paciente</p>;
   }
   const inicio = Date.parse(alerta.created_at) || ahora;
   const limite = alerta.escala_en ? Date.parse(alerta.escala_en) : inicio + MINUTOS_ESCALAMIENTO * 60000;
@@ -23,7 +23,7 @@ function Escalamiento({ alerta }) {
     <div className="mt-1.5">
       <p className="flex items-center gap-1.5 text-xs font-semibold text-coral-ink tabular-nums">
         <Timer size={13} aria-hidden="true" />
-        {falta > 0 ? `Se escala al administrador en ${m}:${String(s).padStart(2, "0")}` : "Escalando al administrador…"}
+        {falta > 0 ? `Se avisa a los otros médicos del paciente en ${m}:${String(s).padStart(2, "0")}` : "Avisando a los otros médicos del paciente…"}
       </p>
       <div className="mt-1 h-1 w-48 overflow-hidden rounded-full bg-paper-white" aria-hidden="true">
         <div className="h-full rounded-full bg-coral-deep transition-[width] duration-1000 ease-linear" style={{ width: `${avance * 100}%` }} />

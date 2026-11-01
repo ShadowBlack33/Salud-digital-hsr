@@ -4,6 +4,7 @@ titulo: Admisión, alta y triaje en la unidad de cuidados intensivos
 fuente: Nates JL, Nunnally M, Kleinpell R, et al. ICU Admission, Discharge, and Triage Guidelines: A Framework to Enhance Clinical Operations, Development of Institutional Policies, and Further Research. Crit Care Med. 2016;44(8):1553-1602. doi:10.1097/CCM.0000000000001856
 url: https://sccm.org/Clinical-Resources/Guidelines/Guidelines/ICU-Admission,-Discharge,-and-Triage-Guidelines
 tipo: guia
+audiencia: clinica
 ---
 
 # Admisión, alta y triaje en la unidad de cuidados intensivos

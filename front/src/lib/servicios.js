@@ -54,6 +54,8 @@ export const alertas = async () => {
 };
 export const reconocerAlerta = (id, nota) =>
   escribir(`/alertas/${id}/reconocer`, { method: "POST", json: { nota } }, () => M.reconocer(id, nota));
+/** Supervisión (coordinador, admin): alertas sin atender por médico, sin datos del paciente. */
+export const alertasSinAtender = () => api("/alertas/sin-atender");
 
 // ------------------------------------------------------------------ IA (R10, R12)
 export const reportesDePaciente = async (pacienteId) => {
@@ -78,6 +80,8 @@ export const decidirReporte = (id, decision, observaciones) =>
 
 // ------------------------------------------------------------------ remisiones (R08)
 export const especialistas = () => leer("/especialistas", M.especialistas);
+/** Especialidades a las que se puede remitir (el sistema elige el especialista) y los tipos de solicitud. */
+export const especialidadesRemision = () => api("/especialidades/remision");
 export const remisiones = async () => {
   const r = await leer("/remisiones", M.remisiones);
   const datos = lista(r.datos, "remisiones");
@@ -92,7 +96,6 @@ export const aceptarRemision = (id) => (String(id).startsWith("sim-")
   ? Promise.resolve({ datos: M.aceptar(id), demo: true })
   : escribir(`/remisiones/${id}/aceptar`, { method: "POST" }, () => M.aceptar(id)));
 // Rechazar (con motivo) y cerrar como atendida: solo existen en la API real.
-export const rechazarRemision = (id, motivo) => api(`/remisiones/${id}/rechazar`, { method: "POST", json: { motivo } });
 export const atenderRemision = (id, motivo) => api(`/remisiones/${id}/atender`, { method: "POST", json: { motivo } });
 
 // ------------------------------------------------------------------ contabilidad (R09)
@@ -155,3 +158,8 @@ export const cancelarCirugia = (id, datos) => api(`/cirugias/${id}/cancelar`, { 
 export const miResumen = () => api("/mi-resumen");
 export const misDatos = () => api("/mis-datos");
 export const actualizarMisDatos = (datos) => api("/mis-datos", { method: "PATCH", json: datos });
+
+// ------------------------------------------------------------------ asistente (RAG, semana 12)
+/** Pregunta al asistente. Cada perfil recupera solo lo que le corresponde (lo decide la API). */
+export const preguntarAsistente = (pregunta, pacienteId) =>
+  api("/rag/preguntar", { method: "POST", json: { pregunta, ...(pacienteId ? { paciente_id: pacienteId } : {}) } });

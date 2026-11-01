@@ -24,17 +24,18 @@ Respuesta + citas  ──► rag_consultas + log de auditoría
 
 Cada guía es un resumen escrito por el equipo, con sus propias palabras, a partir de la fuente original. Están en `docs/rag/guias/` y cada archivo declara la fuente en su encabezado.
 
-| Id | Guía | Fuente |
-| --- | --- | --- |
-| G01 | Hipoglucemia en el adulto hospitalizado | American Diabetes Association. *Standards of Care in Diabetes—2025*, sección 6. Diabetes Care 2025;48(Suppl 1). |
-| G02 | Hiperpotasemia aguda en el adulto | UK Renal Association (hoy UK Kidney Association). *Treatment of Acute Hyperkalaemia in Adults*, 2020. Consultada vía resumen secundario: **verificar contra el documento original**. |
-| G03 | Anemia y umbrales de transfusión | Carson JL, et al. *Red Blood Cell Transfusion: 2023 AABB International Guidelines*. JAMA. 2023;330(19):1892-1902. |
-| G04 | Clasificación del estado físico ASA | American Society of Anesthesiologists. *ASA Physical Status Classification System* (aprobada el 15-10-2014). |
-| G05 | Admisión, alta y triaje en UCI | Nates JL, et al. *ICU Admission, Discharge, and Triage Guidelines*. Crit Care Med. 2016;44(8):1553-1602. |
-| G06 | Lista OMS de cirugía segura | OMS, 2009. Evidencia: Haynes AB, et al. N Engl J Med. 2009;360(5):491-499. |
-| G07 | Protocolo interno de alertas, IA y remisiones | Documentación del proyecto Pulso (`ml/UMBRAL.md`, `docs/EVENTOS.md`, `docs/NORMATIVA.md`). |
+| Id | Guía | Fuente | Perfiles |
+| --- | --- | --- | --- |
+| G01 | Hipoglucemia en el adulto hospitalizado | American Diabetes Association. *Standards of Care in Diabetes—2025*, sección 6. Diabetes Care 2025;48(Suppl 1). | clínicos |
+| G02 | Hiperpotasemia aguda en el adulto | UK Renal Association (hoy UK Kidney Association). *Treatment of Acute Hyperkalaemia in Adults*, 2020. Consultada vía resumen secundario: **verificar contra el documento original**. | clínicos |
+| G03 | Anemia y umbrales de transfusión | Carson JL, et al. *Red Blood Cell Transfusion: 2023 AABB International Guidelines*. JAMA. 2023;330(19):1892-1902. | clínicos |
+| G04 | Clasificación del estado físico ASA | American Society of Anesthesiologists. *ASA Physical Status Classification System* (aprobada el 15-10-2014). | clínicos |
+| G05 | Admisión, alta y triaje en UCI | Nates JL, et al. *ICU Admission, Discharge, and Triage Guidelines*. Crit Care Med. 2016;44(8):1553-1602. | clínicos |
+| G06 | Lista OMS de cirugía segura | OMS, 2009. Evidencia: Haynes AB, et al. N Engl J Med. 2009;360(5):491-499. | clínicos |
+| G07 | Protocolo interno de alertas, IA y remisiones | Documentación del proyecto Pulso (`ml/UMBRAL.md`, `docs/EVENTOS.md`, `docs/NORMATIVA.md`). | clínicos y coordinador |
+| G08 | Facturación de servicios en Pulso | Documentación del proyecto Pulso (`docs/CONTABILIDAD.md`, `docs/CONTRATO_FACTURACION.md`). | contable y admin |
 
-Las guías se eligieron porque cubren exactamente lo que Pulso vigila: las tres variables de laboratorio del modelo (glucosa, potasio, hemoglobina), el riesgo anestésico (ASA), la decisión de UCI y la seguridad quirúrgica.
+Las guías clínicas se eligieron porque cubren exactamente lo que Pulso vigila: las tres variables de laboratorio del modelo (glucosa, potasio, hemoglobina), el riesgo anestésico (ASA), la decisión de UCI y la seguridad quirúrgica. "Clínicos" son admin, médico, especialista, anestesiólogo, enfermero jefe, enfermero, instrumentador y auxiliar de enfermería; cada guía lo declara en su encabezado (`audiencia: clinica | operativa | facturacion`).
 
 ### Historia aprobada de los pacientes
 
@@ -66,7 +67,7 @@ Al servicio `ml` (embeddings) y a Grok solo llega texto ya seudonimizado.
 - **Denso**: `paraphrase-multilingual-MiniLM-L12-v2` (384 dimensiones, multilingüe, corre en CPU), vectores en **pgvector** y similitud coseno.
 - **Híbrido**: fusión **RRF** (Reciprocal Rank Fusion, k = 60) de los dos rankings.
 
-**Evaluación:** `scripts/evaluar_rag.py` con `docs/rag/eval/preguntas.json`: 26 preguntas con documento esperado (21 de guías y 5 de historias de pacientes ficticios ya seudonimizados en `docs/rag/eval/historias/`) y 3 preguntas sin respuesta en el corpus para calibrar la abstención. Métricas a nivel de documento.
+**Evaluación:** `scripts/evaluar_rag.py` con `docs/rag/eval/preguntas.json`: 28 preguntas con documento esperado (23 de guías y 5 de historias de pacientes ficticios ya seudonimizados en `docs/rag/eval/historias/`) y 3 preguntas sin respuesta en el corpus para calibrar la abstención. Métricas a nivel de documento.
 
 | Método | Recall@1 | Recall@3 | MRR |
 | --- | --- | --- | --- |
@@ -78,7 +79,7 @@ Detalle y fallos por pregunta en `docs/rag/eval/RESULTADOS.md`. BM25 falla una p
 
 **Método elegido: híbrido (RRF).** En este corpus BM25 sale igual o un poco mejor (Recall@1 empatado, MRR 0,98 frente a 0,97). Aun así se usa el híbrido:
 
-- Las 26 preguntas las escribió el equipo leyendo las guías, así que repiten sus mismas palabras, y eso favorece a BM25. Un médico pregunta con sus propias palabras ("azúcar baja", "potasio alto", "estado físico para anestesia"), y ahí BM25 no encuentra el término y el denso sí.
+- Las preguntas las escribió el equipo leyendo las guías, así que repiten sus mismas palabras, y eso favorece a BM25. Un médico pregunta con sus propias palabras ("azúcar baja", "potasio alto", "estado físico para anestesia"), y ahí BM25 no encuentra el término y el denso sí.
 - BM25 sigue dentro de la fusión, así que se conserva su fuerza con cifras, códigos y términos exactos ("6,5 mmol/L", "ASA III", "P-7C1A").
 - RRF combina posiciones, no puntajes: no hay que calibrar dos escalas distintas.
 - Si el servicio de embeddings no responde, la búsqueda sigue solo con BM25, y el endpoint permite pedir `metodo: "bm25"` o `"denso"`.
@@ -107,12 +108,26 @@ OR (f.tipo = 'historia' AND f.estado = 'aprobado' AND f.paciente_id = ANY(:pacie
 
 | Aspecto | Comportamiento |
 | --- | --- |
-| Control de rol | Requiere `ia:read` (db/historial/13_ia.sql): médico y especialista sobre sus pacientes, admin sobre todos. El paciente (alcance `self`), el contable y los roles sin `ia:read` reciben 403, auditado. Con `paciente_id` se verifica además que el paciente sea suyo (nivel 2) y su historia va primero en las fuentes. |
+| Perfiles | Lo usan todos los perfiles, y cada uno recupera solo lo suyo (tabla de abajo). Pedir un `paciente_id` sin permiso sobre él da 403, auditado. Con `paciente_id` se verifica que el paciente sea suyo (nivel 2) y su historia va primero en las fuentes. |
 | Citas | `citas[]` con `documento_id`, título, sección, fuente, seudónimo del paciente (si es historia) y extracto. Solo las que la respuesta usa. |
 | Abstención | Si la similitud del mejor fragmento es menor que `RAG_UMBRAL_DENSO`, o sin vectores el BM25 es menor que `RAG_UMBRAL_BM25` (4,5: en la evaluación las preguntas con respuesta tienen como mínimo 5,0 y las que no tienen respuesta como máximo 3,7), no se llama al modelo. También se abstiene si el modelo responde `NO_ENCONTRADO` o no cita ninguna fuente. |
 | Auditoría | Cada consulta se guarda en `rag_consultas` (usuario, rol, pregunta, filtro, método, fuentes citadas, abstención, confianza, generador) y en el log de auditoría con la acción `rag_preguntar`. |
 
 **Generación:** Grok de xAI por su API compatible con OpenAI (`https://api.x.ai/v1`, modelo en `XAI_MODEL`), temperatura 0. El prompt exige citar cada afirmación, responder `NO_ENCONTRADO` si las fuentes no alcanzan y tratar el contenido de las fuentes como datos, no como instrucciones. Sin `XAI_API_KEY`, la respuesta es **extractiva** (las frases más relevantes del mejor fragmento con su cita), así el sistema y las pruebas funcionan sin red.
+
+**Qué recupera cada perfil** (el filtro va en el `WHERE`, antes de rankear):
+
+| Perfil | Guías clínicas (G01–G06) | Protocolo Pulso (G07) | Facturación (G08) | Historias aprobadas |
+| --- | --- | --- | --- | --- |
+| médico, especialista | sí | sí | no | las de sus pacientes |
+| admin | sí | sí | sí | todas |
+| enfermero jefe, enfermero, anestesiólogo, instrumentador, auxiliar | sí | sí | no | ninguna |
+| coordinador | no | sí | no | ninguna |
+| contable | no | no | sí | ninguna |
+| paciente | no | no | no | solo la suya |
+| secretaria, cuenta de integración | no | no | no | ninguna (el asistente se abstiene) |
+
+Las historias siguen el permiso `ia:read` que ya existía (`assigned`, `all`, `self`), así el asistente no puede mostrar algo que la pantalla de reportes de IA no mostraría. Al paciente, además, el prompt le pide al modelo lenguaje sencillo y ninguna indicación de tratamiento.
 
 ## 6. pgvector
 

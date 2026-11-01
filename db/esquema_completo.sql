@@ -1,7 +1,7 @@
 -- ============================================================================
 -- ESQUEMA COMPLETO de Pulso (Hospital San Rafael) en un solo archivo.
 --
--- Reemplaza a las migraciones db/historial/01..15: es el estado final que
+-- Reemplaza a las migraciones db/historial/01..15 y db/16_...: es el estado final que
 -- dejan aplicadas en orden (estructura, funciones, triggers, extensión
 -- vector del RAG) más los catálogos (roles, permisos, especialidades, EPS,
 -- CIE-10, procedimientos, causas de cancelación, servicios, tipos de cama).
@@ -15,10 +15,10 @@
 --   (o con psql: psql "$URL" -v ON_ERROR_STOP=1 -f db/esquema_completo.sql)
 --
 -- Se generó con pg_dump sobre una base PostgreSQL 16 + pgvector con
--- 01, 02, los datos sintéticos y 04, 06..15 aplicados (el orden del CI), sin
+-- 01, 02, los datos sintéticos y 04, 06..16 aplicados (el orden del CI), sin
 -- los datos de las tablas de personas, y se verificó que una base creada
 -- desde este archivo queda con la misma estructura y pasa las pruebas.
--- Un cambio nuevo de estructura va como migración numerada (db/16_...sql)
+-- Un cambio nuevo de estructura va como migración numerada (db/17_...sql)
 -- y luego se incorpora aquí.
 -- ============================================================================
 
@@ -715,7 +715,7 @@ ALTER SEQUENCE public.notificaciones_id_seq OWNED BY public.notificaciones.id;
 CREATE TABLE public.observaciones (
     id integer NOT NULL,
     uuid uuid DEFAULT gen_random_uuid() NOT NULL,
-    encuentro_id integer NOT NULL,
+    encuentro_id integer,
     paciente_id character(64) NOT NULL,
     categoria character varying(25) DEFAULT 'vital-signs'::character varying NOT NULL,
     codigo_loinc character varying(20) NOT NULL,
@@ -733,7 +733,10 @@ CREATE TABLE public.observaciones (
     deleted_by integer,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     created_by integer,
-    CONSTRAINT ck_obs_estado CHECK (((estado)::text = ANY ((ARRAY['registered'::character varying, 'preliminary'::character varying, 'final'::character varying, 'amended'::character varying, 'cancelled'::character varying])::text[])))
+    origen character varying(15) DEFAULT 'interno'::character varying NOT NULL,
+    CONSTRAINT ck_obs_encuentro CHECK (((encuentro_id IS NOT NULL) OR ((origen)::text = 'fhir_externo'::text))),
+    CONSTRAINT ck_obs_estado CHECK (((estado)::text = ANY ((ARRAY['registered'::character varying, 'preliminary'::character varying, 'final'::character varying, 'amended'::character varying, 'cancelled'::character varying])::text[]))),
+    CONSTRAINT ck_obs_origen CHECK (((origen)::text = ANY ((ARRAY['interno'::character varying, 'fhir_externo'::character varying])::text[])))
 );
 
 
@@ -1007,6 +1010,7 @@ CREATE TABLE public.rag_fragmentos (
     embedding public.vector(384),
     modelo_embedding text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    audiencia text[],
     CONSTRAINT rag_fragmentos_check CHECK ((((tipo = 'guia'::text) AND (paciente_id IS NULL)) OR ((tipo = 'historia'::text) AND (paciente_id IS NOT NULL)))),
     CONSTRAINT rag_fragmentos_estado_check CHECK ((estado = ANY (ARRAY['aprobado'::text, 'pendiente'::text, 'rechazado'::text]))),
     CONSTRAINT rag_fragmentos_tipo_check CHECK ((tipo = ANY (ARRAY['guia'::text, 'historia'::text])))
@@ -1051,8 +1055,11 @@ CREATE TABLE public.remisiones (
     aceptada_por integer,
     cerrada_at timestamp with time zone,
     cerrada_por integer,
+    especialidad_id integer,
+    tipo_solicitud character varying(20),
     CONSTRAINT ck_rem_estado CHECK (((estado)::text = ANY ((ARRAY['pendiente'::character varying, 'aceptada'::character varying, 'rechazada'::character varying, 'atendida'::character varying])::text[]))),
-    CONSTRAINT ck_rem_prioridad CHECK (((prioridad)::text = ANY ((ARRAY['rutinaria'::character varying, 'prioritaria'::character varying, 'urgente'::character varying])::text[])))
+    CONSTRAINT ck_rem_prioridad CHECK (((prioridad)::text = ANY ((ARRAY['rutinaria'::character varying, 'prioritaria'::character varying, 'urgente'::character varying])::text[]))),
+    CONSTRAINT ck_rem_tipo_solicitud CHECK (((tipo_solicitud IS NULL) OR ((tipo_solicitud)::text = ANY ((ARRAY['valoracion'::character varying, 'diagnostico'::character varying, 'tratamiento'::character varying, 'procedimiento'::character varying, 'seguimiento'::character varying])::text[]))))
 );
 
 
@@ -1925,7 +1932,6 @@ INSERT INTO public.permisos VALUES
 	(48, 'remision:create:all', 'remision', 'create', 'all', 'Remitir pacientes a especialista'),
 	(49, 'remision:read:all', 'remision', 'read', 'all', 'Ver todas las remisiones'),
 	(50, 'remision:read:assigned', 'remision', 'read', 'assigned', 'Ver las remisiones que envió o recibió'),
-	(51, 'remision:update:assigned', 'remision', 'update', 'assigned', 'Aceptar o rechazar las remisiones recibidas'),
 	(52, 'alta:create:assigned', 'alta', 'create', 'assigned', 'Dar de alta a sus pacientes (médico tratante)'),
 	(53, 'alta:create:all', 'alta', 'create', 'all', 'Dar de alta a cualquier paciente'),
 	(54, 'ia:create:assigned', 'ia', 'create', 'assigned', 'Ejecutar el análisis de IA sobre sus pacientes'),
@@ -1935,7 +1941,9 @@ INSERT INTO public.permisos VALUES
 	(58, 'ia:approve:assigned', 'ia', 'approve', 'assigned', 'Aprobar o rechazar reportes de IA de sus pacientes'),
 	(59, 'alerta:read:assigned', 'alerta', 'read', 'assigned', 'Ver las alertas críticas dirigidas a él'),
 	(60, 'alerta:read:all', 'alerta', 'read', 'all', 'Ver todas las alertas críticas'),
-	(61, 'alerta:update:assigned', 'alerta', 'update', 'assigned', 'Reconocer las alertas críticas dirigidas a él');
+	(61, 'alerta:update:assigned', 'alerta', 'update', 'assigned', 'Reconocer las alertas críticas dirigidas a él'),
+	(67, 'alerta:supervisar:all', 'alerta', 'supervisar', 'all', 'Ver cuántas alertas críticas tiene sin atender cada médico (sin datos del paciente)'),
+	(51, 'remision:update:assigned', 'remision', 'update', 'assigned', 'Aceptar y atender las remisiones recibidas');
 
 
 --
@@ -2145,7 +2153,9 @@ INSERT INTO public.roles_permisos VALUES
 	(16, 59),
 	(1, 60),
 	(15, 61),
-	(16, 61);
+	(16, 61),
+	(1, 67),
+	(2, 67);
 
 
 --
@@ -2292,7 +2302,7 @@ SELECT pg_catalog.setval('public.observaciones_id_seq', 1, false);
 -- Name: permisos_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.permisos_id_seq', 66, true);
+SELECT pg_catalog.setval('public.permisos_id_seq', 67, true);
 
 
 --
@@ -3000,6 +3010,13 @@ CREATE INDEX idx_quirofanos_estado ON public.quirofanos USING btree (estado) WHE
 
 
 --
+-- Name: idx_rem_carga; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_rem_carga ON public.remisiones USING btree (especialista_id) WHERE ((estado)::text = ANY ((ARRAY['pendiente'::character varying, 'aceptada'::character varying])::text[]));
+
+
+--
 -- Name: idx_rem_especialista; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3063,6 +3080,13 @@ CREATE INDEX ix_rag_consultas_usuario ON public.rag_consultas USING btree (usuar
 
 
 --
+-- Name: ix_rag_frag_audiencia; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_rag_frag_audiencia ON public.rag_fragmentos USING gin (audiencia);
+
+
+--
 -- Name: ix_rag_frag_documento; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3081,6 +3105,13 @@ CREATE INDEX ix_rag_frag_filtro ON public.rag_fragmentos USING btree (tipo, esta
 --
 
 CREATE UNIQUE INDEX uq_alerta_reporte ON public.alertas USING btree (reporte_id) WHERE (reporte_id IS NOT NULL);
+
+
+--
+-- Name: ux_obs_fhir_externa; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_obs_fhir_externa ON public.observaciones USING btree (fhir_observation_id) WHERE ((origen)::text = 'fhir_externo'::text);
 
 
 --
@@ -3502,6 +3533,14 @@ ALTER TABLE ONLY public.remisiones
 
 ALTER TABLE ONLY public.remisiones
     ADD CONSTRAINT remisiones_cerrada_por_fkey FOREIGN KEY (cerrada_por) REFERENCES public.usuarios(id);
+
+
+--
+-- Name: remisiones remisiones_especialidad_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.remisiones
+    ADD CONSTRAINT remisiones_especialidad_id_fkey FOREIGN KEY (especialidad_id) REFERENCES public.especialidades(id);
 
 
 --
