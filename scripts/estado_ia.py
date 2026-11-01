@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-¿La base configurada en el .env ya tiene la migración de IA (db/13_ia.sql)?
+¿La base configurada en el .env ya tiene la migración de IA (db/historial/13_ia.sql)?
 
     python scripts/estado_ia.py
 
@@ -30,5 +30,5 @@ print(f"Tabla reportes_ia ........ {'sí' if tabla else 'NO'}")
 print(f"Permisos de IA y alertas . {permisos} de 8")
 print(f"Columnas nuevas de alertas {columnas} de 3")
 listo = tabla and permisos == 8 and columnas == 3
-print("\nMigración 13 aplicada:", "SÍ" if listo else "NO (aplicar db/13_ia.sql)")
+print("\nMigración 13 aplicada:", "SÍ" if listo else "NO (la base no tiene db/esquema_completo.sql al día)")
 sys.exit(0 if listo else 1)

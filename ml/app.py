@@ -101,3 +101,34 @@ def predict(sol: Solicitud):
         "modelo_version": ART["version"],
         "variables_imputadas": sorted(set(ART["variables"]) - presentes),
     }
+
+
+# ============================================================================
+# Embeddings del RAG (Semana 12, docs/RAG.md).
+#
+# Mismo principio que /predict: este servicio no tiene acceso a la base de
+# datos y solo recibe texto ya seudonimizado por la API. Devuelve el nombre
+# del modelo para que la API rechace vectores de un modelo distinto al que
+# usó para indexar.
+# ============================================================================
+import os as _os
+
+MODELO_EMBEDDING = _os.getenv("RAG_MODELO_EMBEDDING",
+                              "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+_EMBEDDER: dict = {}
+
+
+class Textos(BaseModel):
+    textos: list[str]
+
+
+@app.post("/embed")
+def embed(datos: Textos):
+    if not datos.textos or len(datos.textos) > 256:
+        raise HTTPException(422, "Enviar entre 1 y 256 textos")
+    if "modelo" not in _EMBEDDER:
+        from fastembed import TextEmbedding  # noqa: PLC0415
+        _EMBEDDER["modelo"] = TextEmbedding(MODELO_EMBEDDING,
+                                            cache_dir=_os.getenv("FASTEMBED_CACHE", "/home/ml/fastembed"))
+    vectores = [[float(x) for x in v] for v in _EMBEDDER["modelo"].embed(datos.textos)]
+    return {"modelo": MODELO_EMBEDDING, "dimension": len(vectores[0]), "vectores": vectores}

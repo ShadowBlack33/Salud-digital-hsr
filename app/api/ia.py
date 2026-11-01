@@ -13,7 +13,7 @@ el modelo (R12).
 El reporte nace 'pendiente' y no forma parte de la historia hasta que un medico
 o especialista lo aprueba. Solo se pasa de 'pendiente' a 'aprobado' o
 'rechazado' (409 en cualquier otro caso); la base también lo impide con un
-trigger (db/13_ia.sql). paciente y contable reciben 403 al aprobar.
+trigger (db/historial/13_ia.sql). paciente y contable reciben 403 al aprobar.
 """
 from __future__ import annotations
 
@@ -284,6 +284,15 @@ def _decidir(reporte_id: int, hacia: str, datos: Decision, request: Request,
         except Exception:  # noqa: BLE001 -- el aviso no tumba la aprobación
             pass
     db.commit()
+    if hacia == "aprobado":
+        # Semana 12: la historia aprobada entra al índice del RAG (seudonimizada,
+        # con prueba canario). Si falla, la aprobación ya quedó guardada y se
+        # puede reindexar con scripts/rag_indexar.py.
+        try:
+            from app.services import rag as rag_svc  # noqa: PLC0415
+            rag_svc.indexar_paciente(db, r["paciente_id"])
+        except Exception:  # noqa: BLE001
+            db.rollback()
     return vista_reporte(fila, p)
 
 

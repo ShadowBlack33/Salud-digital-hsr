@@ -1,4 +1,4 @@
-"""Modelos SQLAlchemy. Reflejan el esquema de db/01_schema.sql."""
+"""Modelos SQLAlchemy. Reflejan el esquema de db/historial/01_schema.sql."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -231,7 +231,7 @@ class Eps(Base):
 class Paciente(Base):
     __tablename__ = "pacientes"
     # documento_bidx es la llave primaria real (el índice ciego de la cédula),
-    # no un id autoincremental -- ver la nota en db/01_schema.sql.
+    # no un id autoincremental -- ver la nota en db/historial/01_schema.sql.
     documento_bidx = Column(String(64), primary_key=True)
     uuid = Column(UUID(as_uuid=True), server_default=func.gen_random_uuid())
     tipo_documento = Column(String(5), nullable=False)
@@ -266,7 +266,7 @@ class Paciente(Base):
         está escrito para cualquier entidad con `.id`, sin saber de cuál
         tabla se trata. Para Paciente esa identidad ya no es un entero
         autoincremental, sino documento_bidx (el índice ciego de la
-        cédula) -- ver la nota en db/01_schema.sql.
+        cédula) -- ver la nota en db/historial/01_schema.sql.
         Funciona solo a nivel de INSTANCIA (p.id tras un fetch); las
         consultas deben seguir filtrando por Paciente.documento_bidx.
         """

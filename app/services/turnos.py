@@ -1,5 +1,5 @@
 """
-Turnos de enfermería jefe por área (db/12_turnos.sql).
+Turnos de enfermería jefe por área (db/historial/12_turnos.sql).
 
 Siempre hay un jefe de turno por área con camas. Solo él opera el área:
 asignar camas, cambiar estados y resolver traslados. Los demás jefes del área

@@ -182,10 +182,10 @@ Los reactores ya están conectados a remisiones (`al_remitir`, `al_aceptar`,
 
 Tablas que este módulo lee y debe respetar el módulo de IA:
 
-- `alertas` (extendida por `db/13_ia.sql`): `dirigida_a_usuario`, `paciente_id`,
+- `alertas` (extendida por `db/historial/13_ia.sql`): `dirigida_a_usuario`, `paciente_id`,
   `estado` (`activa` | `reconocida`), `escalada_at`. `/pendientes` cuenta las
   `activa` del clínico y, para el admin, las `activa` con `escalada_at`.
-- `reportes_ia` (`db/13_ia.sql`): `/pendientes` cuenta las filas con `estado = 'pendiente'` y
+- `reportes_ia` (`db/historial/13_ia.sql`): `/pendientes` cuenta las filas con `estado = 'pendiente'` y
   `paciente_id` entre los pacientes del clínico (nombre de tabla en
   `app/api/eventos.py: TABLA_REPORTES_IA`). Si la tabla aún no existe, el
   contador es 0 y nada falla.
@@ -198,7 +198,7 @@ de contabilidad lee y opera esa misma colección.
 ## 9. Cómo se prueba
 
 ```bash
-python scripts/test_tiempo_real.py     # canal por rol, bandeja, R19, alertas, FHIR (necesita db/13_ia.sql y db/14_notificaciones.sql)
+python scripts/test_tiempo_real.py     # canal por rol, bandeja, R19, alertas, FHIR (necesita db/historial/13_ia.sql y db/historial/14_notificaciones.sql)
 python scripts/registrar_subscription.py --probar <fhir_patient_id>   # contra HAPI real
 ```
 

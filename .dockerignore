@@ -13,3 +13,6 @@ db
 *.zip
 *.md
 ml
+# Excepción: las guías del RAG sí van en la imagen (scripts/rag_indexar.py las lee).
+!docs/rag/guias
+!docs/rag/guias/*.md

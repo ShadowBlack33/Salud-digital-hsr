@@ -90,7 +90,7 @@ def main() -> None:
                    WHERE u.username IN ('medico01', 'especialista01')""")
     cuentas = {r["username"]: r for r in cur.fetchall()}
     if len(cuentas) < 2:
-        sys.exit("Faltan medico01 o especialista01 con personal asignado (db/08_roles_corte2.sql).")
+        sys.exit("Faltan medico01 o especialista01 con personal asignado (las crea scripts/generar_datos.py).")
     med, esp = cuentas["medico01"], cuentas["especialista01"]
 
     cur.execute("SELECT id, codigo FROM diagnosticos_cie10")
