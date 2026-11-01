@@ -53,6 +53,23 @@ def _denegar(db: Session, ctx: ContextoAcceso, request: Request, mensaje: str):
     raise HTTPException(status.HTTP_403_FORBIDDEN, mensaje)
 
 
+def fuentes_del_perfil(db: Session, ctx: ContextoAcceso) -> list[str]:
+    """Qué puede consultar este perfil (para orientar cuando el asistente se abstiene)."""
+    guias = db.execute(text("""
+        SELECT titulo FROM (SELECT DISTINCT documento_id, titulo FROM rag_fragmentos
+                            WHERE tipo = 'guia' AND :rol = ANY(audiencia)) g ORDER BY documento_id
+    """), {"rol": ctx.payload.get("rol") or ""}).scalars().all()
+    historias = {"all": "La historia aprobada de todos los pacientes",
+                 "assigned": "La historia aprobada de tus pacientes (reportes de IA aprobados y encuentros)",
+                 "self": "Tu propia historia aprobada"}.get(ctx.alcance)
+    return list(guias) + ([historias] if historias else [])
+
+
+@router.get("/fuentes", summary="Qué fuentes puede consultar mi perfil en el asistente")
+def fuentes(ctx: ContextoAcceso = Depends(contexto_rag), db: Session = Depends(get_db)):
+    return {"fuentes": fuentes_del_perfil(db, ctx)}
+
+
 @router.post("/preguntar", summary="Preguntar a las guías y a la historia aprobada, con citas")
 def preguntar(datos: Pregunta, request: Request,
               ctx: ContextoAcceso = Depends(contexto_rag),
@@ -95,6 +112,10 @@ def preguntar(datos: Pregunta, request: Request,
     registrar(db, ctx.usuario, "rag_consulta", consulta_id, "rag_preguntar", request=request)
     db.commit()
 
-    return {"consulta_id": consulta_id, "respuesta": resp["respuesta"], "abstencion": resp["abstencion"],
-            "citas": citas, "confianza": hallazgo["confianza"], "metodo": hallazgo["metodo_usado"],
-            "generador": resp["generador"]}
+    salida = {"consulta_id": consulta_id, "respuesta": resp["respuesta"], "abstencion": resp["abstencion"],
+              "citas": citas, "confianza": hallazgo["confianza"], "metodo": hallazgo["metodo_usado"],
+              "generador": resp["generador"]}
+    if resp["abstencion"]:
+        # Sin evidencia no se inventa nada, pero se dice qué sí se puede preguntar.
+        salida["fuentes_disponibles"] = fuentes_del_perfil(db, ctx)
+    return salida
