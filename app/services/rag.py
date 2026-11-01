@@ -11,12 +11,13 @@ Reglas que este módulo garantiza (Semana 12):
     libre, y una verificación canario impide indexar si queda alguno.
   · Abstención: si la mejor evidencia no supera el umbral, no se llama al
     modelo y se responde que no hay información suficiente.
-  · Grok (xAI) solo redacta a partir de los fragmentos; si no hay clave,
+  · El modelo (Gemini o Grok) solo redacta a partir de los fragmentos; si no hay clave,
     se responde de forma extractiva con la mejor frase y su cita.
 """
 from __future__ import annotations
 
 import hashlib
+import logging
 import hmac
 import re
 from pathlib import Path
@@ -29,6 +30,7 @@ from app.core.crypto import descifrar
 from app.models import Paciente
 from app.services import rag_core as core
 
+log = logging.getLogger("hsr.rag")
 RAIZ = Path(__file__).resolve().parents[2]
 CARPETA_GUIAS = RAIZ / "docs" / "rag" / "guias"
 
@@ -38,8 +40,16 @@ UMBRAL_BM25 = _cfg.rag_umbral_bm25     # RAG_UMBRAL_BM25: solo si no hay vectore
 TOP_K = 4
 CANDIDATOS_DENSOS = 20
 
-XAI_URL = _cfg.xai_base_url
-XAI_MODELO = _cfg.xai_model
+
+
+def _proveedor() -> tuple[str, str, str, str] | None:
+    """(nombre, url base, clave, modelo) del primer proveedor con clave; None si no hay."""
+    c = get_settings()
+    if c.gemini_api_key:
+        return "gemini", c.gemini_base_url, c.gemini_api_key, c.gemini_model
+    if c.xai_api_key:
+        return "xai", c.xai_base_url, c.xai_api_key, c.xai_model
+    return None
 NO_ENCONTRADO = "NO_ENCONTRADO"
 
 
@@ -365,19 +375,25 @@ POR_PERFIL = {
 }
 
 
-def _grok(pregunta: str, frags: list[dict], rol: str | None = None) -> str | None:
-    clave = get_settings().xai_api_key
-    if not clave:
+def _llm(pregunta: str, frags: list[dict], rol: str | None = None) -> tuple[str, str] | None:
+    """
+    Redacta con el modelo configurado. Gemini y Grok exponen la misma API de
+    chat compatible con OpenAI, así que la llamada es una sola. Devuelve
+    (texto, "proveedor:modelo") o None si no hay clave.
+    """
+    prov = _proveedor()
+    if prov is None:
         return None
+    nombre, base, clave, modelo = prov
     import httpx  # noqa: PLC0415
-    r = httpx.post(f"{XAI_URL}/chat/completions", timeout=45,
+    r = httpx.post(f"{base.rstrip('/')}/chat/completions", timeout=45,
                    headers={"Authorization": f"Bearer {clave}"},
-                   json={"model": XAI_MODELO, "temperature": 0, "max_tokens": 500,
+                   json={"model": modelo, "temperature": 0, "max_tokens": 2048,   # holgado: Gemini 2.5 también gasta tokens pensando
                          "messages": [{"role": "system", "content": SISTEMA + (
                                            "\n6. " + POR_PERFIL[rol] if rol in POR_PERFIL else "")},
                                       {"role": "user", "content": f"{_contexto(frags)}\n\nPregunta: {pregunta}"}]})
     r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"].strip()
+    return r.json()["choices"][0]["message"]["content"].strip(), f"{nombre}:{modelo}"
 
 
 def responder(pregunta: str, frags: list[dict], rol: str | None = None) -> dict:
@@ -385,11 +401,14 @@ def responder(pregunta: str, frags: list[dict], rol: str | None = None) -> dict:
     if not frags:
         return {"respuesta": "No encuentro información suficiente en las fuentes autorizadas para responder.",
                 "abstencion": True, "citas_usadas": [], "generador": "ninguno"}
+    texto = generador = None
     try:
-        texto, generador = _grok(pregunta, frags, rol), f"xai:{XAI_MODELO}"
-    except Exception:  # noqa: BLE001 -- sin red o error del proveedor: no se cae la consulta
-        texto = None
-    if texto is None:
+        hecho = _llm(pregunta, frags, rol)
+        if hecho:
+            texto, generador = hecho
+    except Exception:  # noqa: BLE001 -- sin red, sin saldo o error del proveedor: no se cae la consulta
+        log.warning("El modelo no respondió; se responde de forma extractiva", exc_info=True)
+    if not texto:
         texto, generador = _extractiva(pregunta, frags), "extractivo"
     usadas = sorted({int(n) for n in re.findall(r"\[F(\d+)\]", texto) if 1 <= int(n) <= len(frags)})
     if NO_ENCONTRADO in texto or not usadas:
