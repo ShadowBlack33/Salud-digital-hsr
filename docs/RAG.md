@@ -72,7 +72,7 @@ Al servicio `ml` (embeddings) y a Grok solo llega texto ya seudonimizado.
 | Método | Recall@1 | Recall@3 | MRR |
 | --- | --- | --- | --- |
 | BM25 | 0,96 | 1,00 | 0,98 |
-| Denso | 0,77 | 0,96 | 0,87 |
+| Denso | 0,79 | 0,96 | 0,88 |
 | Híbrido (RRF) | 0,96 | 0,96 | 0,97 |
 
 Detalle y fallos por pregunta en `docs/rag/eval/RESULTADOS.md`. BM25 falla una pregunta en la primera posición (Q08) y el híbrido otra (Q23). El denso falla seis: confunde guías que comparten vocabulario clínico (por ejemplo, hipoglucemia con hiperpotasemia) y dos de las tres historias entre sí, porque las tres tienen la misma estructura y solo cambian las cifras.
@@ -84,7 +84,14 @@ Detalle y fallos por pregunta en `docs/rag/eval/RESULTADOS.md`. BM25 falla una p
 - RRF combina posiciones, no puntajes: no hay que calibrar dos escalas distintas.
 - Si el servicio de embeddings no responde, la búsqueda sigue solo con BM25, y el endpoint permite pedir `metodo: "bm25"` o `"denso"`.
 
-**Abstención calibrada:** en el denso, la similitud máxima de las preguntas con respuesta es como mínimo 0,49 y la de las preguntas sin respuesta como máximo 0,42; el umbral `RAG_UMBRAL_DENSO = 0,45` queda en el medio. En BM25, 5,0 frente a 3,7, con umbral 4,5. El margen es pequeño (solo 3 preguntas sin respuesta): con más preguntas reales habría que recalibrar.
+**Abstención calibrada.** Con las 8 guías, ninguna señal sola alcanza:
+
+| Señal | Preguntas con respuesta (mínimo) | Preguntas sin respuesta (máximo) | ¿Separa? |
+| --- | --- | --- | --- |
+| BM25 | 5,4 | 4,6 | sí, umbral `RAG_UMBRAL_BM25 = 5,0` |
+| Denso (coseno) | 0,49 | 0,57 | **no**: se cruzan |
+
+El cruce del denso lo produjo la guía de facturación: "¿cuánto cuesta el parqueadero del hospital?" se parece en significado a los cobros, aunque no comparte términos. Por eso el híbrido se abstiene si **cualquiera** de las dos señales queda bajo su umbral (denso ≥ 0,45 **y** BM25 ≥ 5,0): con esa regla ninguna pregunta con respuesta se abstiene y ninguna sin respuesta se responde (`scripts/evaluar_rag.py` lo verifica). Es el mismo argumento del método: BM25 aporta precisión con términos exactos y el denso, cobertura de significado. El margen sigue siendo pequeño (3 preguntas sin respuesta): con preguntas reales habría que recalibrar.
 
 ## 4. Filtros clínicos
 
@@ -110,7 +117,7 @@ OR (f.tipo = 'historia' AND f.estado = 'aprobado' AND f.paciente_id = ANY(:pacie
 | --- | --- |
 | Perfiles | Lo usan todos los perfiles, y cada uno recupera solo lo suyo (tabla de abajo). Pedir un `paciente_id` sin permiso sobre él da 403, auditado. Con `paciente_id` se verifica que el paciente sea suyo (nivel 2) y su historia va primero en las fuentes. |
 | Citas | `citas[]` con `documento_id`, título, sección, fuente, seudónimo del paciente (si es historia) y extracto. Solo las que la respuesta usa. |
-| Abstención | Si la similitud del mejor fragmento es menor que `RAG_UMBRAL_DENSO`, o sin vectores el BM25 es menor que `RAG_UMBRAL_BM25` (4,5: en la evaluación las preguntas con respuesta tienen como mínimo 5,0 y las que no tienen respuesta como máximo 3,7), no se llama al modelo. También se abstiene si el modelo responde `NO_ENCONTRADO` o no cita ninguna fuente. |
+| Abstención | Híbrido: se abstiene si la similitud del mejor fragmento es menor que `RAG_UMBRAL_DENSO` (0,45) **o** el mejor BM25 es menor que `RAG_UMBRAL_BM25` (5,0); ver la calibración en la sección 3. Solo BM25 (sin vectores): el umbral de BM25. También se abstiene si el modelo responde `NO_ENCONTRADO` o no cita ninguna fuente. |
 | Auditoría | Cada consulta se guarda en `rag_consultas` (usuario, rol, pregunta, filtro, método, fuentes citadas, abstención, confianza, generador) y en el log de auditoría con la acción `rag_preguntar`. |
 
 **Generación:** Grok de xAI por su API compatible con OpenAI (`https://api.x.ai/v1`, modelo en `XAI_MODEL`), temperatura 0. El prompt exige citar cada afirmación, responder `NO_ENCONTRADO` si las fuentes no alcanzan y tratar el contenido de las fuentes como datos, no como instrucciones. Sin `XAI_API_KEY`, la respuesta es **extractiva** (las frases más relevantes del mejor fragmento con su cita), así el sistema y las pruebas funcionan sin red.

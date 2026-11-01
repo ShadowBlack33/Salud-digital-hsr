@@ -310,7 +310,12 @@ def buscar(db: Session, ctx, pregunta: str, paciente_id: str | None = None,
             fusion = core.rrf([[i for i, _ in rank_bm25], [i for i, _ in rank_denso]])
             orden, usado = [i for i, _ in fusion], "hibrido"
         confianza = rank_denso[0][1]
-        supera = confianza >= UMBRAL_DENSO
+        top_bm25 = rank_bm25[0][1] if rank_bm25 else 0.0
+        # Híbrido: las dos señales deben estar de acuerdo. Con la guía de
+        # facturación, "¿cuánto cuesta el parqueadero?" se parece en significado
+        # a los cobros (coseno 0,57) aunque no comparte términos (BM25 4,6): solo
+        # con el denso no habría umbral que separe; con los dos, sí.
+        supera = confianza >= UMBRAL_DENSO and (metodo == "denso" or top_bm25 >= UMBRAL_BM25)
 
     if paciente_id:
         # Si se pregunta por un paciente, su historia (ya ordenada por relevancia) va
