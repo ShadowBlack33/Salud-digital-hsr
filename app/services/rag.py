@@ -42,11 +42,29 @@ CANDIDATOS_DENSOS = 20
 
 
 
-def _proveedor() -> tuple[str, str, str, str] | None:
+# Preguntas que piden razonar, comparar o resumir: van al modelo completo.
+_EXTENSA = re.compile(r"\b(explica\w*|por que|porque|compar\w*|diferencia\w*|resum\w*|analiza\w*|como se maneja|"
+                      r"que hago|que debo|paso a paso|ventajas|desventajas|relacion|justifica\w*|evalua\w*)\b")
+
+
+def es_extensa(pregunta: str, frags: list[dict]) -> bool:
+    """
+    ¿Modelo completo o lite? Completo si la pregunta es larga (más de 18
+    palabras), pide explicar, comparar o resumir, o mezcla varias fuentes
+    distintas (por ejemplo, una historia y una guía). Lo demás, el lite:
+    preguntas cortas y puntuales ("¿desde qué potasio es grave?").
+    """
+    norm = core.normalizar(pregunta)
+    documentos = {f["documento_id"] for f in frags if f.get("documento_id")}
+    return len(norm.split()) > 18 or bool(_EXTENSA.search(norm)) or len(documentos) >= 3
+
+
+def _proveedor(extensa: bool = True) -> tuple[str, str, str, str] | None:
     """(nombre, url base, clave, modelo) del primer proveedor con clave; None si no hay."""
     c = get_settings()
     if c.gemini_api_key:
-        return "gemini", c.gemini_base_url, c.gemini_api_key, c.gemini_model
+        modelo = c.gemini_model if extensa or not c.gemini_model_lite else c.gemini_model_lite
+        return "gemini", c.gemini_base_url, c.gemini_api_key, modelo
     if c.xai_api_key:
         return "xai", c.xai_base_url, c.xai_api_key, c.xai_model
     return None
@@ -375,13 +393,14 @@ POR_PERFIL = {
 }
 
 
-def _llm(pregunta: str, frags: list[dict], rol: str | None = None) -> tuple[str, str] | None:
+def _llm(pregunta: str, frags: list[dict], rol: str | None = None,
+         extensa: bool | None = None) -> tuple[str, str] | None:
     """
-    Redacta con el modelo configurado. Gemini y Grok exponen la misma API de
-    chat compatible con OpenAI, así que la llamada es una sola. Devuelve
-    (texto, "proveedor:modelo") o None si no hay clave.
+    Redacta con el modelo configurado (completo o lite, ver es_extensa). Gemini
+    y Grok exponen la misma API de chat compatible con OpenAI, así que la
+    llamada es una sola. Devuelve (texto, "proveedor:modelo") o None si no hay clave.
     """
-    prov = _proveedor()
+    prov = _proveedor(es_extensa(pregunta, frags) if extensa is None else extensa)
     if prov is None:
         return None
     nombre, base, clave, modelo = prov
@@ -402,12 +421,18 @@ def responder(pregunta: str, frags: list[dict], rol: str | None = None) -> dict:
         return {"respuesta": "No encuentro información suficiente en las fuentes autorizadas para responder.",
                 "abstencion": True, "citas_usadas": [], "generador": "ninguno"}
     texto = generador = None
-    try:
-        hecho = _llm(pregunta, frags, rol)
+    extensa = es_extensa(pregunta, frags)
+    # Primero el modelo que corresponde; si falla (límite de la capa gratuita, red),
+    # el otro; si también falla, la respuesta extractiva.
+    for intento in (extensa, not extensa):
+        try:
+            hecho = _llm(pregunta, frags, rol, intento)
+        except Exception:  # noqa: BLE001 -- sin red, sin saldo o error del proveedor: no se cae la consulta
+            log.warning("El modelo (%s) no respondió", "completo" if intento else "lite", exc_info=True)
+            continue
         if hecho:
             texto, generador = hecho
-    except Exception:  # noqa: BLE001 -- sin red, sin saldo o error del proveedor: no se cae la consulta
-        log.warning("El modelo no respondió; se responde de forma extractiva", exc_info=True)
+        break
     if not texto:
         texto, generador = _extractiva(pregunta, frags), "extractivo"
     usadas = sorted({int(n) for n in re.findall(r"\[F(\d+)\]", texto) if 1 <= int(n) <= len(frags)})
