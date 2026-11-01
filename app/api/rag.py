@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import ContextoAcceso, get_db, get_token_payload, get_usuario_actual
 from app.core.security import tiene_permiso
 from app.models import Paciente
+from app.services import asistente_sistema
 from app.services import rag as svc
 from app.services.auditoria import registrar
 
@@ -86,6 +87,28 @@ def preguntar(datos: Pregunta, request: Request,
             if p is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "Paciente no encontrado")
             ctx.verificar_registro(p)
+
+    # Preguntas sobre la operación ("¿cuántos pacientes tengo?", "¿qué te puedo
+    # preguntar?"): se responden con datos en vivo y los permisos del perfil, sin
+    # pasar por Grok (app/services/asistente_sistema.py). El resto va al RAG.
+    if not datos.paciente_id:
+        sistema = asistente_sistema.responder(db, ctx, datos.pregunta)
+        if sistema is not None:
+            cita = {"id": "S1", "fragmento_id": None, "documento_id": f"SISTEMA:{sistema['intencion']}",
+                    "tipo": "sistema", "titulo": "Datos en vivo de Pulso", "seccion": sistema["intencion"],
+                    "fuente": asistente_sistema.FUENTE, "paciente": None, "extracto": None}
+            consulta_id = db.execute(text("""
+                INSERT INTO rag_consultas (usuario_id, rol, pregunta, paciente_id, metodo, fuentes, abstencion,
+                                           confianza, generador)
+                VALUES (:u, :rol, :q, NULL, 'sistema', CAST(:f AS jsonb), :a, NULL, 'sistema') RETURNING id
+            """), {"u": ctx.usuario.id, "rol": ctx.payload.get("rol"), "q": datos.pregunta,
+                   "f": json.dumps([cita["documento_id"]]), "a": not sistema["permitida"]}).scalar()
+            registrar(db, ctx.usuario, "rag_consulta", consulta_id, "rag_preguntar",
+                      resultado="exito" if sistema["permitida"] else "denegado", request=request)
+            db.commit()
+            return {"consulta_id": consulta_id, "respuesta": sistema["respuesta"],
+                    "abstencion": not sistema["permitida"], "citas": [cita] if sistema["permitida"] else [],
+                    "confianza": None, "metodo": "sistema", "generador": "sistema"}
 
     hallazgo = svc.buscar(db, ctx, datos.pregunta, datos.paciente_id, datos.metodo)
     frags = hallazgo["fragmentos"]

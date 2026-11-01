@@ -169,7 +169,31 @@ check("Coordinador: nunca cita historias", not pacientes_de(r), pacientes_de(r))
 r = preguntar(tok_med, "¿Se puede anular una factura que ya está pagada?", metodo="bm25")
 check("Médico: no recibe la guía de facturación", "G08" not in docs_de(r), docs_de(r))
 
-print("\n[RAG 5] Citas, abstención y auditoría")
+print("\n[RAG 5] Preguntas sobre la operación: datos en vivo con los permisos del perfil")
+r = preguntar(tok_med, "¿Cuántos pacientes tengo?")
+check("Médico: '¿cuántos pacientes tengo?' se responde con datos en vivo",
+      r.status_code == 200 and r.json()["metodo"] == "sistema" and not r.json()["abstencion"]
+      and "paciente" in r.json()["respuesta"], r.text[:200])
+check("... y la cita dice que son datos del sistema, no un documento",
+      r.status_code == 200 and r.json()["citas"] and r.json()["citas"][0]["tipo"] == "sistema")
+r = preguntar(tok_con, "¿Cuántos pacientes tengo?")
+check("Contable: no recibe datos de pacientes (sin permiso)",
+      r.status_code == 200 and r.json()["abstencion"] and not r.json()["citas"], r.text[:200])
+r = preguntar(tok_pac, "¿Qué te puedo preguntar?")
+check("Paciente: '¿qué te puedo preguntar?' le explica qué puede consultar",
+      r.status_code == 200 and r.json()["metodo"] == "sistema" and "historia" in r.json()["respuesta"].lower(), r.text[:200])
+r = preguntar(tok_coo, "¿Cuántas camas libres hay?")
+check("Coordinador: la ocupación de camas sale en vivo", r.status_code == 200 and "camas" in r.json()["respuesta"], r.text[:200])
+import json as _json  # noqa: E402
+from app.services import asistente_sistema  # noqa: E402
+from app.services import rag_core  # noqa: E402
+preg = _json.load(open(os.path.join(os.path.dirname(__file__), "..", "docs", "rag", "eval", "preguntas.json"), encoding="utf-8"))
+desviadas = [p["id"] for p in preg
+             if any(i.patron.search(" ".join(rag_core.normalizar(p["pregunta"]).replace("¿", " ").replace("?", " ").split()))
+                    for i in asistente_sistema.INTENCIONES)]
+check("Ninguna pregunta de la evaluación se desvía a los datos en vivo (siguen yendo al RAG)", not desviadas, desviadas)
+
+print("\n[RAG 6] Citas, abstención y auditoría")
 r = preguntar(tok_med, "¿Desde qué cifra de potasio la hiperpotasemia es grave?", metodo="bm25")
 j = r.json()
 check("Pregunta de guía: responde con cita", r.status_code == 200 and not j["abstencion"] and j["citas"], j)
