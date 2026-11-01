@@ -12,6 +12,16 @@ const AYUDA = {
 };
 const AYUDA_CLINICA = "Pregunta a las guías clínicas y a la historia aprobada de tus pacientes.";
 
+// Preguntas de ejemplo por perfil: un clic las envía.
+const EJEMPLOS = {
+  paciente: ["¿Qué dijo mi último reporte de IA aprobado?"],
+  contable: ["¿Se puede anular una factura que ya está pagada?", "¿Cuánto paga de cuota moderadora un paciente contributivo en urgencias?"],
+  coordinador: ["¿Qué pasa si nadie reconoce una alerta crítica en 5 minutos?", "¿Cómo se reparten las remisiones entre especialistas?"],
+};
+const EJEMPLOS_CLINICOS = ["¿Desde qué cifra de potasio la hiperpotasemia es grave?",
+                           "¿Con qué hemoglobina se transfunde a un paciente estable?",
+                           "¿Qué es un paciente ASA III?"];
+
 /**
  * Asistente con recuperación aumentada (RAG, semana 12). Disponible para todos
  * los perfiles; cada uno solo recupera las fuentes que le corresponden y la
@@ -26,23 +36,30 @@ export default function Asistente() {
   const [conversacion, setConversacion] = useState([]);
   const [enviando, setEnviando] = useState(false);
   const [soloPaciente, setSoloPaciente] = useState(true);
+  const [fuentes, setFuentes] = useState(null);
   const fin = useRef(null);
+
+  // Qué puede consultar este perfil: se pide una vez, al abrir el asistente.
+  useEffect(() => {
+    if (abierto && fuentes === null) S.fuentesAsistente().then((r) => setFuentes(r.fuentes || [])).catch(() => setFuentes([]));
+  }, [abierto, fuentes]);
 
   const enFicha = pathname.match(/^\/app\/pacientes\/([^/]+)/);
   const pacienteId = enFicha && usuario?.rol !== "paciente" ? decodeURIComponent(enFicha[1]) : null;
 
   useEffect(() => { fin.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [conversacion, enviando]);
 
-  const enviar = async (e) => {
-    e.preventDefault();
-    const q = pregunta.trim();
+  const enviar = async (e, texto) => {
+    e?.preventDefault();
+    const q = (texto ?? pregunta).trim();
     if (q.length < 5 || enviando) return;
     setPregunta("");
     setEnviando(true);
     setConversacion((c) => [...c, { quien: "yo", texto: q }]);
     try {
       const r = await S.preguntarAsistente(q, pacienteId && soloPaciente ? pacienteId : null);
-      setConversacion((c) => [...c, { quien: "asistente", texto: r.respuesta, citas: r.citas || [], abstencion: r.abstencion }]);
+      setConversacion((c) => [...c, { quien: "asistente", texto: r.respuesta, citas: r.citas || [], abstencion: r.abstencion,
+                                      fuentes: r.fuentes_disponibles || [] }]);
     } catch (err) {
       setConversacion((c) => [...c, { quien: "asistente", texto: err.message, error: true }]);
     } finally { setEnviando(false); }
@@ -72,10 +89,31 @@ export default function Asistente() {
           </header>
 
           <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4" aria-live="polite">
-            {conversacion.length === 0 && <p className="text-sm text-gray-strong">Escribe tu pregunta abajo.</p>}
+            {conversacion.length === 0 && (
+              <div className="space-y-3 text-sm">
+                <p className="text-gray-strong">Respondo solo con lo que está en estas fuentes; no consulto datos de la operación (cuántos pacientes tienes, camas libres…).</p>
+                {fuentes?.length > 0 && (
+                  <ul className="space-y-1 text-xs text-gray-strong">
+                    {fuentes.map((f) => <li key={f} className="flex gap-1.5"><BookOpen size={12} className="mt-0.5 shrink-0" aria-hidden="true" />{f}</li>)}
+                  </ul>
+                )}
+                {fuentes?.length === 0 && <p className="text-xs text-gray-strong">Tu perfil no tiene fuentes en el asistente.</p>}
+                <div className="flex flex-col items-start gap-2">
+                  {(EJEMPLOS[usuario.rol] || (fuentes?.length ? EJEMPLOS_CLINICOS : [])).map((ej) => (
+                    <button key={ej} onClick={(e) => enviar(e, ej)} className="rounded-2xl bg-cloud-card px-3 py-2 text-left text-xs font-medium hover:bg-hero-sky">{ej}</button>
+                  ))}
+                </div>
+              </div>
+            )}
             {conversacion.map((m, i) => (
               <div key={i} className={m.quien === "yo" ? "ml-8 rounded-2xl bg-charcoal px-4 py-2.5 text-sm text-white" : `mr-4 rounded-2xl px-4 py-2.5 text-sm ${m.error ? "bg-coral-soft text-coral-ink" : "bg-cloud-card"}`}>
                 <p className="whitespace-pre-wrap">{m.texto}</p>
+                {m.abstencion && m.fuentes?.length > 0 && (
+                  <div className="mt-2 border-t border-paper-white pt-2 text-xs text-gray-strong">
+                    <p className="font-medium">Puedo responder sobre:</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4">{m.fuentes.map((f) => <li key={f}>{f}</li>)}</ul>
+                  </div>
+                )}
                 {m.citas?.length > 0 && (
                   <ul className="mt-2 space-y-1 border-t border-paper-white pt-2 text-xs text-gray-strong">
                     {m.citas.map((c) => (

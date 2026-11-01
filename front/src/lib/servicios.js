@@ -161,5 +161,6 @@ export const actualizarMisDatos = (datos) => api("/mis-datos", { method: "PATCH"
 
 // ------------------------------------------------------------------ asistente (RAG, semana 12)
 /** Pregunta al asistente. Cada perfil recupera solo lo que le corresponde (lo decide la API). */
+export const fuentesAsistente = () => api("/rag/fuentes");
 export const preguntarAsistente = (pregunta, pacienteId) =>
   api("/rag/preguntar", { method: "POST", json: { pregunta, ...(pacienteId ? { paciente_id: pacienteId } : {}) } });

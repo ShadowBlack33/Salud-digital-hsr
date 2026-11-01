@@ -176,6 +176,10 @@ check("Pregunta de guía: responde con cita", r.status_code == 200 and not j["ab
 check("La cita apunta a la guía de hiperpotasemia", any(c["documento_id"] == "G02" for c in j["citas"]), j["citas"])
 r = preguntar(tok_med, "¿Cuánto cuesta el parqueadero del hospital un domingo?", metodo="bm25")
 check("Pregunta fuera del corpus: se abstiene sin citas", r.json()["abstencion"] and not r.json()["citas"], r.json())
+check("... y dice qué fuentes sí puede consultar el perfil",
+      any("hiperpotasemia" in f.lower() for f in r.json().get("fuentes_disponibles", [])), r.json())
+f_con = client.get("/rag/fuentes", headers=h(tok_con)).json()["fuentes"]
+check("Las fuentes del contable son solo la guía de facturación", f_con == ["Facturación de servicios en Pulso"], f_con)
 consulta = j["consulta_id"]
 fila = db.execute(text("SELECT pregunta, abstencion FROM rag_consultas WHERE id = :i"), {"i": consulta}).first()
 check("La consulta queda registrada en rag_consultas", fila is not None and "potasio" in fila[0])
