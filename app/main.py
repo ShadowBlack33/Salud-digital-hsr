@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 
 from app.api import admin, asignacion, auth, cirugias, clinico, clusters, contabilidad, eventos, fhir_hook, imaging, pacientes, perfiles, puerta_fhir, recursos, remisiones, usuarios
 from app.api import alertas, historia, ia
+from app.api import rag
 from app.core.config import get_settings
 from app.services import bandeja, fhir_reactivo, metricas  # noqa: F401 -- bandeja registra los hooks de commit
 from app.services import eventos as eventos_vivo
@@ -161,6 +162,8 @@ app.include_router(admin.router)
 app.include_router(ia.router)
 app.include_router(alertas.router)
 app.include_router(historia.router)
+# Semana 12 · RAG con citas (docs/RAG.md)
+app.include_router(rag.router)
 
 
 @app.get("/", tags=["Sistema"], summary="Información de la API")

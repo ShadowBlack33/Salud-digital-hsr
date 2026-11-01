@@ -77,10 +77,13 @@ services:
 
   # PostgreSQL propio del sistema (R05). Ver el encabezado: mientras el equipo
   # use Neon, este servicio corre pero la API no lo usa. Al crear el volumen
-  # por primera vez carga el esquema y los catálogos; los datos se cargan
-  # después (docs/DESPLIEGUE.md).
+  # por primera vez carga db/esquema_completo.sql (estructura y catálogos);
+  # los datos se cargan después (docs/DESPLIEGUE.md).
   postgres:
-    image: postgres:16-alpine
+    # pgvector/pgvector es PostgreSQL 16 con la extensión vector (RAG).
+    # Al cambiar desde postgres:16-alpine, el volumen viejo se recrea:
+    #   docker compose rm -sf postgres && docker volume rm <carpeta>_hsr_pgdata
+    image: pgvector/pgvector:pg16
     container_name: hsr-postgres
     restart: unless-stopped
     environment:
@@ -89,8 +92,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambiar_en_produccion}
     volumes:
       - hsr_pgdata:/var/lib/postgresql/data
-      - ./db/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-      - ./db/02_seed_catalogos.sql:/docker-entrypoint-initdb.d/02_seed_catalogos.sql:ro
+      - ./db/esquema_completo.sql:/docker-entrypoint-initdb.d/01_esquema_completo.sql:ro
     # Publicado solo en este equipo (puerto 5433 para no chocar con un
     # PostgreSQL instalado), para cargar los datos con los scripts.
     ports:
@@ -121,6 +123,8 @@ services:
 
   # Servicio de IA (R10, R12). Solo recibe variables clínicas seudonimizadas
   # desde la API; no habla con ninguna base de datos ni publica puerto.
+  # También calcula los embeddings del RAG (POST /embed) sobre texto ya
+  # seudonimizado.
   ml:
     build:
       context: ./ml

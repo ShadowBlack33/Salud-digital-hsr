@@ -742,7 +742,7 @@ if pid_prueba and tok_urg and tok_uci:
         check("Paciente de cirugía que necesita UCI en cama general -> 422",
               client.post(f"/camas/{general}/asignar", headers=h(tok_admin), json={"encuentro_id": cx}).status_code == 422)
 else:
-    print("  (faltan las cuentas por área: aplicar db/11_areas_traslados.sql)")
+    print("  (faltan las cuentas por área: las crea scripts/generar_datos.py)")
 
 # ---------------------------------------------------------- 23. Tablero del área y turnos
 print("\n[23] Tablero del área y turnos de los jefes")

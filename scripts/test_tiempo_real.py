@@ -145,7 +145,7 @@ tok = {rol: entrar(u) for rol, u in {"admin": "admin", "medico": "medico01", "es
 print("\n[0] Preparación")
 check("Los cinco roles inician sesión", all(tok.values()), str({k: bool(v) for k, v in tok.items()}))
 if not all(tok.values()):
-    print("Faltan cuentas de demostración (db/09_perfiles.sql y scripts/casos_demo.py).")
+    print("Faltan cuentas de demostración (scripts/generar_datos.py y scripts/casos_demo.py).")
     sys.exit(2)
 
 with SessionLocal() as db:
@@ -341,14 +341,14 @@ facturacion_auto._coleccion = _original
 
 # ---------------------------------------------------- [7] alerta crítica
 print("\n[7] Alerta crítica: en vivo, privada y con aviso de escalamiento (R20)")
-# La tabla `alertas` la extiende db/13_ia.sql (módulo de IA). El escalamiento por
+# La tabla `alertas` la extiende db/historial/13_ia.sql (módulo de IA). El escalamiento por
 # tiempo es de app/api/alertas.py; aquí se prueba lo que es de este módulo: los
 # avisos (al_alerta_critica / al_alerta_escalada) y el contador de /pendientes.
 with SessionLocal() as db:
     cols = {c for (c,) in db.execute(text("SELECT column_name FROM information_schema.columns "
                                           "WHERE table_name = 'alertas'"))}
 if not {"estado", "escalada_at", "paciente_id", "dirigida_a_usuario"} <= cols:
-    print("  (omitido: falta aplicar db/13_ia.sql, que extiende la tabla `alertas`)")
+    print("  (omitido: la base no tiene el esquema de IA (db/esquema_completo.sql), que extiende la tabla `alertas`)")
 else:
     MENSAJE = "El modelo estima 87% de riesgo (umbral 70%). Revise y reconozca la alerta."
     with SessionLocal() as db:

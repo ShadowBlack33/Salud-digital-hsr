@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     ml_timeout_segundos: float = 10.0     # ML_TIMEOUT_SEGUNDOS
     # (Los minutos de escalamiento son alerta_escalamiento_minutos, arriba.)
 
+    # RAG (Semana 12, docs/RAG.md). Sin XAI_API_KEY responde de forma extractiva.
+    xai_api_key: str = ""                 # XAI_API_KEY
+    xai_model: str = "grok-4.3"           # XAI_MODEL (confirmar en console.x.ai)
+    xai_base_url: str = "https://api.x.ai/v1"
+    rag_umbral_denso: float = 0.45        # RAG_UMBRAL_DENSO (calibrar con scripts/evaluar_rag.py)
+    rag_umbral_bm25: float = 4.5          # RAG_UMBRAL_BM25
+
     @property
     def cors_origenes(self) -> list[str]:
         return [o.strip() for o in self.cors_origenes_texto.split(",") if o.strip()]
