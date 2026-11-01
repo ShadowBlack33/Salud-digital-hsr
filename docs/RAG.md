@@ -136,6 +136,14 @@ OR (f.tipo = 'historia' AND f.estado = 'aprobado' AND f.paciente_id = ANY(:pacie
 
 Las historias siguen el permiso `ia:read` que ya existía (`assigned`, `all`, `self`), así el asistente no puede mostrar algo que la pantalla de reportes de IA no mostraría. Al paciente, además, el prompt le pide al modelo lenguaje sencillo y ninguna indicación de tratamiento.
 
+### Preguntas sobre la operación (datos en vivo)
+
+"¿Cuántos pacientes tengo?", "¿tengo alertas?", "¿cuántas camas libres hay?" o "¿qué te puedo preguntar?" no están en ningún documento: son datos de la operación. Antes de buscar en el índice, `app/services/asistente_sistema.py` reconoce esas intenciones con reglas sobre el texto y las responde con las **mismas funciones y permisos** de las pantallas (Mis pacientes, pendientes, tablero del hospital, alertas sin atender). La respuesta trae una cita de tipo `sistema` ("Datos en vivo de Pulso"), queda en `rag_consultas` con método `sistema` y en la auditoría.
+
+- Si el perfil no tiene el permiso (el contable preguntando por pacientes), se dice que no tiene acceso; no se consulta nada.
+- No necesita la clave de Grok, y estas respuestas **no se envían a Grok**: los datos de pacientes no salen a un proveedor externo.
+- Las preguntas de la evaluación no caen en estas reglas (`scripts/test_rag.py` lo verifica), así que no alteran las métricas del RAG.
+
 ## 6. pgvector
 
 `docker-compose.yml` usa `pgvector/pgvector:pg16` para PostgreSQL. `db/esquema_completo.sql` crea la extensión `vector` y las tablas `rag_fragmentos` y `rag_consultas` (antes migración `db/historial/15_rag.sql`). Neon también soporta la extensión.

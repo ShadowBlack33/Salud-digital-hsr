@@ -14,13 +14,14 @@ const AYUDA_CLINICA = "Pregunta a las guías clínicas y a la historia aprobada 
 
 // Preguntas de ejemplo por perfil: un clic las envía.
 const EJEMPLOS = {
-  paciente: ["¿Qué dijo mi último reporte de IA aprobado?"],
+  paciente: ["¿Qué dijo mi último reporte de IA aprobado?", "¿Qué te puedo preguntar?"],
   contable: ["¿Se puede anular una factura que ya está pagada?", "¿Cuánto paga de cuota moderadora un paciente contributivo en urgencias?"],
-  coordinador: ["¿Qué pasa si nadie reconoce una alerta crítica en 5 minutos?", "¿Cómo se reparten las remisiones entre especialistas?"],
+  coordinador: ["¿Hay alertas sin atender?", "¿Cuántas camas libres hay?",
+                "¿Qué pasa si nadie reconoce una alerta crítica en 5 minutos?"],
 };
-const EJEMPLOS_CLINICOS = ["¿Desde qué cifra de potasio la hiperpotasemia es grave?",
-                           "¿Con qué hemoglobina se transfunde a un paciente estable?",
-                           "¿Qué es un paciente ASA III?"];
+const EJEMPLOS_CLINICOS = ["¿Cuántos pacientes tengo?", "¿Tengo alertas?",
+                           "¿Desde qué cifra de potasio la hiperpotasemia es grave?",
+                           "¿Con qué hemoglobina se transfunde a un paciente estable?"];
 
 /**
  * Asistente con recuperación aumentada (RAG, semana 12). Disponible para todos
@@ -91,7 +92,7 @@ export default function Asistente() {
           <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4" aria-live="polite">
             {conversacion.length === 0 && (
               <div className="space-y-3 text-sm">
-                <p className="text-gray-strong">Respondo solo con lo que está en estas fuentes; no consulto datos de la operación (cuántos pacientes tienes, camas libres…).</p>
+                <p className="text-gray-strong">Respondo con estos documentos, citando la fuente, y con datos en vivo de Pulso según tu perfil (tus pacientes, alertas, remisiones…). Pregúntame «¿qué te puedo preguntar?» para ver todo.</p>
                 {fuentes?.length > 0 && (
                   <ul className="space-y-1 text-xs text-gray-strong">
                     {fuentes.map((f) => <li key={f} className="flex gap-1.5"><BookOpen size={12} className="mt-0.5 shrink-0" aria-hidden="true" />{f}</li>)}
