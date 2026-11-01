@@ -79,7 +79,12 @@ class Settings(BaseSettings):
     ml_timeout_segundos: float = 10.0     # ML_TIMEOUT_SEGUNDOS
     # (Los minutos de escalamiento son alerta_escalamiento_minutos, arriba.)
 
-    # RAG (Semana 12, docs/RAG.md). Sin XAI_API_KEY responde de forma extractiva.
+    # RAG (Semana 12, docs/RAG.md). Modelo que redacta: Gemini (capa gratuita de
+    # Google AI Studio) o Grok (xAI, de pago). Se usa el primero que tenga clave;
+    # sin ninguna, el asistente responde de forma extractiva.
+    gemini_api_key: str = ""              # GEMINI_API_KEY (aistudio.google.com)
+    gemini_model: str = "gemini-2.5-flash"   # GEMINI_MODEL
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     xai_api_key: str = ""                 # XAI_API_KEY
     xai_model: str = "grok-4.3"           # XAI_MODEL (confirmar en console.x.ai)
     xai_base_url: str = "https://api.x.ai/v1"

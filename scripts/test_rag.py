@@ -23,7 +23,8 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ.setdefault("TAREAS_FONDO", "false")
-os.environ["XAI_API_KEY"] = ""              # las pruebas no llaman a Grok: modo extractivo (pisa el .env)
+os.environ["XAI_API_KEY"] = ""              # las pruebas no llaman a ningún modelo: modo extractivo
+os.environ["GEMINI_API_KEY"] = ""           # (pisa lo que diga el .env)
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402

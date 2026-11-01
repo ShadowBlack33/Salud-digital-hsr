@@ -13,7 +13,7 @@ Ranking: BM25 + denso (pgvector) ──► fusión RRF ──► top 4
 ¿Confianza ≥ umbral? ── no ──► abstención (no se llama al modelo)
    │ sí
    ▼
-Grok (xAI) redacta SOLO con esos fragmentos y cita [F1]…[F4]
+Gemini (o Grok) redacta SOLO con esos fragmentos y cita [F1]…[F4]
    ▼
 Respuesta + citas  ──► rag_consultas + log de auditoría
 ```
@@ -55,7 +55,7 @@ Los reportes pendientes y rechazados no se escriben en el documento. Se indexa a
 
 **Prueba canario automática** (`scripts/test_rag.py`): crea un paciente con nombre único, el médico escribe ese nombre y la cédula en la observación al aprobar, se indexa, y se comprueba que ni el nombre ni la cédula existen en `rag_fragmentos` y que sí está el seudónimo.
 
-Al servicio `ml` (embeddings) y a Grok solo llega texto ya seudonimizado.
+Al servicio `ml` (embeddings) y al modelo que redacta (Gemini o Grok) solo llega texto ya seudonimizado.
 
 ## 3. Recuperación evaluada
 
@@ -120,7 +120,7 @@ OR (f.tipo = 'historia' AND f.estado = 'aprobado' AND f.paciente_id = ANY(:pacie
 | Abstención | Híbrido: se abstiene si la similitud del mejor fragmento es menor que `RAG_UMBRAL_DENSO` (0,45) **o** el mejor BM25 es menor que `RAG_UMBRAL_BM25` (5,0); ver la calibración en la sección 3. Solo BM25 (sin vectores): el umbral de BM25. También se abstiene si el modelo responde `NO_ENCONTRADO` o no cita ninguna fuente. |
 | Auditoría | Cada consulta se guarda en `rag_consultas` (usuario, rol, pregunta, filtro, método, fuentes citadas, abstención, confianza, generador) y en el log de auditoría con la acción `rag_preguntar`. |
 
-**Generación:** Grok de xAI por su API compatible con OpenAI (`https://api.x.ai/v1`, modelo en `XAI_MODEL`), temperatura 0. El prompt exige citar cada afirmación, responder `NO_ENCONTRADO` si las fuentes no alcanzan y tratar el contenido de las fuentes como datos, no como instrucciones. Sin `XAI_API_KEY`, la respuesta es **extractiva** (las frases más relevantes del mejor fragmento con su cita), así el sistema y las pruebas funcionan sin red.
+**Generación:** el profesor recomendó Grok (xAI), pero su API es de pago por uso; se usa **Gemini** de Google, que tiene capa gratuita (clave en aistudio.google.com). Los dos exponen la misma API de chat compatible con OpenAI, así que el código es uno solo y se cambia de proveedor con el `.env`: se usa el primero que tenga clave (`GEMINI_API_KEY`, luego `XAI_API_KEY`), con temperatura 0. El prompt exige citar cada afirmación, responder `NO_ENCONTRADO` si las fuentes no alcanzan y tratar el contenido de las fuentes como datos, no como instrucciones. Sin ninguna clave, o si el proveedor falla (sin red, sin saldo, límite de la capa gratuita), la respuesta es **extractiva**: las frases más relevantes del mejor fragmento con su cita. Así el sistema y las pruebas funcionan sin red.
 
 **Qué recupera cada perfil** (el filtro va en el `WHERE`, antes de rankear):
 
@@ -141,7 +141,7 @@ Las historias siguen el permiso `ia:read` que ya existía (`assigned`, `all`, `s
 "¿Cuántos pacientes tengo?", "¿tengo alertas?", "¿cuántas camas libres hay?" o "¿qué te puedo preguntar?" no están en ningún documento: son datos de la operación. Antes de buscar en el índice, `app/services/asistente_sistema.py` reconoce esas intenciones con reglas sobre el texto y las responde con las **mismas funciones y permisos** de las pantallas (Mis pacientes, pendientes, tablero del hospital, alertas sin atender). La respuesta trae una cita de tipo `sistema` ("Datos en vivo de Pulso"), queda en `rag_consultas` con método `sistema` y en la auditoría.
 
 - Si el perfil no tiene el permiso (el contable preguntando por pacientes), se dice que no tiene acceso; no se consulta nada.
-- No necesita la clave de Grok, y estas respuestas **no se envían a Grok**: los datos de pacientes no salen a un proveedor externo.
+- No necesita clave de ningún modelo, y estas respuestas **no se envían al modelo externo**: los datos de pacientes no salen a un proveedor externo.
 - Las preguntas de la evaluación no caen en estas reglas (`scripts/test_rag.py` lo verifica), así que no alteran las métricas del RAG.
 
 ## 6. pgvector
@@ -174,7 +174,7 @@ python scripts/evaluar_rag.py                    # tabla de métricas
 python scripts/test_rag.py                       # pruebas end-to-end
 ```
 
-Variables en `.env` (no se suben al repositorio): `XAI_API_KEY`, `XAI_MODEL`, `RAG_UMBRAL_DENSO`, `RAG_UMBRAL_BM25` (ver `.env.example`). Al aprobar un reporte de IA, la historia del paciente se reindexa sola (`app/api/ia.py`); `scripts/rag_indexar.py` sirve para reindexar todo (por ejemplo, al cambiar de modelo).
+Variables en `.env` (no se suben al repositorio): `GEMINI_API_KEY`, `GEMINI_MODEL` (o `XAI_API_KEY`, `XAI_MODEL`), `RAG_UMBRAL_DENSO`, `RAG_UMBRAL_BM25` (ver `.env.example`). Al aprobar un reporte de IA, la historia del paciente se reindexa sola (`app/api/ia.py`); `scripts/rag_indexar.py` sirve para reindexar todo (por ejemplo, al cambiar de modelo).
 
 ## 9. Limitaciones
 
@@ -182,4 +182,4 @@ Variables en `.env` (no se suben al repositorio): `XAI_API_KEY`, `XAI_MODEL`, `R
 - El corpus es pequeño: la búsqueda densa es exacta (sin índice HNSW); con más volumen se crea el índice.
 - Las historias de evaluación son ficticias; la evaluación con historias reales de la demo depende de los datos del día.
 - La seudonimización redacta los identificadores registrados del paciente; nombres de terceros (familiares) en texto libre no se detectan.
-- Al usar Grok, el texto seudonimizado sale a un proveedor externo; en producción se requeriría un acuerdo de transmisión de datos o un modelo local.
+- Al usar Gemini o Grok, el texto seudonimizado sale a un proveedor externo; en la capa gratuita de Gemini, Google puede usar lo enviado para mejorar sus productos. En producción se requeriría la capa de pago (sin ese uso), un acuerdo de transmisión de datos o un modelo local.
