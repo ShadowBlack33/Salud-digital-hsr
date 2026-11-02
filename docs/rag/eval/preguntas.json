@@ -373,5 +373,65 @@
     "id": "N03",
     "pregunta": "¿Qué vacunas necesita un niño de dos meses?",
     "esperado": null
+  },
+  {
+    "id": "N04",
+    "pregunta": "¿Cómo se trata una fractura de tibia?",
+    "esperado": null
+  },
+  {
+    "id": "N05",
+    "pregunta": "¿Cuál es la dosis de amoxicilina en un niño con otitis?",
+    "esperado": null
+  },
+  {
+    "id": "N06",
+    "pregunta": "¿Quién ganó el Mundial de fútbol de 2022?",
+    "esperado": null
+  },
+  {
+    "id": "N07",
+    "pregunta": "¿Cómo se liquida la nómina del personal de enfermería?",
+    "esperado": null
+  },
+  {
+    "id": "N08",
+    "pregunta": "¿Cuánto cuesta una consulta particular con un cardiólogo?",
+    "esperado": null
+  },
+  {
+    "id": "N09",
+    "pregunta": "¿Cómo se diagnostica la diabetes tipo 1?",
+    "esperado": null
+  },
+  {
+    "id": "N10",
+    "pregunta": "¿Cómo se interpreta una radiografía de tórax?",
+    "esperado": null
+  },
+  {
+    "id": "N11",
+    "pregunta": "¿Cuáles son los síntomas del dengue?",
+    "esperado": null
+  },
+  {
+    "id": "N12",
+    "pregunta": "¿Cómo se configura una impresora de red en el hospital?",
+    "esperado": null
+  },
+  {
+    "id": "N13",
+    "pregunta": "¿Cuántos días de incapacidad corresponden después de una apendicectomía?",
+    "esperado": null
+  },
+  {
+    "id": "N14",
+    "pregunta": "¿Cómo se calcula la dosis de heparina en una trombosis venosa?",
+    "esperado": null
+  },
+  {
+    "id": "N15",
+    "pregunta": "¿Qué turnos tiene el personal de enfermería los fines de semana?",
+    "esperado": null
   }
 ]
