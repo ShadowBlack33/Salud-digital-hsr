@@ -8,5 +8,8 @@ scipy>=1.11
 matplotlib>=3.8
 pymongo>=4.7
 python-dotenv>=1.0
+# RAG: indexar y evaluar desde el PC. Versión EXACTA, la misma del servicio ml
+# (ml/requirements.txt): la firma de cada vector incluye la versión (docs/RAG.md).
+fastembed==0.9.1
 # Solo para abrir el notebook fuera de VS Code:
 notebook>=7.0

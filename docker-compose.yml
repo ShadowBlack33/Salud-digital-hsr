@@ -114,7 +114,7 @@ services:
 
   # PostgreSQL propio del sistema (R05). Ver el encabezado: mientras el equipo
   # use Neon, este servicio corre pero la API no lo usa. Al crear el volumen
-  # por primera vez carga db/esquema_completo.sql (estructura y catálogos);
+  # por primera vez carga db/esquema_completo.sql (estructura y catálogos) y db/03_rag.sql;
   # los datos se cargan después (docs/DESPLIEGUE.md).
   postgres:
     # pgvector/pgvector es PostgreSQL 16 con la extensión vector (RAG).
@@ -130,6 +130,7 @@ services:
     volumes:
       - hsr_pgdata:/var/lib/postgresql/data
       - ./db/esquema_completo.sql:/docker-entrypoint-initdb.d/01_esquema_completo.sql:ro
+      - ./db/03_rag.sql:/docker-entrypoint-initdb.d/02_rag.sql:ro
     # Publicado solo en este equipo (puerto 5433 para no chocar con un
     # PostgreSQL instalado), para cargar los datos con los scripts.
     ports:
@@ -165,6 +166,9 @@ services:
   ml:
     build:
       context: ./ml
+      # Reranker opcional del RAG (bge-reranker-v2-m3-int8, unos 570 MB). Vacío = no se instala. Ver docs/RAG.md.
+      args:
+        RAG_RERANKER_MODELO: ${RAG_RERANKER_MODELO:-}
     container_name: hsr-ml
     restart: unless-stopped
 

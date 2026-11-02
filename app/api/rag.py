@@ -99,8 +99,8 @@ def preguntar(datos: Pregunta, request: Request,
                     "fuente": asistente_sistema.FUENTE, "paciente": None, "extracto": None}
             consulta_id = db.execute(text("""
                 INSERT INTO rag_consultas (usuario_id, rol, pregunta, paciente_id, metodo, fuentes, abstencion,
-                                           confianza, generador)
-                VALUES (:u, :rol, :q, NULL, 'sistema', CAST(:f AS jsonb), :a, NULL, 'sistema') RETURNING id
+                                           confianza, generador, parametros)
+                VALUES (:u, :rol, :q, NULL, 'sistema', CAST(:f AS jsonb), :a, NULL, 'sistema', '{}'::jsonb) RETURNING id
             """), {"u": ctx.usuario.id, "rol": ctx.payload.get("rol"), "q": datos.pregunta,
                    "f": json.dumps([cita["documento_id"]]), "a": not sistema["permitida"]}).scalar()
             registrar(db, ctx.usuario, "rag_consulta", consulta_id, "rag_preguntar",
@@ -125,13 +125,17 @@ def preguntar(datos: Pregunta, request: Request,
             "extracto": f["texto"][:300],
         })
 
+    # parametros: con qué modelo, temperatura, versión del prompt, embeddings y reranker se
+    # respondió, para poder reproducir (y auditar) una respuesta después.
     consulta_id = db.execute(text("""
         INSERT INTO rag_consultas (usuario_id, rol, pregunta, paciente_id, metodo, fuentes, abstencion,
-                                   confianza, generador)
-        VALUES (:u, :rol, :q, :pid, :m, CAST(:f AS jsonb), :a, :c, :g) RETURNING id
+                                   confianza, generador, parametros)
+        VALUES (:u, :rol, :q, :pid, :m, CAST(:f AS jsonb), :a, :c, :g, CAST(:par AS jsonb)) RETURNING id
     """), {"u": ctx.usuario.id, "rol": rol, "q": datos.pregunta, "pid": datos.paciente_id,
            "m": hallazgo["metodo_usado"], "f": json.dumps([c["fragmento_id"] for c in citas]),
-           "a": resp["abstencion"], "c": hallazgo["confianza"], "g": resp["generador"]}).scalar()
+           "a": resp["abstencion"], "c": hallazgo["confianza"], "g": resp["generador"],
+           "par": json.dumps(svc.parametros(resp["generador"], hallazgo.get("reranker", False),
+                                            hallazgo.get("firma")))}).scalar()
     registrar(db, ctx.usuario, "rag_consulta", consulta_id, "rag_preguntar", request=request)
     db.commit()
 

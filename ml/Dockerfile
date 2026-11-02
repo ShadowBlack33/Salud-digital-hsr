@@ -18,6 +18,11 @@ USER ml
 # primera pregunta (ni en un contenedor sin internet).
 ENV FASTEMBED_CACHE=/home/ml/fastembed
 RUN python -c "from fastembed import TextEmbedding; TextEmbedding('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', cache_dir='/home/ml/fastembed')"
+# Reranker opcional (BAAI/bge-reranker-v2-m3-int8, unos 570 MB): solo se descarga si
+# RAG_RERANKER_MODELO tiene valor en el .env (docker-compose.yml lo pasa como build arg).
+ARG RAG_RERANKER_MODELO=""
+ENV RAG_MODELO_RERANKER=${RAG_RERANKER_MODELO}
+RUN if [ -n "$RAG_RERANKER_MODELO" ]; then python -c "import os; from fastembed.rerank.cross_encoder import TextCrossEncoder; TextCrossEncoder(os.environ['RAG_MODELO_RERANKER'], cache_dir='/home/ml/fastembed')"; fi
 
 EXPOSE 8001
 HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \

@@ -89,14 +89,22 @@ class Settings(BaseSettings):
     xai_api_key: str = ""                 # XAI_API_KEY
     xai_model: str = "grok-4.3"           # XAI_MODEL (confirmar en console.x.ai)
     xai_base_url: str = "https://api.x.ai/v1"
-    rag_umbral_denso: float = 0.45        # RAG_UMBRAL_DENSO (calibrar con scripts/evaluar_rag.py)
-    rag_umbral_bm25: float = 5.0          # RAG_UMBRAL_BM25
+    # Umbrales calibrados con scripts/evaluar_rag.py (noviembre de 2026, con preguntas por sección):
+    # ver docs/rag/eval/RESULTADOS.md. Si cambian las guías o el modelo, se vuelven a calibrar.
+    rag_umbral_denso: float = 0.5         # RAG_UMBRAL_DENSO
+    rag_umbral_bm25: float = 7.0          # RAG_UMBRAL_BM25
     # Umbrales más abiertos cuando hay modelo de lenguaje: la recuperación deja pasar y el modelo
     # decide (responde NO_ENCONTRADO si las fuentes no alcanzan). Con preguntas en palabras propias
     # ninguna regla sobre las señales de recuperación separa bien (ver docs/rag/eval/RESULTADOS.md).
-    rag_umbral_denso_llm: float = 0.35    # RAG_UMBRAL_DENSO_LLM
-    rag_umbral_bm25_llm: float = 4.0      # RAG_UMBRAL_BM25_LLM
-    rag_peso_denso: float = 1.0           # RAG_PESO_DENSO: peso del denso en la fusión RRF (BM25 pesa 1); ver scripts/evaluar_rag.py
+    rag_umbral_denso_llm: float = 0.65    # RAG_UMBRAL_DENSO_LLM
+    rag_umbral_bm25_llm: float = 7.0      # RAG_UMBRAL_BM25_LLM
+    rag_peso_denso: float = 0.5           # RAG_PESO_DENSO: peso del denso en la fusión RRF (BM25 pesa 1); ver scripts/evaluar_rag.py
+    # Temperatura del modelo que redacta. Vacío = la del proveedor (para Gemini 3, 1,0, que es
+    # lo que Google recomienda: bajarla puede producir bucles). Ver docs/RAG.md.
+    rag_temperatura: str = ""             # RAG_TEMPERATURA
+    rag_preguntas: bool = True            # RAG_PREGUNTAS: usar las preguntas por sección al recuperar
+    rag_reranker: bool = False            # RAG_RERANKER: reordenar con el cross-encoder del servicio ml
+    rag_reranker_candidatos: int = 20     # RAG_RERANKER_CANDIDATOS: cuántos candidatos reordena
 
     @property
     def cors_origenes(self) -> list[str]:

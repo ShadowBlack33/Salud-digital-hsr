@@ -13,12 +13,15 @@ Reglas que este módulo garantiza (Semana 12):
     modelo y se responde que no hay información suficiente.
   · El modelo (Gemini o Grok) solo redacta a partir de los fragmentos; si no hay clave,
     se responde de forma extractiva con la mejor frase y su cita.
+  · Cada fragmento puede traer las preguntas que su sección responde (en palabras
+    de quien pregunta): se indexan como vectores propios y entran al BM25, para
+    que una pregunta parafraseada encuentre la sección aunque no comparta términos.
 """
 from __future__ import annotations
 
 import hashlib
-import logging
 import hmac
+import logging
 import re
 from pathlib import Path
 
@@ -42,6 +45,8 @@ UMBRAL_BM25_LLM = _cfg.rag_umbral_bm25_llm
 TOP_K = 8            # fragmentos que recibe el modelo (completo o lite)
 TOP_K_EXTENSA = TOP_K   # nombre anterior; los dos modelos reciben lo mismo
 CANDIDATOS_DENSOS = 20
+# Versión del prompt (se guarda en rag_consultas.parametros): cambiar si cambia SISTEMA o POR_PERFIL.
+VERSION_PROMPT = "2026-11-v2"
 
 
 
@@ -89,7 +94,10 @@ def seudonimo(paciente_id: str) -> str:
     if not clave:
         raise RuntimeError("Falta IA_SEUDONIMO_KEY en el entorno: sin ella no se seudonimiza")
     clave = clave.encode()
-    return "P-" + hmac.new(clave, paciente_id.encode(), hashlib.sha256).hexdigest()[:4].upper()
+    # 8 caracteres hexadecimales (4.300 millones de valores). Con 4 había solo 65.536 y,
+    # con unos 300 pacientes, cerca de 50 % de probabilidad de que dos compartieran
+    # seudónimo (y documento_id y etiqueta en las citas).
+    return "P-" + hmac.new(clave, paciente_id.encode(), hashlib.sha256).hexdigest()[:8].upper()
 
 
 def _identificadores(p: Paciente) -> list[str]:
@@ -229,17 +237,33 @@ def _vector_sql(v: list[float]) -> str:
 
 def _guardar(db: Session, frags: list[core.Fragmento], paciente_id: str | None, estado: str,
              audiencia: list[str] | None = None) -> int:
-    vectores = core.embeber([f.texto for f in frags])
+    """
+    Inserta los fragmentos y las preguntas de su sección. Cada vector guarda su
+    firma (modelo + versión de fastembed): la búsqueda solo compara vectores de la
+    misma firma que la pregunta.
+    """
+    vectores, firma = core.embeber_con_firma([f.texto for f in frags])
+    preguntas = [(i, p) for i, f in enumerate(frags) for p in f.preguntas]
+    vec_preg = core.embeber([p for _, p in preguntas]) if (vectores and preguntas) else None
+    ids: list[int] = []
     for i, f in enumerate(frags):
-        db.execute(text("""
+        ids.append(db.execute(text("""
             INSERT INTO rag_fragmentos (documento_id, tipo, paciente_id, estado, titulo, seccion, fuente, texto,
                                         embedding, modelo_embedding, audiencia)
             VALUES (:doc, :tipo, :pid, :estado, :titulo, :seccion, :fuente, :texto,
                     CAST(:vec AS vector), :modelo, :audiencia)
+            RETURNING id
         """), {"doc": f.documento_id, "tipo": f.tipo, "pid": paciente_id, "estado": estado, "audiencia": audiencia,
                "titulo": f.titulo, "seccion": f.seccion, "fuente": f.fuente, "texto": f.texto,
                "vec": _vector_sql(vectores[i]) if vectores else None,
-               "modelo": core.MODELO_EMBEDDING if vectores else None})
+               "modelo": firma if vectores else None}).scalar())
+    for n, (i, p) in enumerate(preguntas):
+        db.execute(text("""
+            INSERT INTO rag_preguntas (fragmento_id, pregunta, embedding, modelo_embedding)
+            VALUES (:f, :p, CAST(:vec AS vector), :modelo)
+        """), {"f": ids[i], "p": p, "vec": _vector_sql(vec_preg[n]) if vec_preg else None,
+               "modelo": firma if vec_preg else None})
+    _bm25_guias.clear()          # cambió el índice: las estadísticas de BM25 se recalculan
     return len(frags)
 
 
@@ -328,33 +352,75 @@ def evaluar_umbral(denso: float | None, bm25: float, metodo: str) -> tuple[bool,
     return (abierto if _proveedor(True) is not None else estricto), estricto
 
 
+# Estadísticas de BM25 (IDF y largo medio) calculadas con TODAS las guías, no con lo que
+# cada perfil puede ver: así el puntaje de un fragmento no depende de quién pregunta y el
+# umbral calibrado (RAG_UMBRAL_BM25) vale igual para el contable que para el médico. Solo
+# guías: las historias de otros pacientes no influyen en los puntajes de nadie.
+_bm25_guias: dict = {}
+
+
+def _bm25_referencia(db: Session) -> core.BM25:
+    firma = tuple(db.execute(text("""
+        SELECT count(*), coalesce(max(id), 0), (SELECT count(*) FROM rag_preguntas)
+        FROM rag_fragmentos WHERE tipo = 'guia'
+    """)).one())
+    if _bm25_guias.get("firma") != firma:
+        textos = db.execute(text("""
+            SELECT f.texto || ' ' || coalesce(string_agg(p.pregunta, ' '), '')
+            FROM rag_fragmentos f LEFT JOIN rag_preguntas p ON p.fragmento_id = f.id
+            WHERE f.tipo = 'guia' GROUP BY f.id ORDER BY f.id
+        """)).scalars().all()
+        _bm25_guias.update(firma=firma, bm25=core.BM25(list(textos)))
+    return _bm25_guias["bm25"]
+
+
 def buscar(db: Session, ctx, pregunta: str, paciente_id: str | None = None,
            metodo: str = "hibrido", k: int = TOP_K_EXTENSA) -> dict:
-    """Devuelve {"fragmentos": [...], "confianza": float, "metodo_usado": str}."""
+    """Devuelve {"fragmentos": [...], "confianza": float, "metodo_usado": str, ...}."""
+    cfg = get_settings()
     where, params = _filtro(db, ctx, paciente_id)
     candidatos = db.execute(text(f"""
-        SELECT f.id, f.documento_id, f.tipo, f.paciente_id, f.titulo, f.seccion, f.fuente, f.texto
-        FROM rag_fragmentos f WHERE {where}
-    """), params).mappings().all()
+        SELECT f.id, f.documento_id, f.tipo, f.paciente_id, f.titulo, f.seccion, f.fuente, f.texto,
+               coalesce(string_agg(p.pregunta, ' ') FILTER (WHERE :usar_preguntas), '') AS preguntas
+        FROM rag_fragmentos f LEFT JOIN rag_preguntas p ON p.fragmento_id = f.id
+        WHERE {where} GROUP BY f.id
+    """), {**params, "usar_preguntas": cfg.rag_preguntas}).mappings().all()
     if not candidatos:
-        return {"fragmentos": [], "confianza": 0.0, "metodo_usado": metodo}
+        return {"fragmentos": [], "confianza": 0.0, "metodo_usado": metodo, "reranker": False}
 
     por_id = {c["id"]: dict(c) for c in candidatos}
     ids = list(por_id)
-    bm25 = core.BM25([por_id[i]["texto"] for i in ids])
-    rank_bm25 = [(ids[i], s) for i, s in bm25.ranking(pregunta, CANDIDATOS_DENSOS)]
+    puntajes = _bm25_referencia(db).puntuar(
+        pregunta, [f"{por_id[i]['texto']} {por_id[i]['preguntas']}" for i in ids])
+    rank_bm25 = [(ids[i], s) for i, s in core.ordenar(puntajes, CANDIDATOS_DENSOS)]
 
     rank_denso: list[tuple[int, float]] = []
+    firma = None
     if metodo in ("hibrido", "denso"):
-        qv = core.embeber([pregunta])
+        qv, firma = core.embeber_con_firma([pregunta])
         if qv:
+            # El fragmento compite con su propio vector y con los de las preguntas de su
+            # sección: gana el más parecido a la pregunta del usuario.
+            preguntas_sql = f"""
+                UNION ALL
+                SELECT f.id, 1 - (p.embedding <=> CAST(:qv AS vector)) AS sim
+                FROM rag_preguntas p JOIN rag_fragmentos f ON f.id = p.fragmento_id
+                WHERE {where} AND p.embedding IS NOT NULL AND p.modelo_embedding = :modelo""" \
+                if cfg.rag_preguntas else ""
             rank_denso = [(r["id"], float(r["sim"])) for r in db.execute(text(f"""
-                SELECT f.id, 1 - (f.embedding <=> CAST(:qv AS vector)) AS sim
-                FROM rag_fragmentos f
-                WHERE {where} AND f.embedding IS NOT NULL AND f.modelo_embedding = :modelo
-                ORDER BY f.embedding <=> CAST(:qv AS vector) LIMIT :n
-            """), {**params, "qv": _vector_sql(qv[0]), "modelo": core.MODELO_EMBEDDING,
+                SELECT id, max(sim) AS sim FROM (
+                    SELECT f.id, 1 - (f.embedding <=> CAST(:qv AS vector)) AS sim
+                    FROM rag_fragmentos f
+                    WHERE {where} AND f.embedding IS NOT NULL AND f.modelo_embedding = :modelo
+                    {preguntas_sql}
+                ) s GROUP BY id ORDER BY sim DESC LIMIT :n
+            """), {**params, "qv": _vector_sql(qv[0]), "modelo": firma,
                    "n": CANDIDATOS_DENSOS}).mappings().all()]
+            if not rank_denso and db.execute(text(
+                    "SELECT EXISTS (SELECT 1 FROM rag_fragmentos WHERE embedding IS NOT NULL "
+                    "AND modelo_embedding IS DISTINCT FROM :modelo)"), {"modelo": firma}).scalar():
+                log.warning("Los vectores del índice tienen otra firma que la pregunta (%s): "
+                            "reindexar con scripts/rag_indexar.py. Se sigue con BM25.", firma)
 
     if metodo == "bm25" or not rank_denso:
         orden = [i for i, _ in rank_bm25]
@@ -377,12 +443,19 @@ def buscar(db: Session, ctx, pregunta: str, paciente_id: str | None = None,
         # lenguaje se usa la abierta; ver evaluar_umbral().
         supera, estricto = evaluar_umbral(confianza, top_bm25, usado)
 
+    reranker = False
+    if supera and cfg.rag_reranker:
+        # El reranker lee pregunta y fragmento juntos: reordena los primeros candidatos de
+        # la fusión. No decide la abstención (esa sigue calibrada con las señales de arriba).
+        orden, reranker = core.aplicar_reranker(pregunta, orden, lambda i: por_id[i]["texto"],
+                                                cfg.rag_reranker_candidatos)
     if paciente_id:
         # Si se pregunta por un paciente, su historia (ya ordenada por relevancia) va
         # antes que las guías: estas quedan como respaldo en las posiciones siguientes.
         orden = sorted(orden, key=lambda i: por_id[i]["tipo"] != "historia")
     frags = [por_id[i] for i in orden[:k]] if supera else []
-    return {"fragmentos": frags, "confianza": round(confianza, 3), "metodo_usado": usado, "estricto": estricto}
+    return {"fragmentos": frags, "confianza": round(confianza, 3), "metodo_usado": usado, "estricto": estricto,
+            "reranker": reranker, "firma": firma if rank_denso else None}
 
 
 # ================================================================== generación
@@ -398,11 +471,16 @@ SISTEMA = (
 )
 
 
+def _limpio(texto: str) -> str:
+    """Nadie puede cerrar la etiqueta ni el atributo desde el texto."""
+    return texto.replace("<", "‹").replace(">", "›").replace('"', "”")
+
+
 def _contexto(frags: list[dict]) -> str:
     bloques = []
     for n, f in enumerate(frags, start=1):
-        limpio = f["texto"].replace("<", "‹").replace(">", "›")     # nadie puede cerrar la etiqueta desde el texto
-        bloques.append(f'<fuente id="F{n}" titulo="{f["titulo"]}" seccion="{f["seccion"]}">\n{limpio}\n</fuente>')
+        bloques.append(f'<fuente id="F{n}" titulo="{_limpio(f["titulo"])}" seccion="{_limpio(f["seccion"])}">\n'
+                       f'{_limpio(f["texto"])}\n</fuente>')
     return "\n".join(bloques)
 
 
@@ -425,6 +503,28 @@ POR_PERFIL = {
 }
 
 
+def temperatura() -> float | None:
+    """
+    RAG_TEMPERATURA del .env; vacío = la del proveedor. Para Gemini 3 Google
+    recomienda dejar la de por defecto (1,0): bajarla puede producir bucles o
+    peores respuestas. Lo que mantiene al modelo dentro de las fuentes es el
+    prompt y la verificación de citas, no la temperatura.
+    """
+    valor = str(get_settings().rag_temperatura).strip()
+    return float(valor) if valor else None
+
+
+def parametros(generador: str | None, reranker: bool = False, firma: str | None = None) -> dict:
+    """Lo que se guarda en rag_consultas.parametros para poder reproducir una respuesta."""
+    cfg = get_settings()
+    return {"generador": generador, "temperatura": temperatura(), "max_tokens": MAX_TOKENS, "top_k": TOP_K,
+            "prompt": VERSION_PROMPT, "embedding": firma, "preguntas": cfg.rag_preguntas,
+            "reranker": core.MODELO_RERANKER if reranker else None, "peso_denso": cfg.rag_peso_denso}
+
+
+MAX_TOKENS = 2048   # holgado: los modelos con razonamiento también gastan tokens pensando
+
+
 def _llm(pregunta: str, frags: list[dict], rol: str | None = None,
          extensa: bool | None = None) -> tuple[str, str] | None:
     """
@@ -437,12 +537,15 @@ def _llm(pregunta: str, frags: list[dict], rol: str | None = None,
         return None
     nombre, base, clave, modelo = prov
     import httpx  # noqa: PLC0415
+    cuerpo = {"model": modelo, "max_tokens": MAX_TOKENS,
+              "messages": [{"role": "system", "content": SISTEMA + (
+                                "\n6. " + POR_PERFIL[rol] if rol in POR_PERFIL else "")},
+                           {"role": "user", "content": f"{_contexto(frags)}\n\nPregunta: {pregunta}"}]}
+    t = temperatura()
+    if t is not None:
+        cuerpo["temperature"] = t
     r = httpx.post(f"{base.rstrip('/')}/chat/completions", timeout=30,
-                   headers={"Authorization": f"Bearer {clave}"},
-                   json={"model": modelo, "temperature": 0, "max_tokens": 2048,   # holgado: Gemini 2.5 también gasta tokens pensando
-                         "messages": [{"role": "system", "content": SISTEMA + (
-                                           "\n6. " + POR_PERFIL[rol] if rol in POR_PERFIL else "")},
-                                      {"role": "user", "content": f"{_contexto(frags)}\n\nPregunta: {pregunta}"}]})
+                   headers={"Authorization": f"Bearer {clave}"}, json=cuerpo)
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"].strip(), f"{nombre}:{modelo}"
 

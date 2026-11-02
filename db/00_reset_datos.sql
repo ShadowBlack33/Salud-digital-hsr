@@ -4,7 +4,7 @@
 -- Se usa para regenerar los datos sintéticos desde cero:
 --   python scripts/aplicar_sql.py db/00_reset_datos.sql
 --   python scripts/generar_datos.py
---   python scripts/aplicar_sql.py db/03_datos_sinteticos.sql
+--   python scripts/aplicar_sql.py db/01_datos_sinteticos.sql
 BEGIN;
 
 TRUNCATE

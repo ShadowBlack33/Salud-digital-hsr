@@ -20,7 +20,7 @@ Built for **Hospital San Rafael**, a hypothetical ~300-bed, 13-OR hospital sized
 - Field-level encryption, blind-index search and role-based access enforced by the API, not just the menu
 - HL7 FHIR R4 interoperability with a `Subscription` that makes the system react to external data
 - ICU-risk model trained on real surgical cases (VitalDB): sensitivity 0.80, AUC 0.71, always approved by a clinician
-- Clinical RAG: hybrid retrieval MRR 0.90 on 69 questions, abstains on **15 of 15** unanswerable questions
+- Clinical RAG: **97 %** of paraphrased questions (66 of 68) answered citing the right guideline, and **30 of 30** unanswerable questions rejected
 
 > My role: **technical lead**. Architecture, security, infrastructure, frontend and the RAG assistant. Team credits are [below](#team).
 
@@ -63,7 +63,9 @@ Question  ──► POST /rag/preguntar (role + own patient)
    ▼
 Clinical filter in SQL ──► only guidelines and approved records this role may see
    ▼
-BM25 + dense (pgvector) ──► RRF fusion ──► top 8
+BM25 + dense (pgvector), each section also indexed by the questions it answers
+   ▼
+RRF fusion ──► cross-encoder reranker (bge-reranker-v2-m3) ──► top 8
    ▼
 Confident enough? ── no ──► abstain (the model is not called)
    │ yes
@@ -74,15 +76,21 @@ Answer + citations ──► rag_consultas + audit log
 ```
 
 - **Pseudonymized before indexing.** Records are written under a pseudonym (HMAC of the patient's blind index); name, surnames and ID are redacted everywhere, including free text a physician typed. A **canary check** searches for every identifier again before saving and refuses to index if one survives; an automated test proves it.
-- **Evaluated retrieval.** 69 questions with an expected document (54 literal, 15 paraphrased), 138 chunks from 21 documents. The weight of the dense retriever was chosen on a tuning split and reported on a held-out split.
+- **Paraphrased questions fixed by measurement, not by guesswork.** v1 retrieved the right guideline first for only 72 % of questions asked in the user's own words ("how long without eating before surgery?" never found the section on *fasting*). Three steps, each measured on 122 questions with an expected document (68 paraphrased) plus 30 unanswerable ones:
+  1. **Bigger evaluation set**, so a change can be told apart from noise (each question used to be worth 7 points).
+  2. **Questions per section in the index**: each guideline section carries the questions it answers, in plain words, generated with Gemini and reviewed by the team, each with its own vector. The model that writes the answer never sees them. Eval questions are never shown to the generator, and near-copies are filtered out.
+  3. **Cross-encoder reranker** (`bge-reranker-v2-m3`, Apache 2.0, ONNX on CPU) over the top 20 candidates.
 
-| Method | Recall@1 | Recall@3 | MRR | Paraphrased MRR |
-|---|---|---|---|---|
-| BM25 | 0.90 | 0.96 | 0.93 | 0.77 |
-| Dense (MiniLM) | 0.77 | 0.87 | 0.83 | 0.77 |
-| **Hybrid (RRF)** | 0.86 | 0.94 | 0.90 | **0.86** |
+| Retrieval (first document correct) | Paraphrased (68) | Held-out split (61) | All (122) |
+|---|---|---|---|
+| Hybrid BM25 + dense (v1) | 72 % | 79 % | 79 % |
+| + questions per section | 88 % | 89 % | 89 % |
+| **+ reranker (v2)** | **90 %** | **95 %** | **93 %** |
 
-- **Abstention measured end to end.** With the language model deciding behind an open retrieval gate: **15 of 15** unanswerable questions end in abstention, and **11 of 15** paraphrased questions are answered citing the expected guideline. In one of the four misses the assistant cited the wrong guideline; the cause is retrieval with a small embedding model, documented with the fix.
+  The dense weight in the fusion and the abstention thresholds were chosen on a tuning split; the held-out split never took part in any choice.
+
+- **Abstention measured end to end with Gemini.** **30 of 30** unanswerable questions end in abstention (14 stopped by the retrieval gate, 16 rejected by the model), including traps close to the corpus (hypokalaemia when the guideline covers hyperkalaemia, a 2024 fee when only 2025 and 2026 are documented). **66 of 68** paraphrased questions are answered citing the expected guideline (v1: 11 of 15).
+- **Reproducible answers.** Each query stores the model, temperature, prompt version, embedding signature (model + library version) and reranker used. Temperature is configurable and left at the provider's default, as Google recommends for Gemini 3.
 - **Two models by question type.** A lite model for short factual questions and a stronger one for long or reasoning questions, with fallback between them and an extractive answer when no model is available, so the system and its tests work offline.
 - **Live operational answers stay inside.** "How many free beds are there?" or "do I have alerts?" are answered from the same functions and permissions as the screens, and that data is never sent to the external model.
 
@@ -185,7 +193,7 @@ Stated as the path forward, not presented as working:
 - The patient key is their blind index; in production it would be a UUID.
 - The Cloudflare URL changes when the tunnel restarts (no custom domain).
 - Billing is an internal reference, not RIPS or DIAN e-invoicing.
-- The RAG assistant uses a small embedding model; paraphrased questions are its weak spot. On Gemini's free tier, pseudonymized text may be used by the provider; production would need the paid tier, a data agreement or a local model.
+- The RAG evaluation uses questions written by the team; generated index questions and eval questions target the same facts, so part of the gain may not transfer to real users. The next step is to measure on real, anonymized questions. On Gemini's free tier, pseudonymized text may be used by the provider; production would need the paid tier, a data agreement or a local model.
 - Next version: outpatient visits, shift handover, medical orders, informed consent and the WHO surgical safety checklist as a workflow.
 
 ## Documentation

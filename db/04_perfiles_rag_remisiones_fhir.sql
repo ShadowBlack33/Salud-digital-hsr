@@ -1,5 +1,5 @@
 -- ============================================================================
--- 16 · Ajustes de la revisión del Corte 2
+--  · Ajustes de la revisión del Corte 2
 --
 --   · RAG por perfil: cada guía declara a qué perfiles va (rag_fragmentos.audiencia).
 --   · Alertas: ya no se escalan al admin; el coordinador y el admin ven un
@@ -10,9 +10,9 @@
 --   · Resultados externos por FHIR: se guardan en observaciones (origen
 --     'fhir_externo'); pueden no tener encuentro.
 --
--- Ya está incluida en db/esquema_completo.sql. Para una base creada antes de
+-- Ya está incluida en db/esquema_completo.sql (la parte del RAG, en db/03_rag.sql). Para una base creada antes de
 -- este cambio (la compartida en Neon, si no se reinicia):
---   python scripts/aplicar_sql.py db/16_perfiles_rag_remisiones_fhir.sql
+--   python scripts/aplicar_sql.py db/04_perfiles_rag_remisiones_fhir.sql
 -- Se puede correr más de una vez.
 -- ============================================================================
 BEGIN;

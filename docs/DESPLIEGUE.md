@@ -58,11 +58,14 @@ El token es un secreto: va solo en el `.env`.
 
 ## 3. Base de datos
 
-Toda la estructura está en **un solo archivo**, `db/esquema_completo.sql`
-(tablas, funciones, triggers, extensión `vector` del RAG y catálogos: roles,
-permisos, especialidades, EPS, CIE-10, procedimientos, servicios). Es el
-estado final de las migraciones 01 a 15, que quedan en `db/historial/` como
-registro de cómo se llegó ahí (no se vuelven a aplicar).
+La base se arma con pocos archivos en `db/`:
+
+| Archivo | Qué tiene |
+| --- | --- |
+| `esquema_completo.sql` | Tablas, funciones, triggers y catálogos (roles, permisos, especialidades, EPS, CIE-10, procedimientos, servicios). Es el estado final de las migraciones 01 a 15, que quedan en `db/historial/` como registro (no se vuelven a aplicar). |
+| `03_rag.sql` | Todo lo del RAG: extensión `vector` y tablas `rag_fragmentos`, `rag_preguntas` y `rag_consultas`. Sirve para una base nueva o existente y se puede correr varias veces. |
+| `01_datos_sinteticos.sql` | Los datos de personas (no se sube al repositorio: lo genera `scripts/generar_datos.py`). |
+| `00_reset_datos.sql` | Borra solo los datos generados, para regenerarlos. |
 
 Los datos de personas los genera `scripts/generar_datos.py`: personal,
 pacientes, encuentros, eventos y las cuentas de demostración (`admin`,
@@ -74,8 +77,9 @@ Base nueva (o reiniciada), en orden. En la base compartida solo lo hace Carlos:
 
 ```bash
 python scripts/aplicar_sql.py db/esquema_completo.sql
-python scripts/generar_datos.py --meses 6 --pacientes 4000     # escribe db/03_datos_sinteticos.sql
-python scripts/aplicar_sql.py db/03_datos_sinteticos.sql
+python scripts/aplicar_sql.py db/03_rag.sql
+python scripts/generar_datos.py --meses 6 --pacientes 4000     # escribe db/01_datos_sinteticos.sql
+python scripts/aplicar_sql.py db/01_datos_sinteticos.sql
 python scripts/rag_indexar.py                                  # guías del RAG
 ```
 
@@ -88,9 +92,9 @@ La programación de turnos de los jefes cubre de ayer a dentro de 14 días; para
 extenderla, `python scripts/aplicar_sql.py db/historial/12_turnos.sql` (se puede
 correr cuantas veces haga falta).
 
-Un cambio nuevo de estructura va como migración numerada (`db/16_...sql`),
-se aplica en la base compartida y luego se incorpora a `esquema_completo.sql`
-(pg_dump de la base con todo aplicado, sin los datos de personas).
+Un cambio nuevo de estructura se aplica en la base compartida y luego se
+incorpora a `esquema_completo.sql` (pg_dump de la base con todo aplicado, sin
+los datos de personas), o a `03_rag.sql` si es del RAG.
 
 Para R21 el `.env` debe tener `HOOK_SECRET` (el secreto que HAPI manda en la
 cabecera del rest-hook); sin él la Subscription no se registra y el receptor
@@ -118,14 +122,14 @@ de `medico01` y `especialista01`) y, una sola vez, `cargar_radiografias.py`
 
 ## 4. Usar el PostgreSQL del compose en vez de Neon
 
-El volumen nuevo ya trae `db/esquema_completo.sql`. Faltan los datos, que se
+El volumen nuevo ya trae `db/esquema_completo.sql` y `db/03_rag.sql`. Faltan los datos, que se
 cargan desde este equipo por el puerto `5433`:
 
 ```bash
 # En el .env, temporalmente, para los scripts que corren fuera de Docker:
 # DATABASE_URL=postgresql+psycopg2://hsr:<POSTGRES_PASSWORD>@localhost:5433/hsanrafael
 python scripts/generar_datos.py --meses 6 --pacientes 4000
-python scripts/aplicar_sql.py db/03_datos_sinteticos.sql
+python scripts/aplicar_sql.py db/01_datos_sinteticos.sql
 python scripts/rag_indexar.py
 ```
 

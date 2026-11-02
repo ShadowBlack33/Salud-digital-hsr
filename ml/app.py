@@ -112,9 +112,15 @@ def predict(sol: Solicitud):
 # usó para indexar.
 # ============================================================================
 import os as _os
+from importlib.metadata import version as _version
 
 MODELO_EMBEDDING = _os.getenv("RAG_MODELO_EMBEDDING",
                               "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+# Firma = modelo + versión de fastembed. La API solo compara vectores con la misma firma:
+# entre versiones de fastembed el mismo modelo puede dar vectores distintos.
+FIRMA = f"{MODELO_EMBEDDING}|fastembed=={_version('fastembed')}"
+# Reranker opcional (vacío = no instalado): BAAI/bge-reranker-v2-m3-int8, Apache 2.0.
+MODELO_RERANKER = _os.getenv("RAG_MODELO_RERANKER", "")
 _EMBEDDER: dict = {}
 
 
@@ -131,4 +137,28 @@ def embed(datos: Textos):
         _EMBEDDER["modelo"] = TextEmbedding(MODELO_EMBEDDING,
                                             cache_dir=_os.getenv("FASTEMBED_CACHE", "/home/ml/fastembed"))
     vectores = [[float(x) for x in v] for v in _EMBEDDER["modelo"].embed(datos.textos)]
-    return {"modelo": MODELO_EMBEDDING, "dimension": len(vectores[0]), "vectores": vectores}
+    return {"modelo": MODELO_EMBEDDING, "firma": FIRMA, "dimension": len(vectores[0]), "vectores": vectores}
+
+
+class Rerank(BaseModel):
+    consulta: str
+    textos: list[str]
+
+
+@app.post("/rerank")
+def rerank(datos: Rerank):
+    """
+    Puntaje de cada texto frente a la consulta con un cross-encoder (lee los dos
+    juntos, a diferencia de los embeddings). Solo si la imagen se construyó con
+    RAG_RERANKER_MODELO; si no, 503 y la API conserva el orden de la fusión.
+    """
+    if not MODELO_RERANKER:
+        raise HTTPException(503, "Reranker no instalado: construir con --build-arg RAG_RERANKER_MODELO=...")
+    if not datos.textos or len(datos.textos) > 64:
+        raise HTTPException(422, "Enviar entre 1 y 64 textos")
+    if "reranker" not in _EMBEDDER:
+        from fastembed.rerank.cross_encoder import TextCrossEncoder  # noqa: PLC0415
+        _EMBEDDER["reranker"] = TextCrossEncoder(MODELO_RERANKER,
+                                                 cache_dir=_os.getenv("FASTEMBED_CACHE", "/home/ml/fastembed"))
+    puntajes = [float(x) for x in _EMBEDDER["reranker"].rerank(datos.consulta, datos.textos)]
+    return {"modelo": MODELO_RERANKER, "puntajes": puntajes}

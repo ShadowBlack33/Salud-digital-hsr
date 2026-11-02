@@ -23,7 +23,7 @@ Calibración
 
 Uso
 ---
-    python scripts/generar_datos.py --meses 6 --salida db/03_datos_sinteticos.sql
+    python scripts/generar_datos.py --meses 6 --salida db/01_datos_sinteticos.sql
 """
 from __future__ import annotations
 
@@ -596,7 +596,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--meses", type=int, default=6)
     ap.add_argument("--pacientes", type=int, default=4000)
-    ap.add_argument("--salida", default="db/03_datos_sinteticos.sql")
+    ap.add_argument("--salida", default="db/01_datos_sinteticos.sql")
     ap.add_argument("--claves-efimeras", action="store_true",
                     help="Cifrar con claves al azar (los datos NO los podrá leer la API)")
     args = ap.parse_args()
