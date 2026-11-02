@@ -83,8 +83,8 @@ class Settings(BaseSettings):
     # Google AI Studio) o Grok (xAI, de pago). Se usa el primero que tenga clave;
     # sin ninguna, el asistente responde de forma extractiva.
     gemini_api_key: str = ""              # GEMINI_API_KEY (aistudio.google.com)
-    gemini_model: str = "gemini-3.8-flash"   # GEMINI_MODEL: preguntas extensas o que piden razonar
-    gemini_model_lite: str = "gemini-3.5-flash-lite"   # GEMINI_MODEL_LITE: preguntas cortas y puntuales
+    gemini_model: str = "gemini-2.5-flash"   # GEMINI_MODEL: preguntas extensas o que piden razonar
+    gemini_model_lite: str = "gemini-2.5-flash-lite"   # GEMINI_MODEL_LITE: preguntas cortas y puntuales
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     xai_api_key: str = ""                 # XAI_API_KEY
     xai_model: str = "grok-4.3"           # XAI_MODEL (confirmar en console.x.ai)
