@@ -79,33 +79,38 @@ Al servicio `ml` (embeddings) y al modelo que redacta (Gemini o Grok) solo llega
 - **Denso**: `paraphrase-multilingual-MiniLM-L12-v2` (384 dimensiones, multilingüe, corre en CPU), vectores en **pgvector** y similitud coseno.
 - **Híbrido**: fusión **RRF** (Reciprocal Rank Fusion, k = 60) de los dos rankings.
 
-**Evaluación:** `scripts/evaluar_rag.py` con `docs/rag/eval/preguntas.json`: 54 preguntas con documento esperado (49 de guías y 5 de historias de pacientes ficticios ya seudonimizados en `docs/rag/eval/historias/`) y 3 preguntas sin respuesta en el corpus para calibrar la abstención. Métricas a nivel de documento.
+**Evaluación:** `scripts/evaluar_rag.py` con `docs/rag/eval/preguntas.json`: 69 preguntas con documento esperado (54 literales, que usan las palabras de las guías, y 15 parafraseadas con palabras propias del usuario; 5 de las literales son de historias de pacientes ficticios ya seudonimizados en `docs/rag/eval/historias/`) y 15 preguntas sin respuesta en el corpus para calibrar la abstención. Métricas a nivel de documento.
 
-| Método | Recall@1 | Recall@3 | MRR |
-| --- | --- | --- | --- |
-| BM25 | 0,94 | 1,00 | 0,97 |
-| Denso | 0,80 | 0,89 | 0,85 |
-| Híbrido (RRF) | 0,87 | 0,94 | 0,91 |
+| Método | Recall@1 (todas) | Recall@3 | MRR | R@1 literales | R@1 parafraseadas |
+| --- | --- | --- | --- | --- | --- |
+| BM25 | 0,90 | 0,96 | 0,93 | 0,94 | 0,73 |
+| Denso | 0,77 | 0,87 | 0,83 | 0,80 | 0,67 |
+| Híbrido (RRF) | 0,86 | 0,94 | 0,90 | 0,87 | 0,80 |
 
-Con las 8 guías iniciales (28 preguntas) los resultados fueron BM25 0,96 / 1,00 / 0,98; denso 0,79 / 0,96 / 0,88; híbrido 0,96 / 0,96 / 0,97. Con 18 guías BM25 falla en primera posición Q08, Q16 y Q45, siempre con el documento correcto en el top 3. El híbrido falla siete (Q13, Q16, Q23, Q41, Q43, Q44, Q45): en casi todas el denso empuja un documento vecino (historia clínica frente a derechos del paciente, las historias de evaluación entre sí, ASA frente a sepsis) y la fusión le da el mismo peso que a BM25.
+Detalle y fallos por pregunta en `docs/rag/eval/RESULTADOS.md`. Con las palabras exactas de las guías gana BM25; con palabras propias gana el híbrido (MRR 0,86 frente a 0,77 de BM25 y del denso). Las parafraseadas son solo 15, así que es una tendencia (la diferencia son una o dos respuestas), no una demostración. El denso falla sobre todo donde dos documentos comparten vocabulario: historia clínica frente a derechos del paciente, ASA frente a sepsis, y las tres historias de evaluación entre sí.
 
-Detalle y fallos por pregunta en `docs/rag/eval/RESULTADOS.md`. BM25 falla una pregunta en la primera posición (Q08) y el híbrido otra (Q23). El denso falla seis: confunde guías que comparten vocabulario clínico (por ejemplo, hipoglucemia con hiperpotasemia) y dos de las tres historias entre sí, porque las tres tienen la misma estructura y solo cambian las cifras.
+**Peso del denso en la fusión.** `rrf()` acepta un peso por método. Se probaron pesos del denso de 1,0 a 0,15 eligiéndolos con la mitad de las preguntas (ajuste) y reportando sobre la otra mitad (prueba): el MRR va de 0,88 a 0,89 en ajuste y de 0,91 a 0,93 en prueba, es decir, el peso casi no cambia nada. Se deja 1,0 (`RAG_PESO_DENSO`).
 
-**Método elegido: híbrido (RRF).** En este corpus BM25 sale mejor (con 18 guías, Recall@1 0,94 frente a 0,87 y MRR 0,97 frente a 0,91; con 8 guías estaban empatados). Aun así se usa el híbrido, porque la evaluación favorece a BM25 y no al uso real:
+**Método elegido: híbrido (RRF).** En total BM25 sale mejor (MRR 0,93 frente a 0,90), porque 54 de las 69 preguntas repiten palabras de las guías. Se usa el híbrido porque:
 
 - Las preguntas las escribió el equipo leyendo las guías, así que repiten sus mismas palabras, y eso favorece a BM25. Un médico pregunta con sus propias palabras ("azúcar baja", "potasio alto", "estado físico para anestesia"), y ahí BM25 no encuentra el término y el denso sí.
 - BM25 sigue dentro de la fusión, así que se conserva su fuerza con cifras, códigos y términos exactos ("6,5 mmol/L", "ASA III", "P-7C1A").
 - RRF combina posiciones, no puntajes: no hay que calibrar dos escalas distintas.
 - Si el servicio de embeddings no responde, la búsqueda sigue solo con BM25, y el endpoint permite pedir `metodo: "bm25"` o `"denso"`.
 
-**Abstención calibrada.** Con las 8 guías iniciales ninguna señal sola alcanzaba. Con 18 guías pasa lo mismo: BM25 separa (mínimo con respuesta 5,3, máximo sin respuesta 4,3), pero el denso no (mínimo con respuesta 0,47, máximo sin respuesta 0,57). La regla combinada sigue sin errores: ninguna pregunta con respuesta se abstiene y ninguna sin respuesta se responde. Valores con 8 guías:
+**Abstención.** Con preguntas literales la regla "denso ≥ 0,45 **y** BM25 ≥ 5,0" separaba bien. Con las parafraseadas y 15 preguntas sin respuesta (algunas cercanas al corpus: nómina, turnos de enfermería, incapacidades) ya no hay ninguna regla sobre esas dos señales que separe:
 
-| Señal | Preguntas con respuesta (mínimo) | Preguntas sin respuesta (máximo) | ¿Separa? |
-| --- | --- | --- | --- |
-| BM25 | 5,4 | 4,6 | sí, umbral `RAG_UMBRAL_BM25 = 5,0` |
-| Denso (coseno) | 0,49 | 0,57 | **no**: se cruzan |
+| Señal | Con respuesta (mínimo) | Sin respuesta (máximo) |
+| --- | --- | --- |
+| BM25 | 4,1 | 8,0 |
+| Denso (coseno) | 0,26 | 0,61 |
 
-El cruce del denso lo produjo la guía de facturación: "¿cuánto cuesta el parqueadero del hospital?" se parece en significado a los cobros, aunque no comparte términos. Por eso el híbrido se abstiene si **cualquiera** de las dos señales queda bajo su umbral (denso ≥ 0,45 **y** BM25 ≥ 5,0): con esa regla ninguna pregunta con respuesta se abstiene y ninguna sin respuesta se responde (`scripts/evaluar_rag.py` lo verifica). Es el mismo argumento del método: BM25 aporta precisión con términos exactos y el denso, cobertura de significado. El margen sigue siendo pequeño (3 preguntas sin respuesta): con preguntas reales habría que recalibrar.
+La regla estricta se abstiene por error en 4 preguntas parafraseadas (P01, P02, P06, P08) y responde en 4 sin respuesta (N07, N08, N13, N15). La mejor combinación que encontró la búsqueda tiene 6 errores de 84. Por eso la compuerta de recuperación depende de si hay modelo de lenguaje (`evaluar_umbral()` en `app/services/rag.py`):
+
+- **Con modelo (Gemini o Grok):** la recuperación solo descarta lo claramente ajeno (denso ≥ 0,35 **o** BM25 ≥ 4,0; `RAG_UMBRAL_DENSO_LLM` y `RAG_UMBRAL_BM25_LLM`) y el modelo decide: el prompt le exige responder `NO_ENCONTRADO` si las fuentes no contienen la respuesta, y una respuesta sin ninguna cita también cuenta como abstención. Con esa regla las 69 preguntas con respuesta pasan la compuerta. Que el modelo se abstenga en las sin respuesta se mide con `scripts/probar_abstencion.py` (resultado en `docs/rag/eval/RESULTADOS_ABSTENCION.md`).
+- **Sin modelo, o si falla en esa consulta:** se usa la regla estricta (denso ≥ 0,45 **y** BM25 ≥ 5,0). La respuesta extractiva no puede corregir un fragmento irrelevante, así que prefiere abstenerse y perder alguna parafraseada. Si el modelo falla en una consulta que solo pasó la regla abierta, también se abstiene en vez de mostrar texto extractivo.
+
+Es un cambio de dónde está el control: el filtro por perfil y por paciente sigue en el `WHERE` (el modelo nunca ve lo que el usuario no puede ver), pero la decisión de "esto no está en las fuentes" pasa, con modelo, del umbral al modelo. Con 15 preguntas sin respuesta es una calibración de este conjunto, no una garantía: con preguntas reales hay que volver a medir.
 
 ## 4. Filtros clínicos
 
@@ -131,7 +136,7 @@ OR (f.tipo = 'historia' AND f.estado = 'aprobado' AND f.paciente_id = ANY(:pacie
 | --- | --- |
 | Perfiles | Lo usan todos los perfiles, y cada uno recupera solo lo suyo (tabla de abajo). Pedir un `paciente_id` sin permiso sobre él da 403, auditado. Con `paciente_id` se verifica que el paciente sea suyo (nivel 2) y su historia va primero en las fuentes. |
 | Citas | `citas[]` con `documento_id`, título, sección, fuente, seudónimo del paciente (si es historia) y extracto. Solo las que la respuesta usa. |
-| Abstención | Híbrido: se abstiene si la similitud del mejor fragmento es menor que `RAG_UMBRAL_DENSO` (0,45) **o** el mejor BM25 es menor que `RAG_UMBRAL_BM25` (5,0); ver la calibración en la sección 3. Solo BM25 (sin vectores): el umbral de BM25. También se abstiene si el modelo responde `NO_ENCONTRADO` o no cita ninguna fuente. |
+| Abstención | Sin modelo: se abstiene si la similitud del mejor fragmento es menor que `RAG_UMBRAL_DENSO` (0,45) **o** el mejor BM25 es menor que `RAG_UMBRAL_BM25` (5,0). Con modelo, los umbrales abiertos de la sección 3 (0,35 y 4,0). Solo BM25 (sin vectores): el umbral de BM25. También se abstiene si el modelo responde `NO_ENCONTRADO` o no cita ninguna fuente. |
 | Auditoría | Cada consulta se guarda en `rag_consultas` (usuario, rol, pregunta, filtro, método, fuentes citadas, abstención, confianza, generador) y en el log de auditoría con la acción `rag_preguntar`. |
 
 **Generación:** el profesor recomendó Grok (xAI), pero su API es de pago por uso; se usa **Gemini** de Google, que tiene capa gratuita (clave en aistudio.google.com). Los dos exponen la misma API de chat compatible con OpenAI, así que el código es uno solo y se cambia de proveedor con el `.env`: se usa el primero que tenga clave (`GEMINI_API_KEY`, luego `XAI_API_KEY`), con temperatura 0. El prompt exige citar cada afirmación, responder `NO_ENCONTRADO` si las fuentes no alcanzan y tratar el contenido de las fuentes como datos, no como instrucciones. Con Gemini se usan dos modelos: el **lite** (`GEMINI_MODEL_LITE`, hoy `gemini-3.5-flash-lite`) para preguntas cortas y puntuales, y el **completo** (`GEMINI_MODEL`, hoy `gemini-3.8-flash`) para las extensas: más de 18 palabras, que piden explicar, comparar o resumir, o que mezclan tres o más fuentes (`es_extensa()` en `app/services/rag.py`). El completo recibe los 8 mejores fragmentos y el lite los 4 primeros (`TOP_K_EXTENSA` y `TOP_K`): con 18 guías una pregunta amplia suele necesitar más de una fuente, y el modelo pequeño responde mejor con menos contexto. Si el elegido falla se intenta con el otro. Sin ninguna clave, o si el proveedor falla (sin red, sin saldo, límite de la capa gratuita), la respuesta es **extractiva**: las frases más relevantes del mejor fragmento con su cita. Así el sistema y las pruebas funcionan sin red.
