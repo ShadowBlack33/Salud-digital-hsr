@@ -8,12 +8,12 @@ Pregunta del médico
    ▼
 Filtro clínico en SQL ──► solo guías + historias aprobadas de pacientes permitidos
    ▼
-Ranking: BM25 + denso (pgvector) ──► fusión RRF ──► top 4
+Ranking: BM25 + denso (pgvector) ──► fusión RRF ──► top 8 (4 al modelo lite)
    ▼
 ¿Confianza ≥ umbral? ── no ──► abstención (no se llama al modelo)
    │ sí
    ▼
-Gemini (o Grok) redacta SOLO con esos fragmentos y cita [F1]…[F4]
+Gemini (o Grok) redacta SOLO con esos fragmentos y cita [F1]…[F8]
    ▼
 Respuesta + citas  ──► rag_consultas + log de auditoría
 ```
@@ -34,8 +34,20 @@ Cada guía es un resumen escrito por el equipo, con sus propias palabras, a part
 | G06 | Lista OMS de cirugía segura | OMS, 2009. Evidencia: Haynes AB, et al. N Engl J Med. 2009;360(5):491-499. | clínicos |
 | G07 | Protocolo interno de alertas, IA y remisiones | Documentación del proyecto Pulso (`ml/UMBRAL.md`, `docs/EVENTOS.md`, `docs/NORMATIVA.md`). | clínicos y coordinador |
 | G08 | Facturación de servicios en Pulso | Documentación del proyecto Pulso (`docs/CONTABILIDAD.md`, `docs/CONTRATO_FACTURACION.md`). | contable y admin |
+| G09 | Triage en urgencias | MinSalud. Resolución 5596 de 2015 (Triage), complementada por la Resolución 373 de 2026. | clínicos, coordinador |
+| G10 | Escala NEWS2 de alerta temprana | Royal College of Physicians. *National Early Warning Score (NEWS) 2*, 2017. | clínicos |
+| G11 | Sepsis y choque séptico en adultos | Evans L, et al. *Surviving Sepsis Campaign 2021*. Crit Care Med. 2021;49(11):e1063-e1143. | clínicos |
+| G12 | Ayuno preoperatorio | ASA. *Practice Guidelines for Preoperative Fasting*, 2017; actualización Joshi GP, et al. Anesthesiology. 2023;138(2):132-151. | clínicos |
+| G13 | La historia clínica: reserva, acceso y conservación | MinSalud. Resoluciones 1995 de 1999 y 839 de 2017; Ley 2015 de 2020; Supersalud, Concepto 337711 de 2024. | clínicos y paciente |
+| G14 | Derechos y deberes del paciente | MinSalud. Resolución 229 de 2020 (Ley Estatutaria 1751 de 2015); Resolución 1642 de 2026. | paciente y clínicos |
+| G15 | Indicadores de calidad (Res. 256) | MinSalud. Resolución 256 de 2016; SDS Bogotá, ABC de la Resolución 256. | coordinador y admin |
+| G16 | Habilitación de servicios (Res. 3100) | MinSalud. Resolución 3100 de 2019, modificada por las Resoluciones 544 de 2023 y 465 de 2025. | coordinador y admin |
+| G17 | Cuotas moderadoras y copagos en 2026 | MinSalud. Circular Externa 048 de 2025; Decreto 1652 de 2022; Ley 2294 de 2023 (UVB); MinHacienda, Resolución 3488 de 2025. | contable y admin |
+| G18 | Seguridad, protección de datos y normativa de Pulso | Documentación del proyecto (`docs/SEGURIDAD.md`, `docs/NORMATIVA.md`); Ley 1581 de 2012, Decreto 1377 de 2013, Ley 2015 de 2020, Resolución 866 de 2021. | admin |
 
-Las guías clínicas se eligieron porque cubren exactamente lo que Pulso vigila: las tres variables de laboratorio del modelo (glucosa, potasio, hemoglobina), el riesgo anestésico (ASA), la decisión de UCI y la seguridad quirúrgica. "Clínicos" son admin, médico, especialista, anestesiólogo, enfermero jefe, enfermero, instrumentador y auxiliar de enfermería; cada guía lo declara en su encabezado (`audiencia: clinica | operativa | facturacion`).
+Las guías clínicas se eligieron porque cubren exactamente lo que Pulso vigila: las tres variables de laboratorio del modelo (glucosa, potasio, hemoglobina), el riesgo anestésico (ASA), la decisión de UCI y la seguridad quirúrgica. "Clínicos" son admin, médico, especialista, anestesiólogo, enfermero jefe, enfermero, instrumentador y auxiliar de enfermería; cada guía lo declara en su encabezado (`audiencia:`, uno o varios grupos separados por comas: `clinica`, `operativa`, `facturacion`, `paciente`, `coordinacion`, `admin`; el admin recibe todas).
+
+La segunda tanda (G09–G18) amplía el corpus con lo que cada perfil necesita para su trabajo: triage, alerta temprana (NEWS2), sepsis y ayuno para los clínicos; derechos del paciente e historia clínica para el paciente; indicadores de calidad y habilitación para el coordinador; valores 2026 de cuotas moderadoras y copagos para el contable; y la seguridad de Pulso para el admin. Las cifras que cambian cada año (G17) llevan el año en el título; G08 remite a G17 para los valores oficiales.
 
 ### Historia aprobada de los pacientes
 
@@ -67,13 +79,15 @@ Al servicio `ml` (embeddings) y al modelo que redacta (Gemini o Grok) solo llega
 - **Denso**: `paraphrase-multilingual-MiniLM-L12-v2` (384 dimensiones, multilingüe, corre en CPU), vectores en **pgvector** y similitud coseno.
 - **Híbrido**: fusión **RRF** (Reciprocal Rank Fusion, k = 60) de los dos rankings.
 
-**Evaluación:** `scripts/evaluar_rag.py` con `docs/rag/eval/preguntas.json`: 28 preguntas con documento esperado (23 de guías y 5 de historias de pacientes ficticios ya seudonimizados en `docs/rag/eval/historias/`) y 3 preguntas sin respuesta en el corpus para calibrar la abstención. Métricas a nivel de documento.
+**Evaluación:** `scripts/evaluar_rag.py` con `docs/rag/eval/preguntas.json`: 54 preguntas con documento esperado (49 de guías y 5 de historias de pacientes ficticios ya seudonimizados en `docs/rag/eval/historias/`) y 3 preguntas sin respuesta en el corpus para calibrar la abstención. Métricas a nivel de documento.
 
 | Método | Recall@1 | Recall@3 | MRR |
 | --- | --- | --- | --- |
-| BM25 | 0,96 | 1,00 | 0,98 |
-| Denso | 0,79 | 0,96 | 0,88 |
-| Híbrido (RRF) | 0,96 | 0,96 | 0,97 |
+| BM25 | 0,94 | 1,00 | 0,97 |
+| Denso | por medir con el corpus de 18 guías | | |
+| Híbrido (RRF) | por medir con el corpus de 18 guías | | |
+
+Con las 8 guías iniciales (28 preguntas) los resultados fueron BM25 0,96 / 1,00 / 0,98; denso 0,79 / 0,96 / 0,88; híbrido 0,96 / 0,96 / 0,97. Con 18 guías BM25 falla en primera posición Q08, Q16 y Q45, siempre con el documento correcto en el top 3.
 
 Detalle y fallos por pregunta en `docs/rag/eval/RESULTADOS.md`. BM25 falla una pregunta en la primera posición (Q08) y el híbrido otra (Q23). El denso falla seis: confunde guías que comparten vocabulario clínico (por ejemplo, hipoglucemia con hiperpotasemia) y dos de las tres historias entre sí, porque las tres tienen la misma estructura y solo cambian las cifras.
 
@@ -84,7 +98,7 @@ Detalle y fallos por pregunta en `docs/rag/eval/RESULTADOS.md`. BM25 falla una p
 - RRF combina posiciones, no puntajes: no hay que calibrar dos escalas distintas.
 - Si el servicio de embeddings no responde, la búsqueda sigue solo con BM25, y el endpoint permite pedir `metodo: "bm25"` o `"denso"`.
 
-**Abstención calibrada.** Con las 8 guías, ninguna señal sola alcanza:
+**Abstención calibrada.** Con las 8 guías iniciales, ninguna señal sola alcanzaba (con 18 guías BM25 sigue separando: mínimo con respuesta 5,3, máximo sin respuesta 4,3):
 
 | Señal | Preguntas con respuesta (mínimo) | Preguntas sin respuesta (máximo) | ¿Separa? |
 | --- | --- | --- | --- |
@@ -120,19 +134,19 @@ OR (f.tipo = 'historia' AND f.estado = 'aprobado' AND f.paciente_id = ANY(:pacie
 | Abstención | Híbrido: se abstiene si la similitud del mejor fragmento es menor que `RAG_UMBRAL_DENSO` (0,45) **o** el mejor BM25 es menor que `RAG_UMBRAL_BM25` (5,0); ver la calibración en la sección 3. Solo BM25 (sin vectores): el umbral de BM25. También se abstiene si el modelo responde `NO_ENCONTRADO` o no cita ninguna fuente. |
 | Auditoría | Cada consulta se guarda en `rag_consultas` (usuario, rol, pregunta, filtro, método, fuentes citadas, abstención, confianza, generador) y en el log de auditoría con la acción `rag_preguntar`. |
 
-**Generación:** el profesor recomendó Grok (xAI), pero su API es de pago por uso; se usa **Gemini** de Google, que tiene capa gratuita (clave en aistudio.google.com). Los dos exponen la misma API de chat compatible con OpenAI, así que el código es uno solo y se cambia de proveedor con el `.env`: se usa el primero que tenga clave (`GEMINI_API_KEY`, luego `XAI_API_KEY`), con temperatura 0. El prompt exige citar cada afirmación, responder `NO_ENCONTRADO` si las fuentes no alcanzan y tratar el contenido de las fuentes como datos, no como instrucciones. Con Gemini se usan dos modelos: el **lite** (`GEMINI_MODEL_LITE`, hoy `gemini-3.5-flash-lite`) para preguntas cortas y puntuales, y el **completo** (`GEMINI_MODEL`, hoy `gemini-3.8-flash`) para las extensas: más de 18 palabras, que piden explicar, comparar o resumir, o que mezclan tres o más fuentes (`es_extensa()` en `app/services/rag.py`). Si el elegido falla se intenta con el otro. Sin ninguna clave, o si el proveedor falla (sin red, sin saldo, límite de la capa gratuita), la respuesta es **extractiva**: las frases más relevantes del mejor fragmento con su cita. Así el sistema y las pruebas funcionan sin red.
+**Generación:** el profesor recomendó Grok (xAI), pero su API es de pago por uso; se usa **Gemini** de Google, que tiene capa gratuita (clave en aistudio.google.com). Los dos exponen la misma API de chat compatible con OpenAI, así que el código es uno solo y se cambia de proveedor con el `.env`: se usa el primero que tenga clave (`GEMINI_API_KEY`, luego `XAI_API_KEY`), con temperatura 0. El prompt exige citar cada afirmación, responder `NO_ENCONTRADO` si las fuentes no alcanzan y tratar el contenido de las fuentes como datos, no como instrucciones. Con Gemini se usan dos modelos: el **lite** (`GEMINI_MODEL_LITE`, hoy `gemini-3.5-flash-lite`) para preguntas cortas y puntuales, y el **completo** (`GEMINI_MODEL`, hoy `gemini-3.8-flash`) para las extensas: más de 18 palabras, que piden explicar, comparar o resumir, o que mezclan tres o más fuentes (`es_extensa()` en `app/services/rag.py`). El completo recibe los 8 mejores fragmentos y el lite los 4 primeros (`TOP_K_EXTENSA` y `TOP_K`): con 18 guías una pregunta amplia suele necesitar más de una fuente, y el modelo pequeño responde mejor con menos contexto. Si el elegido falla se intenta con el otro. Sin ninguna clave, o si el proveedor falla (sin red, sin saldo, límite de la capa gratuita), la respuesta es **extractiva**: las frases más relevantes del mejor fragmento con su cita. Así el sistema y las pruebas funcionan sin red.
 
 **Qué recupera cada perfil** (el filtro va en el `WHERE`, antes de rankear):
 
-| Perfil | Guías clínicas (G01–G06) | Protocolo Pulso (G07) | Facturación (G08) | Historias aprobadas |
-| --- | --- | --- | --- | --- |
-| médico, especialista | sí | sí | no | las de sus pacientes |
-| admin | sí | sí | sí | todas |
-| enfermero jefe, enfermero, anestesiólogo, instrumentador, auxiliar | sí | sí | no | ninguna |
-| coordinador | no | sí | no | ninguna |
-| contable | no | no | sí | ninguna |
-| paciente | no | no | no | solo la suya |
-| secretaria, cuenta de integración | no | no | no | ninguna (el asistente se abstiene) |
+| Perfil | Guías clínicas (G01–G06, G10–G12) | Otras guías | Historias aprobadas |
+| --- | --- | --- | --- |
+| médico, especialista | sí | G07, G09, G13, G14 | las de sus pacientes |
+| admin | sí | todas (G07–G18) | todas |
+| enfermero jefe, enfermero, anestesiólogo, instrumentador, auxiliar | sí | G07, G09, G13, G14 | ninguna |
+| coordinador | no | G07, G09, G15, G16 | ninguna |
+| contable | no | G08, G17 | ninguna |
+| paciente | no | G13, G14 | solo la suya |
+| secretaria, cuenta de integración | no | ninguna | ninguna (el asistente se abstiene) |
 
 Las historias siguen el permiso `ia:read` que ya existía (`assigned`, `all`, `self`), así el asistente no puede mostrar algo que la pantalla de reportes de IA no mostraría. Al paciente, además, el prompt le pide al modelo lenguaje sencillo y ninguna indicación de tratamiento.
 
@@ -151,7 +165,7 @@ Las historias siguen el permiso `ia:read` que ya existía (`assigned`, `all`, `s
 ## 7. Preguntas de la sustentación
 
 **¿Por qué el filtro de estado se aplica antes de rankear y no después de generar?**
-Porque lo que el modelo ve, puede decirlo. Si se filtra después, un reporte pendiente o de otro paciente ya entró al prompt y puede aparecer parafraseado en la respuesta sin cita, imposible de detectar con un filtro de salida. Además, filtrar después deja huecos: si los 4 mejores fragmentos estaban prohibidos, se quedaría sin evidencia válida aunque existiera. Filtrar antes garantiza que todo lo que se rankea y se cita es elegible, y es lo que piden la Ley 1581 (finalidad y acceso restringido) y la Resolución 1995 (solo lo validado por un profesional es historia).
+Porque lo que el modelo ve, puede decirlo. Si se filtra después, un reporte pendiente o de otro paciente ya entró al prompt y puede aparecer parafraseado en la respuesta sin cita, imposible de detectar con un filtro de salida. Además, filtrar después deja huecos: si los mejores fragmentos estaban prohibidos, se quedaría sin evidencia válida aunque existiera. Filtrar antes garantiza que todo lo que se rankea y se cita es elegible, y es lo que piden la Ley 1581 (finalidad y acceso restringido) y la Resolución 1995 (solo lo validado por un profesional es historia).
 
 **Si cambian el modelo de embeddings, ¿qué pasa con los vectores guardados?**
 Dejan de servir: los vectores de modelos distintos viven en espacios distintos y compararlos da similitudes sin sentido, aunque tengan la misma dimensión. Por eso cada fragmento guarda `modelo_embedding`, la búsqueda solo compara vectores del modelo actual y el servicio `ml` devuelve el nombre del modelo, que la API rechaza si no coincide. Al cambiar de modelo hay que reindexar todo (`scripts/rag_indexar.py`), cambiar la dimensión de la columna si cambia, recalibrar `RAG_UMBRAL_DENSO` y volver a correr la evaluación. Mientras tanto, el sistema sigue con BM25.

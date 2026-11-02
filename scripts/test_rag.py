@@ -61,7 +61,7 @@ def preguntar(tok: str, pregunta: str, **extra):
 db = SessionLocal()
 print("\n[RAG 1] Indexar guías")
 n = rag.indexar_guias(db)
-check("Las guías quedan indexadas", n >= 8 * 3, f"{n} fragmentos")
+check("Las guías quedan indexadas", n >= 18 * 3, f"{n} fragmentos")
 
 tok_med = login("medico01")
 tok_adm = login("admin")
@@ -129,7 +129,7 @@ db.execute(text("DELETE FROM rag_fragmentos WHERE documento_id IN ('PRUEBA-PEND'
 db.commit()
 
 print("\n[RAG 4] Cada perfil recupera solo lo suyo")
-CLINICAS = {"G01", "G02", "G03", "G04", "G05", "G06"}
+CLINICAS = {"G01", "G02", "G03", "G04", "G05", "G06", "G10", "G11", "G12"}
 
 
 def docs_de(r) -> set:
@@ -146,7 +146,9 @@ K = "¿Desde qué cifra de potasio la hiperpotasemia es grave?"
 tok_coo = login("coordinador")
 r = preguntar(tok_pac, K, metodo="bm25")
 check("Paciente: puede usar el asistente (200)", r.status_code == 200, r.text[:150])
-check("Paciente: no recibe guías clínicas", not (docs_de(r) & (CLINICAS | {"G07", "G08"})), docs_de(r))
+check("Paciente: no recibe guías clínicas", not (docs_de(r) & (CLINICAS | {"G07", "G08", "G17"})), docs_de(r))
+r = preguntar(tok_pac, "¿En urgencias me pueden exigir un copago antes de atenderme?", metodo="bm25")
+check("Paciente: la guía de derechos del paciente sí le responde", "G14" in docs_de(r), docs_de(r))
 propio = db.execute(text("SELECT paciente_id FROM usuarios WHERE username = 'paciente_demo'")).scalar()
 r = preguntar(tok_pac, "¿Qué riesgo de UCI dio mi reporte de IA aprobado?", metodo="bm25")
 check("Paciente: solo cita su propia historia", pacientes_de(r) <= {propio}, pacientes_de(r))
@@ -158,12 +160,18 @@ check("Contable: no recibe guías clínicas ni historias", not (docs_de(r) & (CL
       docs_de(r))
 r = preguntar(tok_con, "¿Se puede anular una factura que ya está pagada?", metodo="bm25")
 check("Contable: la guía de facturación sí le responde", "G08" in docs_de(r), r.json())
+r = preguntar(tok_con, "¿Cuál es el tope anual de copagos en el régimen subsidiado en 2026?", metodo="bm25")
+check("Contable: la guía de cuotas y copagos 2026 sí le responde", "G17" in docs_de(r), docs_de(r))
 check("Contable: preguntar por un paciente -> 403", preguntar(tok_con, K, paciente_id=pid).status_code == 403)
 
 r = preguntar(tok_coo, K, metodo="bm25")
 check("Coordinador: no recibe guías clínicas", not (docs_de(r) & CLINICAS), docs_de(r))
 r = preguntar(tok_coo, "¿Qué pasa si nadie reconoce una alerta crítica en 5 minutos?", metodo="bm25")
 check("Coordinador: el protocolo de Pulso sí le responde", "G07" in docs_de(r), r.json())
+r = preguntar(tok_coo, "¿Qué indicadores de calidad hay que reportar según la Resolución 256?", metodo="bm25")
+check("Coordinador: las guías de calidad y habilitación sí le responden", docs_de(r) & {"G15", "G16"}, docs_de(r))
+r = preguntar(tok_coo, "¿Qué hacer si un paciente tiene NEWS2 de 7?", metodo="bm25")
+check("Coordinador: no recibe NEWS2 ni sepsis", not (docs_de(r) & {"G10", "G11"}), docs_de(r))
 r = preguntar(tok_coo, "riesgo de UCI reporte aprobado paciente", metodo="bm25")
 check("Coordinador: nunca cita historias", not pacientes_de(r), pacientes_de(r))
 
@@ -204,7 +212,8 @@ check("Pregunta fuera del corpus: se abstiene sin citas", r.json()["abstencion"]
 check("... y dice qué fuentes sí puede consultar el perfil",
       any("hiperpotasemia" in f.lower() for f in r.json().get("fuentes_disponibles", [])), r.json())
 f_con = client.get("/rag/fuentes", headers=h(tok_con)).json()["fuentes"]
-check("Las fuentes del contable son solo la guía de facturación", f_con == ["Facturación de servicios en Pulso"], f_con)
+check("Las fuentes del contable son solo facturación y cuotas/copagos",
+      sorted(f_con) == sorted(["Facturación de servicios en Pulso", "Cuotas moderadoras y copagos en 2026"]), f_con)
 consulta = j["consulta_id"]
 fila = db.execute(text("SELECT pregunta, abstencion FROM rag_consultas WHERE id = :i"), {"i": consulta}).first()
 check("La consulta queda registrada en rag_consultas", fila is not None and "potasio" in fila[0])
