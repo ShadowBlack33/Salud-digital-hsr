@@ -61,7 +61,7 @@ Los reportes pendientes y rechazados no se escriben en el documento. Se indexa a
 
 ## 2. Seudonimización antes de indexar
 
-1. El documento se escribe con un **seudónimo** (`P-XXXX`): un HMAC del índice ciego del paciente con la llave `IA_SEUDONIMO_KEY`. No se usa un prefijo de la llave real.
+1. El documento se escribe con un **seudónimo** (`P-XXXXXXXX`, 8 caracteres): un HMAC del índice ciego del paciente con la llave `IA_SEUDONIMO_KEY`. No se usa un prefijo de la llave real.
 2. Se **redactan** el nombre, cada apellido y el documento en todo el texto, incluido el texto libre que escribe el médico, sin importar tildes ni mayúsculas. Quedan como `[PACIENTE]`.
 3. **Verificación canario**: antes de guardar, se vuelve a buscar cada identificador en el texto. Si queda alguno, se lanza `CanarioDetectado` y no se indexa nada.
 
@@ -139,7 +139,7 @@ OR (f.tipo = 'historia' AND f.estado = 'aprobado' AND f.paciente_id = ANY(:pacie
 | Abstención | Sin modelo: se abstiene si la similitud del mejor fragmento es menor que `RAG_UMBRAL_DENSO` (0,45) **o** el mejor BM25 es menor que `RAG_UMBRAL_BM25` (5,0). Con modelo, los umbrales abiertos de la sección 3 (0,35 y 4,0). Solo BM25 (sin vectores): el umbral de BM25. También se abstiene si el modelo responde `NO_ENCONTRADO` o no cita ninguna fuente. |
 | Auditoría | Cada consulta se guarda en `rag_consultas` (usuario, rol, pregunta, filtro, método, fuentes citadas, abstención, confianza, generador) y en el log de auditoría con la acción `rag_preguntar`. |
 
-**Generación:** el profesor recomendó Grok (xAI), pero su API es de pago por uso; se usa **Gemini** de Google, que tiene capa gratuita (clave en aistudio.google.com). Los dos exponen la misma API de chat compatible con OpenAI, así que el código es uno solo y se cambia de proveedor con el `.env`: se usa el primero que tenga clave (`GEMINI_API_KEY`, luego `XAI_API_KEY`), con temperatura 0. El prompt exige citar cada afirmación, responder `NO_ENCONTRADO` si las fuentes no alcanzan y tratar el contenido de las fuentes como datos, no como instrucciones. Con Gemini se usan dos modelos: el **lite** (`GEMINI_MODEL_LITE`, hoy `gemini-3.5-flash-lite`) para preguntas cortas y puntuales, y el **completo** (`GEMINI_MODEL`, hoy `gemini-3.8-flash`) para las extensas: más de 18 palabras, o que piden explicar, comparar o resumir (`es_extensa()` en `app/services/rag.py`). Los dos reciben los mismos 8 fragmentos: en la prueba de abstención el pasaje que respondía llegó a quedar en el puesto 7, fuera de los 4 primeros. Antes también iban al completo las preguntas cuyos fragmentos venían de tres o más documentos, pero esas son sobre todo preguntas fuera del corpus y el completo agotó los 30 segundos de espera varias veces. Si el elegido falla se intenta con el otro. Sin ninguna clave, o si el proveedor falla (sin red, sin saldo, límite de la capa gratuita), la respuesta es **extractiva**: las frases más relevantes del mejor fragmento con su cita. Así el sistema y las pruebas funcionan sin red.
+**Generación:** el profesor recomendó Grok (xAI), pero su API es de pago por uso; se usa **Gemini** de Google, que tiene capa gratuita (clave en aistudio.google.com). Los dos exponen la misma API de chat compatible con OpenAI, así que el código es uno solo y se cambia de proveedor con el `.env`: se usa el primero que tenga clave (`GEMINI_API_KEY`, luego `XAI_API_KEY`), con la temperatura de `RAG_TEMPERATURA` (vacía = la del proveedor; ver sección 10). El prompt exige citar cada afirmación, responder `NO_ENCONTRADO` si las fuentes no alcanzan y tratar el contenido de las fuentes como datos, no como instrucciones. Con Gemini se usan dos modelos: el **lite** (`GEMINI_MODEL_LITE`, hoy `gemini-3.5-flash-lite`) para preguntas cortas y puntuales, y el **completo** (`GEMINI_MODEL`, hoy `gemini-3.8-flash`) para las extensas: más de 18 palabras, o que piden explicar, comparar o resumir (`es_extensa()` en `app/services/rag.py`). Los dos reciben los mismos 8 fragmentos: en la prueba de abstención el pasaje que respondía llegó a quedar en el puesto 7, fuera de los 4 primeros. Antes también iban al completo las preguntas cuyos fragmentos venían de tres o más documentos, pero esas son sobre todo preguntas fuera del corpus y el completo agotó los 30 segundos de espera varias veces. Si el elegido falla se intenta con el otro. Sin ninguna clave, o si el proveedor falla (sin red, sin saldo, límite de la capa gratuita), la respuesta es **extractiva**: las frases más relevantes del mejor fragmento con su cita. Así el sistema y las pruebas funcionan sin red.
 
 **Qué recupera cada perfil** (el filtro va en el `WHERE`, antes de rankear):
 
@@ -165,7 +165,7 @@ Las historias siguen el permiso `ia:read` que ya existía (`assigned`, `all`, `s
 
 ## 6. pgvector
 
-`docker-compose.yml` usa `pgvector/pgvector:pg16` para PostgreSQL. `db/esquema_completo.sql` crea la extensión `vector` y las tablas `rag_fragmentos` y `rag_consultas` (antes migración `db/historial/15_rag.sql`). Neon también soporta la extensión.
+`docker-compose.yml` usa `pgvector/pgvector:pg16` para PostgreSQL. Todo lo del RAG está en un solo archivo, `db/03_rag.sql`: la extensión `vector` y las tablas `rag_fragmentos`, `rag_preguntas` y `rag_consultas` (antes en `db/historial/15_rag.sql` y `db/esquema_completo.sql`). Sirve para una base nueva o existente y se puede correr varias veces. Neon también soporta la extensión.
 
 ## 7. Preguntas de la sustentación
 
@@ -187,9 +187,12 @@ Tres barreras:
 ## 8. Cómo correrlo
 
 ```bash
-pip install fastembed                            # para embeddings en el PC (el contenedor ml ya lo trae)
-python scripts/rag_indexar.py                    # guías + historias aprobadas
-python scripts/evaluar_rag.py                    # tabla de métricas
+pip install -r scripts/requirements-datos.txt    # fastembed con la MISMA versión del contenedor ml
+python scripts/generar_preguntas.py              # preguntas por sección (Gemini); revisar con git diff
+python scripts/rag_indexar.py                    # guías + preguntas + historias aprobadas
+python scripts/evaluar_rag.py [--reranker]       # tabla de métricas y calibración
+python scripts/probar_abstencion.py              # abstención de punta a punta (llama al modelo)
+python scripts/test_rag_unidad.py                # pruebas sin base ni red
 python scripts/test_rag.py                       # pruebas end-to-end
 ```
 
@@ -205,3 +208,87 @@ Variables en `.env` (no se suben al repositorio): `GEMINI_API_KEY`, `GEMINI_MODE
 - Las historias de evaluación son ficticias; la evaluación con historias reales de la demo depende de los datos del día.
 - La seudonimización redacta los identificadores registrados del paciente; nombres de terceros (familiares) en texto libre no se detectan.
 - Al usar Gemini o Grok, el texto seudonimizado sale a un proveedor externo; en la capa gratuita de Gemini, Google puede usar lo enviado para mejorar sus productos. En producción se requeriría la capa de pago (sin ese uso), un acuerdo de transmisión de datos o un modelo local.
+
+## 10. Versión 2 (noviembre de 2026): preguntas parafraseadas
+
+La sección 9 deja como punto débil las preguntas en palabras propias. La versión 2 lo ataca en tres pasos, medidos uno por uno, y corrige cuatro problemas que encontró una revisión del código.
+
+### Paso 1 · Una evaluación que pueda distinguir una mejora del ruido
+
+Con 15 parafraseadas cada pregunta valía 7 puntos porcentuales. `preguntas.json` pasa a **68 parafraseadas** (al menos 2 por guía) y **30 sin respuesta**. Varias de las nuevas sin respuesta son trampas a propósito, cerca del corpus pero fuera de él: hipopotasemia (la guía es de hiperpotasemia), plaquetas (la guía es de glóbulos rojos), la cuota moderadora de 2024 (solo están 2025 y 2026), el mantenimiento de equipos de rayos X. El script reporta además las preguntas de **prueba** por separado, que no intervienen en ninguna elección.
+
+Con este conjunto, BM25 solo acierta el primer documento en el 60 % de las parafraseadas (antes 73 % con 15): el conjunto nuevo es más difícil y más honesto.
+
+### Paso 2 · Preguntas por sección en el índice
+
+Cada sección de cada guía puede llevar, al final, las preguntas que responde en palabras de quien la consulta:
+
+```markdown
+<!-- preguntas
+¿Cuánto tiempo sin comer antes de operarme?
+-->
+```
+
+- `fragmentar()` las lee y las pega a todos los fragmentos de la sección. **No entran al texto** que ve el modelo que redacta.
+- Se indexan con su propio vector en `rag_preguntas` (`db/03_rag.sql`). La búsqueda densa toma el **mejor coseno** entre el vector del fragmento y los de sus preguntas. El modelo de embeddings es de paráfrasis, así que compara bien pregunta con pregunta.
+- BM25 también las ve, así que "sin comer" encuentra la sección de ayuno.
+- Las genera `scripts/generar_preguntas.py` con Gemini, una llamada por guía. **El equipo las revisa** con `git diff docs/rag/guias` antes del commit, porque una pregunta mal asignada lleva el RAG a la sección equivocada.
+- **Para no inflar la evaluación**, el script nunca le pasa al modelo las preguntas de evaluación y descarta toda pregunta generada con similitud léxica ≥ 0,6 con una de ellas. `evaluar_rag.py` vuelve a revisar esa fuga y la reporta.
+- `RAG_PREGUNTAS=false` las desactiva sin reindexar (para comparar).
+
+**Ojo con los umbrales:** con preguntas indexadas el coseno compara pregunta con pregunta y sube para todas, también para las que no tienen respuesta. `RAG_UMBRAL_DENSO` y `RAG_UMBRAL_DENSO_LLM` se vuelven a elegir con la tabla de calibración de `evaluar_rag.py`, y la abstención se vuelve a medir con `probar_abstencion.py`.
+
+### Paso 3 · Reranker
+
+Un cross-encoder lee la pregunta y cada candidato juntos, a diferencia de los embeddings, que los codifican por separado. Reordena los primeros 20 candidatos de la fusión antes de pasar los 8 al modelo. Es opcional: `RAG_RERANKER=true`.
+
+- Modelo: `BAAI/bge-reranker-v2-m3`, **licencia Apache 2.0** (permite uso comercial). Se eligió sobre `jinaai/jina-reranker-v2-base-multilingual`, que fastembed trae listo pero es CC BY-NC 4.0 (no comercial): el mismo diseño tiene que servir si el sistema se usa fuera del aula.
+- fastembed 0.9.1 lo trae en ONNX (convertido por `onnx-community`), así que no hace falta PyTorch: corre en el mismo servicio `ml` (`POST /rerank`). Por defecto `BAAI/bge-reranker-v2-m3-int8` (unos 570 MB, para CPU); sin `-int8` es la versión de 32 bits (2,3 GB). El contenedor solo lo descarga si `RAG_RERANKER_MODELO` tiene valor al construirlo; si no está, la API conserva el orden de la fusión.
+- Corre en CPU a propósito: con GPU el contenedor dejaría de funcionar en los equipos del equipo sin NVIDIA.
+- No decide la abstención: solo reordena lo que ya pasó la compuerta.
+- `evaluar_rag.py --reranker` lo mide sin tocar la API.
+
+### Correcciones de la revisión
+
+- **Temperatura configurable.** Estaba fija en 0 en el código. Google recomienda dejar Gemini 3 en su valor por defecto (1,0), porque bajarla "may lead to unexpected behavior, looping, or degraded performance" (Gemini 3 prompting guide). Pudo influir en los tiempos agotados del modelo completo. Ahora es `RAG_TEMPERATURA`: vacía = la del proveedor. Lo que mantiene al modelo dentro de las fuentes es el prompt, el formato de citas y la verificación de que cite, no la temperatura.
+- **Firma de los vectores y versión fija de fastembed.** El índice se calculaba en el PC con fastembed 0.9.1 y las consultas en el contenedor con `fastembed>=0.4,<0.8`. Entre esas versiones el mismo modelo pasó de cortar el texto en 512 a 128 tokens, así que los vectores no eran comparables, aunque el nombre del modelo coincidía. Ahora las dos partes usan `fastembed==0.9.1` y cada vector guarda su firma (`modelo|fastembed==versión`). La búsqueda solo compara vectores de la misma firma; si no hay ninguno, lo avisa en el log y sigue con BM25. **Hay que reindexar** después de actualizar.
+- **BM25 igual para todos los perfiles.** El IDF se calculaba sobre lo que cada perfil podía ver: con las 2 guías del contable los puntajes quedaban en otra escala y el umbral calibrado no aplicaba. Ahora las estadísticas salen de todas las guías y se puntúan solo los candidatos permitidos. Las historias de otros pacientes no influyen en los puntajes de nadie.
+- **Seudónimo de 8 caracteres.** Con 4 (65.536 valores) y unos 300 pacientes había cerca de 50 % de probabilidad de que dos compartieran seudónimo, y con él documento y etiqueta en las citas. El filtro usa el `paciente_id`, así que nunca hubo fuga, pero las citas podían confundirse. Al reindexar, las historias toman el seudónimo nuevo.
+- **Atributos escapados** en las etiquetas `<fuente>` (título y sección), no solo el texto.
+- **Parámetros de cada respuesta** en `rag_consultas.parametros`: modelo, temperatura, versión del prompt, firma de los embeddings, preguntas y reranker.
+
+### Para actualizar una base existente
+
+```bash
+python scripts/aplicar_sql.py db/03_rag.sql
+docker compose build ml && docker compose up -d ml api   # fastembed 0.9.1 en el contenedor
+python scripts/rag_indexar.py                             # firmas nuevas, preguntas y seudónimos de 8
+```
+
+### Resultados (2 de noviembre de 2026)
+
+Recuperación (`docs/rag/eval/RESULTADOS.md`): 122 preguntas con documento esperado (54 literales y 68 parafraseadas), 30 sin respuesta, 138 fragmentos y 428 preguntas por sección generadas con Gemini y revisadas. Embeddings `MiniLM|fastembed==0.9.1`; reranker `bge-reranker-v2-m3-int8`.
+
+| Método | R@1 parafraseadas | R@1 prueba (61) | R@1 todas | MRR todas |
+| --- | --- | --- | --- | --- |
+| BM25 | 0,60 | 0,74 | 0,76 | 0,83 |
+| Denso | 0,53 | 0,69 | 0,65 | 0,74 |
+| Híbrido (v1) | 0,72 | 0,79 | 0,79 | 0,85 |
+| BM25 + preguntas | 0,85 | 0,87 | 0,88 | 0,93 |
+| Híbrido + preguntas | 0,88 | 0,89 | 0,89 | 0,94 |
+| **Híbrido + preguntas + reranker (v2)** | **0,90** | **0,95** | **0,93** | **0,96** |
+
+- Las preguntas por sección son el cambio grande: +16 puntos en las parafraseadas. El reranker suma +2 en las parafraseadas, +6 en las de prueba y lleva las literales a 0,98.
+- Peso del denso elegido con las de ajuste: **0,5**. Entre 0,15 y 1,0 el MRR de prueba varía entre 0,92 y 0,96, que es ruido.
+- Errores del primer documento: 26 (v1), 13 (con preguntas) y 8 (con reranker).
+- Fuga: 0 preguntas de evaluación con similitud léxica ≥ 0,6 frente a las indexadas.
+
+Abstención de punta a punta con Gemini (`docs/rag/eval/RESULTADOS_ABSTENCION.md`): compuerta abierta **denso ≥ 0,65 o BM25 ≥ 7,0**, que es la más cerrada que no deja fuera ninguna pregunta con respuesta. Regla estricta sin modelo: **denso ≥ 0,5 y BM25 ≥ 7,0**.
+
+- **30 de 30** sin respuesta terminan en abstención: 14 las frena la recuperación y 16 las rechaza el modelo con `NO_ENCONTRADO`. Entre ellas están todas las trampas cercanas al corpus.
+- **66 de 68** parafraseadas se responden citando la guía esperada (v1: 11 de 15). Los dos fallos:
+  - P07 ("¿cuánto pago de mi bolsillo por una consulta si cotizo en una EPS?") citó la guía de facturación (G08) en vez de la de cuotas y copagos (G17). Es un fallo discutible: G08 también trae una cuota moderadora, la de referencia interna.
+  - P45 se abstuvo con los fragmentos correctos.
+- Con la cuota gratuita de Gemini, la corrida completa (unas 100 llamadas) agotó el límite. `probar_abstencion.py --repetir` vuelve a correr solo las que quedaron sin modelo.
+
+**Limitaciones de estos números.** Los umbrales y el peso se calibraron con estas mismas preguntas (salvo la columna de prueba, que no intervino en ninguna elección). Además, las preguntas indexadas y las de evaluación apuntan a los mismos hechos de cada guía. No son copias, pero parte de la mejora puede no repetirse con usuarios reales. El siguiente paso es medir con preguntas reales anonimizadas de la demo.

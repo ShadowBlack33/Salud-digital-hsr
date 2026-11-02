@@ -6,7 +6,7 @@ __pycache__/
 *.pyc
 venv/
 .venv/
-db/03_datos_sinteticos.sql
+db/01_datos_sinteticos.sql
 *.log
 
 # Datos crudos del modelo de IA (no se suben)

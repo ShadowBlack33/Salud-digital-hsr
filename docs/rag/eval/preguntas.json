@@ -360,6 +360,324 @@
     "tipo": "parafraseada"
   },
   {
+    "id": "P16",
+    "pregunta": "Al paciente con el azúcar bajita que está despierto y puede pasar alimento, ¿qué le doy y cuándo le vuelvo a pinchar el dedo?",
+    "esperado": "G01",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P17",
+    "pregunta": "¿Desde qué número de azúcar en sangre ya es una baja seria que hay que atender ya mismo?",
+    "esperado": "G01",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P18",
+    "pregunta": "¿Por qué es peligroso que a un diabético le baje el azúcar muchas veces seguidas?",
+    "esperado": "G01",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P19",
+    "pregunta": "¿Qué es lo primero que cambia en el trazado eléctrico del corazón cuando el K sube?",
+    "esperado": "G02",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P20",
+    "pregunta": "¿Qué combinación se pone por la vena para bajar rápido el K sin que se le caiga la glucemia?",
+    "esperado": "G02",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P21",
+    "pregunta": "Después de poner la insulina por el K alto, ¿cada cuánto pincho el dedo y durante cuántas horas?",
+    "esperado": "G02",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P22",
+    "pregunta": "¿Con qué valor en g/dL se decide pasarle unidades de sangre a alguien al que le operaron el corazón?",
+    "esperado": "G03",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P23",
+    "pregunta": "Un paciente con leucemia hospitalizado, ¿con qué valor de los glóbulos rojos se le pasa una unidad?",
+    "esperado": "G03",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P24",
+    "pregunta": "¿La decisión de pasar sangre depende solo del número que sale en el laboratorio?",
+    "esperado": "G03",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P25",
+    "pregunta": "Para el anestesiólogo, ¿en qué categoría queda alguien que fuma pero por lo demás está bien?",
+    "esperado": "G04",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P26",
+    "pregunta": "¿Qué categoría le ponen antes de dormirlo a un paciente que llega con un aneurisma roto?",
+    "esperado": "G04",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P27",
+    "pregunta": "¿Qué letra se le agrega a la categoría cuando la operación no puede esperar?",
+    "esperado": "G04",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P28",
+    "pregunta": "Si un enfermo necesita máquina para respirar porque le están fallando varios órganos, ¿qué prioridad tiene para cuidados críticos?",
+    "esperado": "G05",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P29",
+    "pregunta": "¿Se le puede negar la cama de cuidados críticos a un abuelo solo por tener más de 80 años?",
+    "esperado": "G05",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P30",
+    "pregunta": "¿Un enfermo terminal sin chance de recuperarse entra a la unidad de cuidados críticos?",
+    "esperado": "G05",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P31",
+    "pregunta": "¿Qué se cuenta al final de la operación antes de sacar al paciente de la sala?",
+    "esperado": "G06",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P32",
+    "pregunta": "Antes de dormir al paciente, ¿qué se pregunta el equipo sobre cuánto podría sangrar?",
+    "esperado": "G06",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P33",
+    "pregunta": "¿Con cuánto tiempo de anticipación debe haberse puesto el antibiótico preventivo antes de cortar?",
+    "esperado": "G06",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P34",
+    "pregunta": "¿Qué datos usa la herramienta que predice si un operado va a terminar en cuidados intensivos?",
+    "esperado": "G07",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P35",
+    "pregunta": "¿El especialista puede decir que no a una interconsulta que le mandaron?",
+    "esperado": "G07",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P36",
+    "pregunta": "¿A cuál especialista le cae la interconsulta cuando hay varios disponibles?",
+    "esperado": "G07",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P37",
+    "pregunta": "¿Ese predictor de cuidados intensivos acierta igual en mujeres que en hombres?",
+    "esperado": "G07",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P38",
+    "pregunta": "¿Cuánto le toca pagar a alguien que tiene medicina prepagada por un servicio?",
+    "esperado": "G08",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P39",
+    "pregunta": "Si el doctor aprueba dos veces el mismo análisis de inteligencia artificial, ¿se cobra doble?",
+    "esperado": "G08",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P40",
+    "pregunta": "¿Qué ve del paciente la persona de contabilidad cuando le hace el cobro?",
+    "esperado": "G08",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P41",
+    "pregunta": "¿En cuántos niveles clasifican a la gente que llega a la sala de emergencias para decidir a quién atienden primero?",
+    "esperado": "G09",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P42",
+    "pregunta": "Cuando llego a emergencias, ¿primero me revisan los papeles de la EPS o primero me clasifican?",
+    "esperado": "G09",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P43",
+    "pregunta": "¿Un dolor muy fuerte sirve para que lo atiendan a uno más rápido en emergencias?",
+    "esperado": "G09",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P44",
+    "pregunta": "¿Cuántos puntos suma en la escala de deterioro que el paciente se ponga confundido de repente?",
+    "esperado": "G10",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P45",
+    "pregunta": "Si un solo signo vital está muy alterado, ¿qué tan seguido hay que volver a tomarlos?",
+    "esperado": "G10",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P46",
+    "pregunta": "¿Esa puntuación de alerta temprana sirve para una mujer en embarazo?",
+    "esperado": "G10",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P47",
+    "pregunta": "Para hidratar a alguien con una infección generalizada, ¿se prefiere el suero fisiológico o uno balanceado?",
+    "esperado": "G11",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P48",
+    "pregunta": "Si con la noradrenalina no sube la tensión en una infección grave, ¿qué se agrega?",
+    "esperado": "G11",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P49",
+    "pregunta": "¿Cuándo se le ponen esteroides a un paciente con infección grave que no sale de los medicamentos para la presión?",
+    "esperado": "G11",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P50",
+    "pregunta": "¿Cuántas horas antes de operarme me puedo tomar un tinto sin leche?",
+    "esperado": "G12",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P51",
+    "pregunta": "¿Hasta cuánto tiempo antes de la operación el bebé puede tomar pecho?",
+    "esperado": "G12",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P52",
+    "pregunta": "Si tengo obesidad o reflujo, ¿aplican los mismos tiempos sin comer antes de la operación?",
+    "esperado": "G12",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P53",
+    "pregunta": "¿Puedo borrar algo que quedó mal escrito en el expediente médico de un paciente?",
+    "esperado": "G13",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P54",
+    "pregunta": "¿El expediente médico de quién es: del hospital o de la persona?",
+    "esperado": "G13",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P55",
+    "pregunta": "¿Puedo pedir que otro médico me revise si no confío en lo que me dijeron?",
+    "esperado": "G14",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P56",
+    "pregunta": "¿Un muchacho de 15 años puede pedir que no les cuenten a los papás lo de su salud sexual?",
+    "esperado": "G14",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P57",
+    "pregunta": "¿Qué obligaciones tengo yo como paciente?",
+    "esperado": "G14",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P58",
+    "pregunta": "¿Qué se mide sobre los pacientes que se caen en el hospital y en qué reporte va?",
+    "esperado": "G15",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P59",
+    "pregunta": "¿Cómo se mide si la gente quedó contenta con la clínica?",
+    "esperado": "G15",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P60",
+    "pregunta": "¿Qué tres requisitos tiene que cumplir una clínica para que la dejen ofrecer un servicio?",
+    "esperado": "G16",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P61",
+    "pregunta": "Antes de abrir una unidad de cuidados intensivos, ¿la secretaría de salud tiene que ir a revisar?",
+    "esperado": "G16",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P62",
+    "pregunta": "¿Qué pasa si la clínica no hace a tiempo su revisión propia de requisitos?",
+    "esperado": "G16",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P63",
+    "pregunta": "Si gano más de 5 mínimos, ¿cuánto pago por una cita en la EPS este año?",
+    "esperado": "G17",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P64",
+    "pregunta": "Soy beneficiario y mi familiar gana entre 2 y 5 mínimos, ¿qué porcentaje me cobran de una cirugía?",
+    "esperado": "G17",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P65",
+    "pregunta": "¿Qué ley cambió los cobros a los afiliados por una unidad que sube con la inflación?",
+    "esperado": "G17",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P66",
+    "pregunta": "¿Cuánto tiempo sigue abierta mi sesión si no hago nada en el sistema?",
+    "esperado": "G18",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P67",
+    "pregunta": "¿El administrador puede borrar el registro de quién hizo qué en el sistema?",
+    "esperado": "G18",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P68",
+    "pregunta": "¿Con qué dato se identifica al paciente en el servidor de interoperabilidad, con la cédula?",
+    "esperado": "G18",
+    "tipo": "parafraseada"
+  },
+  {
     "id": "N01",
     "pregunta": "¿Cuál es el tratamiento de la malaria complicada?",
     "esperado": null
@@ -432,6 +750,81 @@
   {
     "id": "N15",
     "pregunta": "¿Qué turnos tiene el personal de enfermería los fines de semana?",
+    "esperado": null
+  },
+  {
+    "id": "N16",
+    "pregunta": "¿Qué dosis de insulina basal se inicia en un paciente con diabetes que se hospitaliza?",
+    "esperado": null
+  },
+  {
+    "id": "N17",
+    "pregunta": "¿Cuánto potasio se repone por vena en una hipopotasemia?",
+    "esperado": null
+  },
+  {
+    "id": "N18",
+    "pregunta": "¿Cuál es el umbral de plaquetas para transfundir antes de una cirugía?",
+    "esperado": null
+  },
+  {
+    "id": "N19",
+    "pregunta": "¿Qué escala se usa para medir el riesgo de caídas de un paciente hospitalizado?",
+    "esperado": null
+  },
+  {
+    "id": "N20",
+    "pregunta": "¿Cuánto valía la cuota moderadora en el año 2024?",
+    "esperado": null
+  },
+  {
+    "id": "N21",
+    "pregunta": "¿Cuál es el antídoto para una sobredosis de heparina?",
+    "esperado": null
+  },
+  {
+    "id": "N22",
+    "pregunta": "¿Cuántos días de vacaciones tienen los médicos del hospital?",
+    "esperado": null
+  },
+  {
+    "id": "N23",
+    "pregunta": "¿Cómo se esteriliza el instrumental quirúrgico después de una cirugía?",
+    "esperado": null
+  },
+  {
+    "id": "N24",
+    "pregunta": "¿Qué antibiótico se usa en una neumonía adquirida en la comunidad?",
+    "esperado": null
+  },
+  {
+    "id": "N25",
+    "pregunta": "¿Cuál es la frecuencia cardiaca normal de un recién nacido?",
+    "esperado": null
+  },
+  {
+    "id": "N26",
+    "pregunta": "¿Cómo se pide una cita de medicina general en la EPS por internet?",
+    "esperado": null
+  },
+  {
+    "id": "N27",
+    "pregunta": "¿Cuánto tiempo se guardan las grabaciones de las cámaras de seguridad del hospital?",
+    "esperado": null
+  },
+  {
+    "id": "N28",
+    "pregunta": "¿Qué debe decir el formato de consentimiento informado de una cirugía?",
+    "esperado": null
+  },
+  {
+    "id": "N29",
+    "pregunta": "¿Qué interés cobra el hospital si una factura se paga tarde?",
+    "esperado": null
+  },
+  {
+    "id": "N30",
+    "pregunta": "¿Cada cuánto se hace el mantenimiento de los equipos de rayos X?",
     "esperado": null
   }
 ]

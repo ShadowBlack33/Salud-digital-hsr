@@ -1,25 +1,28 @@
 -- ============================================================================
 -- ESQUEMA COMPLETO de Pulso (Hospital San Rafael) en un solo archivo.
 --
--- Reemplaza a las migraciones db/historial/01..15 y db/16_...: es el estado final que
--- dejan aplicadas en orden (estructura, funciones, triggers, extensión
--- vector del RAG) más los catálogos (roles, permisos, especialidades, EPS,
--- CIE-10, procedimientos, causas de cancelación, servicios, tipos de cama).
+-- Reemplaza a las migraciones db/historial/01..15 y db/04_...: es el estado final que
+-- dejan aplicadas en orden (estructura, funciones y triggers) más los catálogos
+-- (roles, permisos, especialidades, EPS, CIE-10, procedimientos, causas de
+-- cancelación, servicios, tipos de cama). Lo del RAG (extensión vector y tablas
+-- rag_*) está aparte, en db/03_rag.sql.
 -- No trae datos de personas: esos los genera scripts/generar_datos.py, que
 -- también crea las cuentas de demostración (medico01, especialista01, ...).
 --
 -- Base nueva, en orden:
 --   python scripts/aplicar_sql.py db/esquema_completo.sql
---   python scripts/generar_datos.py --salida db/03_datos_sinteticos.sql
---   python scripts/aplicar_sql.py db/03_datos_sinteticos.sql
---   (o con psql: psql "$URL" -v ON_ERROR_STOP=1 -f db/esquema_completo.sql)
+--   python scripts/aplicar_sql.py db/03_rag.sql
+--   python scripts/generar_datos.py                      (escribe db/01_datos_sinteticos.sql)
+--   python scripts/aplicar_sql.py db/01_datos_sinteticos.sql
+--   (o con psql: psql "$URL" -v ON_ERROR_STOP=1 -f db/esquema_completo.sql -f db/03_rag.sql)
 --
 -- Se generó con pg_dump sobre una base PostgreSQL 16 + pgvector con
 -- 01, 02, los datos sintéticos y 04, 06..16 aplicados (el orden del CI), sin
 -- los datos de las tablas de personas, y se verificó que una base creada
 -- desde este archivo queda con la misma estructura y pasa las pruebas.
--- Un cambio nuevo de estructura va como migración numerada (db/17_...sql)
--- y luego se incorpora aquí.
+-- Las tablas del RAG se sacaron después a db/03_rag.sql. Un cambio nuevo de
+-- estructura se aplica en la base compartida y luego se incorpora aquí (o en
+-- db/03_rag.sql si es del RAG).
 -- ============================================================================
 
 SET statement_timeout = 0;
@@ -61,20 +64,6 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 --
 
 COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
-
-
---
--- Name: vector; Type: EXTENSION; Schema: -; Owner: -
---
-
-CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
-
-
---
--- Name: EXTENSION vector; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION vector IS 'vector data type and ivfflat and hnsw access methods';
 
 
 --
@@ -956,87 +945,6 @@ ALTER SEQUENCE public.quirofanos_id_seq OWNED BY public.quirofanos.id;
 
 
 --
--- Name: rag_consultas; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.rag_consultas (
-    id bigint NOT NULL,
-    usuario_id integer NOT NULL,
-    rol text,
-    pregunta text NOT NULL,
-    paciente_id text,
-    metodo text NOT NULL,
-    fuentes jsonb DEFAULT '[]'::jsonb NOT NULL,
-    abstencion boolean NOT NULL,
-    confianza real,
-    generador text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: rag_consultas_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.rag_consultas_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: rag_consultas_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.rag_consultas_id_seq OWNED BY public.rag_consultas.id;
-
-
---
--- Name: rag_fragmentos; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.rag_fragmentos (
-    id bigint NOT NULL,
-    documento_id text NOT NULL,
-    tipo text NOT NULL,
-    paciente_id text,
-    estado text DEFAULT 'aprobado'::text NOT NULL,
-    titulo text NOT NULL,
-    seccion text DEFAULT ''::text NOT NULL,
-    fuente text DEFAULT ''::text NOT NULL,
-    texto text NOT NULL,
-    embedding public.vector(384),
-    modelo_embedding text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    audiencia text[],
-    CONSTRAINT rag_fragmentos_check CHECK ((((tipo = 'guia'::text) AND (paciente_id IS NULL)) OR ((tipo = 'historia'::text) AND (paciente_id IS NOT NULL)))),
-    CONSTRAINT rag_fragmentos_estado_check CHECK ((estado = ANY (ARRAY['aprobado'::text, 'pendiente'::text, 'rechazado'::text]))),
-    CONSTRAINT rag_fragmentos_tipo_check CHECK ((tipo = ANY (ARRAY['guia'::text, 'historia'::text])))
-);
-
-
---
--- Name: rag_fragmentos_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.rag_fragmentos_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: rag_fragmentos_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.rag_fragmentos_id_seq OWNED BY public.rag_fragmentos.id;
-
-
---
 -- Name: remisiones; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1692,20 +1600,6 @@ ALTER TABLE ONLY public.quirofanos ALTER COLUMN id SET DEFAULT nextval('public.q
 
 
 --
--- Name: rag_consultas id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.rag_consultas ALTER COLUMN id SET DEFAULT nextval('public.rag_consultas_id_seq'::regclass);
-
-
---
--- Name: rag_fragmentos id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.rag_fragmentos ALTER COLUMN id SET DEFAULT nextval('public.rag_fragmentos_id_seq'::regclass);
-
-
---
 -- Name: remisiones id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2327,20 +2221,6 @@ SELECT pg_catalog.setval('public.quirofanos_id_seq', 1, false);
 
 
 --
--- Name: rag_consultas_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('public.rag_consultas_id_seq', 1, false);
-
-
---
--- Name: rag_fragmentos_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
---
-
-SELECT pg_catalog.setval('public.rag_fragmentos_id_seq', 1, false);
-
-
---
 -- Name: remisiones_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
@@ -2673,22 +2553,6 @@ ALTER TABLE ONLY public.quirofanos
 
 ALTER TABLE ONLY public.quirofanos
     ADD CONSTRAINT quirofanos_pkey PRIMARY KEY (id);
-
-
---
--- Name: rag_consultas rag_consultas_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.rag_consultas
-    ADD CONSTRAINT rag_consultas_pkey PRIMARY KEY (id);
-
-
---
--- Name: rag_fragmentos rag_fragmentos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.rag_fragmentos
-    ADD CONSTRAINT rag_fragmentos_pkey PRIMARY KEY (id);
 
 
 --
@@ -3070,34 +2934,6 @@ CREATE INDEX idx_turnos_area_tiempo ON public.turnos_area USING btree (servicio_
 --
 
 CREATE INDEX idx_usuarios_rol ON public.usuarios USING btree (rol_id) WHERE activo;
-
-
---
--- Name: ix_rag_consultas_usuario; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_rag_consultas_usuario ON public.rag_consultas USING btree (usuario_id, created_at DESC);
-
-
---
--- Name: ix_rag_frag_audiencia; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_rag_frag_audiencia ON public.rag_fragmentos USING gin (audiencia);
-
-
---
--- Name: ix_rag_frag_documento; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_rag_frag_documento ON public.rag_fragmentos USING btree (documento_id);
-
-
---
--- Name: ix_rag_frag_filtro; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_rag_frag_filtro ON public.rag_fragmentos USING btree (tipo, estado, paciente_id);
 
 
 --
@@ -3741,10 +3577,4 @@ ALTER TABLE ONLY public.usuarios
 
 ALTER TABLE ONLY public.usuarios
     ADD CONSTRAINT usuarios_servicio_id_fkey FOREIGN KEY (servicio_id) REFERENCES public.servicios(id);
-
-
---
--- PostgreSQL database dump complete
---
-
 

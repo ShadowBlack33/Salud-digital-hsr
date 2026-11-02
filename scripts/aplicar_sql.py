@@ -10,7 +10,8 @@ volver a aplicarlos podría chocar con lo que ya está cargado
 
 Uso:
     python scripts/aplicar_sql.py db/esquema_completo.sql      # base vacía
-    python scripts/aplicar_sql.py db/03_datos_sinteticos.sql   # salida de generar_datos.py
+    python scripts/aplicar_sql.py db/03_rag.sql                # tablas del RAG (se puede repetir)
+    python scripts/aplicar_sql.py db/01_datos_sinteticos.sql   # salida de generar_datos.py
     python scripts/aplicar_sql.py db/00_reset_datos.sql
 
 Para saltar la confirmación (por ejemplo, en un script automatizado):

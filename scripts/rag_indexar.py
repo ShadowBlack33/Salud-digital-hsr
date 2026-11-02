@@ -5,8 +5,10 @@ de cada paciente activo con al menos un reporte de IA aprobado.
 
 Uso:  python scripts/rag_indexar.py            (guías + historias)
       python scripts/rag_indexar.py --guias    (solo guías)
-Necesita:  pip install fastembed   (si no está, indexa sin vectores y el RAG usa BM25)
-Hay que correrlo de nuevo si se cambia el modelo de embeddings.
+Necesita:  pip install -r scripts/requirements-datos.txt   (fastembed con la MISMA versión que
+           el servicio ml; si no está, indexa sin vectores y el RAG usa BM25)
+Hay que correrlo de nuevo si cambia el modelo de embeddings, la versión de fastembed, las
+guías o sus preguntas por sección.
 """
 from __future__ import annotations
 
@@ -20,12 +22,16 @@ from sqlalchemy import text  # noqa: E402
 
 from app.core.deps import SessionLocal  # noqa: E402  -- ajustar si la sesión vive en otro módulo
 from app.services import rag  # noqa: E402
+from app.services import rag_core  # noqa: E402
 
 
 def main() -> None:
     db = SessionLocal()
     try:
-        print(f"Guías: {rag.indexar_guias(db)} fragmentos")
+        firma = rag_core.embeber_con_firma(["prueba"])[1]
+        print(f"Vectores: {firma or 'NO HAY (se indexa sin vectores; el RAG usará solo BM25)'}")
+        print(f"Guías: {rag.indexar_guias(db)} fragmentos, "
+              f"{db.execute(text('SELECT count(*) FROM rag_preguntas')).scalar()} preguntas por sección")
         if "--guias" in sys.argv:
             return
         pacientes = [r[0] for r in db.execute(text(

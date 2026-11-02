@@ -6,4 +6,6 @@ joblib==1.4.2
 pandas==2.2.3
 numpy==1.26.4
 # RAG (Semana 12): embeddings multilingües para POST /embed
-fastembed>=0.4,<0.8
+# Versión EXACTA, la misma de scripts/requirements-datos.txt: la firma de cada vector
+# incluye la versión y la API solo compara vectores con la misma firma (docs/RAG.md).
+fastembed==0.9.1

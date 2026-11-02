@@ -65,6 +65,7 @@ jobs:
         run: |
           P="psql -h localhost -U hsr -d hsanrafael -v ON_ERROR_STOP=1 -q"
           $P -f db/esquema_completo.sql
+          $P -f db/03_rag.sql
           python scripts/generar_datos.py --meses 1 --pacientes 200 --salida /tmp/03.sql
           $P -f /tmp/03.sql
       - run: python scripts/test_e2e.py
@@ -72,3 +73,5 @@ jobs:
         run: python scripts/test_tiempo_real.py
       - name: RAG (canario, filtros clínicos, rol, citas, abstención, auditoría)
         run: python scripts/test_rag.py
+      - name: RAG sin base ni red (preguntas por sección, BM25, denso simulado, reranker, temperatura)
+        run: python scripts/test_rag_unidad.py
