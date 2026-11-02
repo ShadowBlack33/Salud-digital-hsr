@@ -458,7 +458,8 @@ def citas_en(texto: str, n_fuentes: int) -> list[int]:
     return sorted(n for n in numeros if 1 <= n <= n_fuentes)
 
 
-def responder(pregunta: str, frags: list[dict], rol: str | None = None, estricto: bool = True) -> dict:
+def responder(pregunta: str, frags: list[dict], rol: str | None = None, estricto: bool = True,
+              forzar_extensa: bool | None = None) -> dict:
     """
     Redacta la respuesta y devuelve solo las citas que realmente usa. `estricto` dice si los
     fragmentos pasaron la regla estricta de recuperación: si el modelo falla y solo queda la
@@ -471,7 +472,7 @@ def responder(pregunta: str, frags: list[dict], rol: str | None = None, estricto
     # Se recuperan hasta 8 fragmentos ya ordenados: el modelo completo los recibe
     # todos y el lite solo los 4 primeros (más contexto en una pregunta puntual es
     # ruido). Como es un prefijo, [F1]..[F4] significan lo mismo en los dos casos.
-    extensa = es_extensa(pregunta, frags[:TOP_K])
+    extensa = es_extensa(pregunta, frags[:TOP_K]) if forzar_extensa is None else forzar_extensa   # forzar: solo para diagnóstico
     # Primero el modelo que corresponde; si falla (límite de la capa gratuita, red),
     # el otro; si también falla, la respuesta extractiva.
     for intento in (extensa, not extensa):
