@@ -91,6 +91,7 @@ class Settings(BaseSettings):
     xai_base_url: str = "https://api.x.ai/v1"
     rag_umbral_denso: float = 0.45        # RAG_UMBRAL_DENSO (calibrar con scripts/evaluar_rag.py)
     rag_umbral_bm25: float = 5.0          # RAG_UMBRAL_BM25
+    rag_peso_denso: float = 1.0           # RAG_PESO_DENSO: peso del denso en la fusión RRF (BM25 pesa 1); ver scripts/evaluar_rag.py
 
     @property
     def cors_origenes(self) -> list[str]:

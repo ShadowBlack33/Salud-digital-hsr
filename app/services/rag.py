@@ -346,7 +346,8 @@ def buscar(db: Session, ctx, pregunta: str, paciente_id: str | None = None,
         if metodo == "denso":
             orden, usado = [i for i, _ in rank_denso], "denso"
         else:
-            fusion = core.rrf([[i for i, _ in rank_bm25], [i for i, _ in rank_denso]])
+            fusion = core.rrf([[i for i, _ in rank_bm25], [i for i, _ in rank_denso]],
+                              pesos=[1.0, get_settings().rag_peso_denso])
             orden, usado = [i for i, _ in fusion], "hibrido"
         confianza = rank_denso[0][1]
         top_bm25 = rank_bm25[0][1] if rank_bm25 else 0.0

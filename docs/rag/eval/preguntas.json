@@ -270,6 +270,96 @@
     "esperado": "G18"
   },
   {
+    "id": "P01",
+    "pregunta": "Mi paciente diabético tiene el azúcar muy baja y está dormido, ¿qué le pongo?",
+    "esperado": "G01",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P02",
+    "pregunta": "¿Cómo protejo el corazón cuando el K en sangre está peligrosamente alto?",
+    "esperado": "G02",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P03",
+    "pregunta": "¿Hasta qué nivel de sangre se tolera antes de pasar glóbulos rojos a un adulto hospitalizado?",
+    "esperado": "G03",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P04",
+    "pregunta": "¿Cómo se califica para anestesia a alguien con una enfermedad que amenaza su vida todo el tiempo?",
+    "esperado": "G04",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P05",
+    "pregunta": "¿Cuánto tiempo debe estar sin comer un paciente antes de entrar a cirugía?",
+    "esperado": "G12",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P06",
+    "pregunta": "¿Me pueden cobrar plata en la puerta antes de que me vean en urgencias?",
+    "esperado": "G14",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P07",
+    "pregunta": "¿Cuánto tengo que pagar de mi bolsillo por una consulta si cotizo en una EPS?",
+    "esperado": "G17",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P08",
+    "pregunta": "¿Por cuántos años tiene que guardar el hospital el expediente de un paciente?",
+    "esperado": "G13",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P09",
+    "pregunta": "¿En cuántas horas hay que dar el primer antimicrobiano a quien tiene una infección y está en choque?",
+    "esperado": "G11",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P10",
+    "pregunta": "¿Cuánto puede esperar alguien que llega casi muriéndose a urgencias?",
+    "esperado": "G09",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P11",
+    "pregunta": "¿Qué revisa el equipo del quirófano justo antes de hacer el corte?",
+    "esperado": "G06",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P12",
+    "pregunta": "¿Qué herramienta avisa que un enfermo se va a complicar y necesitará cuidados intensivos?",
+    "esperado": "G07",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P13",
+    "pregunta": "¿Cada cuánto tiempo el hospital tiene que renovar el permiso para ofrecer sus servicios?",
+    "esperado": "G16",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P14",
+    "pregunta": "¿Qué datos de los usuarios se guardan encriptados en el sistema?",
+    "esperado": "G18",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P15",
+    "pregunta": "¿A quién le avisa el sistema si un médico ignora una alerta urgente?",
+    "esperado": "G07",
+    "tipo": "parafraseada"
+  },
+  {
     "id": "N01",
     "pregunta": "¿Cuál es el tratamiento de la malaria complicada?",
     "esperado": null
