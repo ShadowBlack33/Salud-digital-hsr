@@ -14,6 +14,11 @@ COPY . .
 RUN useradd --create-home --uid 10002 ml
 USER ml
 
+# RAG: el modelo de embeddings se descarga al construir la imagen, no en la
+# primera pregunta (ni en un contenedor sin internet).
+ENV FASTEMBED_CACHE=/home/ml/fastembed
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', cache_dir='/home/ml/fastembed')"
+
 EXPOSE 8001
 HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/salud', timeout=4).status == 200 else 1)"

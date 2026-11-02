@@ -56,59 +56,46 @@ administrado en Cloudflare** (puede ser uno barato).
 
 El token es un secreto: va solo en el `.env`.
 
-## 3. Migraciones del Corte 2 (base compartida)
+## 3. Base de datos
 
-Solo Carlos las aplica, en orden, después de revisarlas:
+Toda la estructura está en **un solo archivo**, `db/esquema_completo.sql`
+(tablas, funciones, triggers, extensión `vector` del RAG y catálogos: roles,
+permisos, especialidades, EPS, CIE-10, procedimientos, servicios). Es el
+estado final de las migraciones 01 a 15, que quedan en `db/historial/` como
+registro de cómo se llegó ahí (no se vuelven a aplicar).
+
+Los datos de personas los genera `scripts/generar_datos.py`: personal,
+pacientes, encuentros, eventos y las cuentas de demostración (`admin`,
+`medico01`, `especialista01`, `contable01`, `bloqueo_prueba`, `jefe01`, los
+jefes por área `jefe_urg`, `jefe_urg2`, `jefe_urg3`... y `paciente_demo`, todas
+con la contraseña de demostración) con sus turnos de los próximos 14 días.
+
+Base nueva (o reiniciada), en orden. En la base compartida solo lo hace Carlos:
 
 ```bash
-python scripts/aplicar_sql.py db/08_roles_corte2.sql
-python scripts/aplicar_sql.py db/09_perfiles.sql
-python scripts/aplicar_sql.py db/10_remisiones.sql
-python scripts/aplicar_sql.py db/11_areas_traslados.sql
-python scripts/aplicar_sql.py db/12_turnos.sql
-python scripts/aplicar_sql.py db/13_ia.sql              # Esteban (IA y alertas)
-python scripts/aplicar_sql.py db/14_notificaciones.sql
-python scripts/corregir_nombres.py        # nombres que no coincidían con el sexo
+python scripts/aplicar_sql.py db/esquema_completo.sql
+python scripts/generar_datos.py --meses 6 --pacientes 4000     # escribe db/03_datos_sinteticos.sql
+python scripts/aplicar_sql.py db/03_datos_sinteticos.sql
+python scripts/rag_indexar.py                                  # guías del RAG
 ```
 
-`14` crea la bandeja de notificaciones y el registro de eventos FHIR del
-sistema reactivo (R17 a R21; ver `docs/EVENTOS.md`). Para R21 el `.env` debe
-tener `HOOK_SECRET` (el secreto que HAPI manda en la cabecera del rest-hook);
-sin él la Subscription no se registra y el receptor rechaza todo.
+`generar_datos.py` cifra con las claves del `.env` (`APP_ENCRYPTION_KEY`,
+`APP_BLIND_INDEX_KEY`): hay que generar con las mismas claves que usa la API.
 
-`10` crea la tabla de remisiones (R08) y sus permisos: el médico remite, el
-especialista la ve, puede revisar al paciente y la acepta o la rechaza con un
-motivo, y luego la cierra como atendida. Agrega `cerrada_at`/`cerrada_por`:
-al rechazar, el especialista pierde el acceso a la ficha; al atender, lo
-conserva `REMISION_ACCESO_DIAS` (7). Se puede correr más de una vez, también
-sobre una base que ya tenía la versión anterior de la tabla.
+Para regenerar solo los datos, sin tocar la estructura:
+`python scripts/aplicar_sql.py db/00_reset_datos.sql` y los dos pasos de datos.
+La programación de turnos de los jefes cubre de ayer a dentro de 14 días; para
+extenderla, `python scripts/aplicar_sql.py db/historial/12_turnos.sql` (se puede
+correr cuantas veces haga falta).
 
-`12` crea los turnos de enfermería jefe por área (mañana 07-13 y tarde 13-19
-de 6 h, noche 19-07 de 12 h) con tres jefes que rotan por área (`jefe_urg`,
-`jefe_urg2`, `jefe_urg3`, y lo mismo para uci, ucip, piso4 y piso5). Solo el
-jefe de turno opera el área; los demás la ven en solo lectura y pueden
-"cubrir el turno" con motivo. Correrla otra vez regenera la programación desde
-ayer hasta dentro de 14 días (hay que hacerlo antes de que se acabe).
+Un cambio nuevo de estructura va como migración numerada (`db/16_...sql`),
+se aplica en la base compartida y luego se incorpora a `esquema_completo.sql`
+(pg_dump de la base con todo aplicado, sin los datos de personas).
 
-`11` organiza las camas por área: cada enfermero(a) jefe tiene un área a cargo
-(cuentas `jefe_urg`, `jefe_uci`, `jefe_ucip`, `jefe_piso4`, `jefe_piso5`; `jefe01`
-queda en Cirugía) y solo asigna camas de su área. Crea la tabla `traslados`
-(el área origen pide, el área destino acepta eligiendo cama o rechaza con
-motivo) y el permiso de alta para médico y especialista: el alta la da el
-médico tratante con tipo de egreso y motivo, y la cama queda en proceso de
-alta hasta que enfermería confirma la salida. Se puede correr más de una vez.
-
-`08` crea los roles `medico`, `especialista` y `contable` y las cuentas
-`medico01`, `especialista01`, `contable01` y `bloqueo_prueba` (misma contraseña
-de demostración que `admin`). Se puede correr más de una vez.
-
-`09` deja los perfiles definitivos, sin duplicados: las cuentas de
-`medico_general`, `medico_especialista` y `facturacion` pasan a `medico`,
-`especialista` y `contable`; `director_medico` pasa a ser `coordinador`
-(coordinador del hospital: tablero general, sin pacientes) y la coordinación
-quirúrgica queda en `enfermero_jefe` (cuenta de demostración `jefe01`). Médico
-y especialista ven solo sus pacientes. Cierra las sesiones abiertas para que
-todos entren con su perfil nuevo. Se puede correr más de una vez.
+Para R21 el `.env` debe tener `HOOK_SECRET` (el secreto que HAPI manda en la
+cabecera del rest-hook); sin él la Subscription no se registra y el receptor
+rechaza todo. Las remisiones dan acceso a la ficha mientras están pendientes o
+aceptadas y `REMISION_ACCESO_DIAS` (7) después de atendidas.
 
 ### Perfiles
 
@@ -131,25 +118,16 @@ de `medico01` y `especialista01`) y, una sola vez, `cargar_radiografias.py`
 
 ## 4. Usar el PostgreSQL del compose en vez de Neon
 
-El volumen nuevo ya trae el esquema (`01`) y los catálogos (`02`). Faltan los
-datos, que se cargan desde este equipo por el puerto `5433`:
+El volumen nuevo ya trae `db/esquema_completo.sql`. Faltan los datos, que se
+cargan desde este equipo por el puerto `5433`:
 
 ```bash
 # En el .env, temporalmente, para los scripts que corren fuera de Docker:
 # DATABASE_URL=postgresql+psycopg2://hsr:<POSTGRES_PASSWORD>@localhost:5433/hsanrafael
 python scripts/generar_datos.py --meses 6 --pacientes 4000
 python scripts/aplicar_sql.py db/03_datos_sinteticos.sql
-python scripts/aplicar_sql.py db/04_mejoras_catalogo_eventos.sql
-python scripts/aplicar_sql.py db/06_permisos_imagen.sql
-python scripts/aplicar_sql.py db/07_tipo_documento_por_edad.sql
-python scripts/aplicar_sql.py db/08_roles_corte2.sql
-python scripts/aplicar_sql.py db/09_perfiles.sql
-python scripts/aplicar_sql.py db/10_remisiones.sql
-python scripts/aplicar_sql.py db/14_notificaciones.sql
+python scripts/rag_indexar.py
 ```
-
-`05_cedula_como_llave.sql` **no** se aplica: era la migración de una base
-antigua y `01_schema.sql` ya trae ese cambio.
 
 Después, para la API dentro de Docker:
 

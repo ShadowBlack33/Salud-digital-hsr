@@ -3,15 +3,20 @@ Alertas críticas con reconocimiento y escalamiento (R20).
 
   GET  /alertas                     {id, paciente_id, nivel, estado, ...}; ?estado=activa|reconocida
   POST /alertas/{id}/reconocer      {nota} -> 'reconocida' (con usuario, hora y nota)
+  GET  /alertas/sin-atender         contador por médico de las alertas activas (sin datos
+                                    del paciente). Coordinador y admin (alerta:supervisar).
 
 Nacen en POST /ia/analizar cuando el modelo marca el caso como crítico
 (app/api/ia.py: crear_alerta_critica), dirigidas al clínico que pidió el
-análisis. Solo medico y especialista las ven y las reconocen (el admin las ve
-todas por el escalamiento); paciente y contable reciben 403.
+análisis. Solo medico y especialista las ven y las reconocen (el admin puede
+verlas todas); paciente y contable reciben 403.
 
 Escalamiento: una tarea de fondo revisa cada 30 s las alertas activas más
 viejas que ALERTA_ESCALAMIENTO_MINUTOS (5 por defecto). Marca escalada_at,
-audita y avisa al admin y a otro clínico del paciente (evento alerta_escalada).
+audita y avisa a los OTROS médicos y especialistas a cargo del paciente, que
+son quienes pueden resolverla (evento alerta_escalada). No se escala al admin:
+no atiende pacientes. Quien supervisa (coordinador, admin) ve el contador de
+/alertas/sin-atender, que dice qué médico tiene alertas sin atender y hace cuánto.
 """
 from __future__ import annotations
 
@@ -112,6 +117,36 @@ def reconocer(alerta_id: int, datos: Reconocer, request: Request,
     return _vista(dict(fila), db)
 
 
+@router.get("/alertas/sin-atender", summary="Alertas críticas sin atender, por médico (sin datos del paciente)")
+def sin_atender(ctx: ContextoAcceso = Depends(RequierePermiso("alerta", "supervisar")),
+                db: Session = Depends(get_db)):
+    limite = datetime.now(timezone.utc) - timedelta(minutes=settings.alerta_escalamiento_minutos)
+    filas = db.execute(text("""
+        SELECT a.dirigida_a_usuario AS usuario_id, u.username, r.codigo AS rol, u.personal_id,
+               COUNT(*) AS sin_atender,
+               COUNT(*) FILTER (WHERE a.created_at < :limite) AS vencidas,
+               MIN(a.created_at) AS mas_antigua
+        FROM alertas a
+        LEFT JOIN usuarios u ON u.id = a.dirigida_a_usuario
+        LEFT JOIN roles r ON r.id = u.rol_id
+        WHERE a.estado = 'activa' AND a.dirigida_a_usuario IS NOT NULL
+        GROUP BY a.dirigida_a_usuario, u.username, r.codigo, u.personal_id
+        ORDER BY vencidas DESC, sin_atender DESC, mas_antigua
+    """), {"limite": limite}).mappings().all()
+    from app.api.remisiones import _nombre_personal   # noqa: PLC0415 -- evita import circular
+    ahora = datetime.now(timezone.utc)
+    medicos = [{
+        "usuario_id": f["usuario_id"], "usuario": f["username"], "rol": f["rol"],
+        "nombre": _nombre_personal(db, f["personal_id"]) or f["username"],
+        "sin_atender": f["sin_atender"], "vencidas": f["vencidas"],
+        "minutos_mas_antigua": int((ahora - f["mas_antigua"]).total_seconds() // 60),
+    } for f in filas]
+    return {"total": sum(m["sin_atender"] for m in medicos),
+            "vencidas": sum(m["vencidas"] for m in medicos),
+            "minutos_para_vencer": settings.alerta_escalamiento_minutos,
+            "medicos": medicos}
+
+
 # ---------------------------------------------------------------- escalamiento
 def escalar_vencidas() -> int:
     """Escala las alertas activas sin reconocer más viejas que N minutos. Devuelve cuántas."""
@@ -124,26 +159,20 @@ def escalar_vencidas() -> int:
             ORDER BY created_at
             FOR UPDATE SKIP LOCKED
         """), {"limite": limite}).mappings().all()
+        from app.services.fhir_reactivo import _clinicos_responsables   # noqa: PLC0415
         for a in vencidas:
-            admins = [u for (u,) in db.execute(text("""
-                SELECT u.id FROM usuarios u JOIN roles r ON r.id = u.rol_id
-                WHERE r.codigo = 'admin' AND u.activo"""))]
-            # "Otro clínico": un médico de un encuentro activo del paciente, distinto del destinatario.
-            otros = [u for (u,) in db.execute(text("""
-                SELECT DISTINCT u.id FROM encuentros e
-                JOIN usuarios u ON u.personal_id = e.medico_responsable_id AND u.activo
-                JOIN roles r ON r.id = u.rol_id AND r.codigo IN ('medico', 'especialista')
-                WHERE e.paciente_id = :p AND e.activo AND u.id <> :yo
-                LIMIT 1"""), {"p": a["paciente_id"], "yo": a["dirigida_a_usuario"] or -1})]
+            # Los otros médicos y especialistas a cargo del paciente (encuentro activo,
+            # remisión abierta o quien lo registró): pueden reconocerla y actuar.
+            otros = [u for u in _clinicos_responsables(db, a["paciente_id"]) if u != a["dirigida_a_usuario"]]
             db.execute(text("UPDATE alertas SET escalada_at = NOW() WHERE id = :i"), {"i": a["id"]})
             registrar(db, None, "alerta", a["id"], "alerta_escalada",
                       valor_nuevo={"paciente_id": a["paciente_id"], "reporte_id": a["reporte_id"],
                                    "minutos_sin_reconocer": settings.alerta_escalamiento_minutos,
-                                   "avisados": admins + otros})
+                                   "avisados": otros})
             reactor = getattr(reactores, "al_alerta_escalada", None)
             if reactor:
                 try:
-                    reactor(db, _Fila({**dict(a), "tipo": "alerta_escalada", "destinatarios": admins + otros}))
+                    reactor(db, _Fila({**dict(a), "tipo": "alerta_escalada", "destinatarios": otros}))
                 except Exception:  # noqa: BLE001
                     log.exception("Falló el aviso de escalamiento de la alerta %s", a["id"])
         db.commit()

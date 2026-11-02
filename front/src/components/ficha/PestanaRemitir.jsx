@@ -1,21 +1,27 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, Send, Users } from "lucide-react";
-import ChipDemo from "../ChipDemo";
 import { useAvisos } from "../Avisos";
 import * as S from "../../lib/servicios";
 
-/** Remitir el paciente a un especialista (R08). */
+const VACIO = { especialidad_id: "", tipo_solicitud: "", motivo: "", prioridad: "prioritaria" };
+
+/**
+ * Remitir el paciente a una especialidad (R08). El médico dice para qué lo
+ * necesita y por qué; el sistema asigna el especialista de esa especialidad
+ * con menos remisiones abiertas (reparto de carga). El especialista no puede
+ * rechazarla.
+ */
 export default function PestanaRemitir({ pacienteId }) {
   const { avisar } = useAvisos();
-  const [especialistas, setEspecialistas] = useState({ lista: [], demo: false });
-  const [datos, setDatos] = useState({ especialista_id: "", motivo: "", prioridad: "prioritaria" });
+  const [opciones, setOpciones] = useState({ especialidades: [], tipos_solicitud: [] });
+  const [datos, setDatos] = useState(VACIO);
   const [enviando, setEnviando] = useState(false);
   const [hecha, setHecha] = useState(null);
   const [error, setError] = useState(null);
   const [equipo, setEquipo] = useState([]);
 
   useEffect(() => {
-    S.especialistas().then(({ datos, demo }) => setEspecialistas({ lista: Array.isArray(datos) ? datos : [], demo })).catch((e) => setError(e.message));
+    S.especialidadesRemision().then(setOpciones).catch((e) => setError(e.message));
   }, []);
   // Un paciente puede estar con varios especialistas a la vez: se muestra quién
   // más lo atiende y no se ofrece remitir de nuevo a quien ya lo tiene activo.
@@ -25,16 +31,16 @@ export default function PestanaRemitir({ pacienteId }) {
     return () => { vivo = false; };
   }, [pacienteId, hecha]);
   const activos = equipo.filter((r) => ["pendiente", "aceptada"].includes(r.estado));
-  const yaActivo = new Set(activos.map((r) => r.especialista_id));
 
   const enviar = async (e) => {
     e.preventDefault();
     setEnviando(true); setError(null);
     try {
-      const { datos: r } = await S.remitir({ paciente_id: pacienteId, especialista_id: Number(datos.especialista_id), motivo: datos.motivo.trim(), prioridad: datos.prioridad });
-      setHecha(r.id);
-      setDatos({ especialista_id: "", motivo: "", prioridad: "prioritaria" });
-      avisar("Remisión enviada. El especialista ya recibió el aviso.");
+      const { datos: r } = await S.remitir({ paciente_id: pacienteId, especialidad_id: Number(datos.especialidad_id),
+        tipo_solicitud: datos.tipo_solicitud, motivo: datos.motivo.trim(), prioridad: datos.prioridad });
+      setHecha({ id: r.id, especialista: r.especialista, especialidad: r.especialidad });
+      setDatos(VACIO);
+      avisar(`Remisión enviada a ${r.especialista}. Ya recibió el aviso.`);
     } catch (err) { setError(err.message); }
     finally { setEnviando(false); }
   };
@@ -60,20 +66,30 @@ export default function PestanaRemitir({ pacienteId }) {
     <form onSubmit={enviar} className="space-y-4 rounded-[28px] bg-paper-white p-6 shadow-lift">
       <div>
         <h2 className="text-lg font-semibold">Remitir a especialista</h2>
-        <p className="mt-1 text-sm text-gray-strong">El especialista recibe el aviso al instante y, cuando acepte, te llega la confirmación.</p>
-        {especialistas.demo && <div className="mt-2"><ChipDemo visible /></div>}
+        <p className="mt-1 text-sm text-gray-strong">Elige la especialidad: el sistema asigna al especialista con menos remisiones abiertas y le avisa al instante. La remisión no se puede rechazar.</p>
       </div>
       {hecha && (
         <p className="anim-pop flex items-center gap-2 rounded-3xl bg-green-soft p-4 text-sm text-green-ink">
-          <CheckCircle2 size={17} aria-hidden="true" />Remisión {hecha} enviada. Puedes seguirla en Remisiones.
+          <CheckCircle2 size={17} aria-hidden="true" />Remisión {hecha.id} asignada a {hecha.especialista}{hecha.especialidad ? ` (${hecha.especialidad})` : ""}. Puedes seguirla en Remisiones.
         </p>
       )}
-      <label className="block text-sm font-medium">Especialista
-        <select required value={datos.especialista_id} onChange={(e) => setDatos((d) => ({ ...d, especialista_id: e.target.value }))} className={entrada}>
-          <option value="" disabled>Elige un especialista</option>
-          {especialistas.lista.map((e) => <option key={e.id} value={e.id} disabled={yaActivo.has(e.id)}>{yaActivo.has(e.id) ? "Ya lo atiende · " : ""}{e.especialidad ? `${e.especialidad} · ` : ""}{e.nombre}{e.usuario ? ` · cuenta ${e.usuario}` : ""}{e.conectado ? " (conectado)" : ""}</option>)}
+      <label className="block text-sm font-medium">Especialidad
+        <select required value={datos.especialidad_id} onChange={(e) => setDatos((d) => ({ ...d, especialidad_id: e.target.value }))} className={entrada}>
+          <option value="" disabled>Elige una especialidad</option>
+          {opciones.especialidades.map((e) => <option key={e.id} value={e.id}>{e.nombre} · {e.especialistas} especialista{e.especialistas === 1 ? "" : "s"}, {e.abiertas} remisión{e.abiertas === 1 ? "" : "es"} abierta{e.abiertas === 1 ? "" : "s"}</option>)}
         </select>
       </label>
+      <fieldset className="text-sm font-medium">
+        <legend>¿Para qué lo necesita?</legend>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {opciones.tipos_solicitud.map(({ codigo, nombre }) => (
+            <label key={codigo} className={`cursor-pointer rounded-full px-4 py-2 ${datos.tipo_solicitud === codigo ? "bg-charcoal text-white" : "bg-cloud-card"}`}>
+              <input type="radio" name="tipo_solicitud" value={codigo} required checked={datos.tipo_solicitud === codigo}
+                     onChange={() => setDatos((d) => ({ ...d, tipo_solicitud: codigo }))} className="sr-only" />{nombre}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <fieldset className="text-sm font-medium">
         <legend>Prioridad</legend>
         <div className="mt-1 flex flex-wrap gap-2">
@@ -84,12 +100,12 @@ export default function PestanaRemitir({ pacienteId }) {
           ))}
         </div>
       </fieldset>
-      <label className="block text-sm font-medium">Motivo
+      <label className="block text-sm font-medium">Motivo clínico
         <textarea required minLength={5} rows={3} value={datos.motivo} onChange={(e) => setDatos((d) => ({ ...d, motivo: e.target.value }))}
                   placeholder="Ej.: valoración por cirugía cardiovascular antes del reemplazo valvular." className={`${entrada} resize-y`} />
       </label>
       {error && <p role="alert" className="text-sm text-coral-ink">{error}</p>}
-      <button type="submit" disabled={enviando} className="flex items-center gap-2 rounded-full bg-charcoal px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ink disabled:opacity-50">
+      <button type="submit" disabled={enviando || !datos.tipo_solicitud} className="flex items-center gap-2 rounded-full bg-charcoal px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-ink disabled:opacity-50">
         {enviando ? <Loader2 size={15} className="anim-spin" /> : <Send size={15} />}Remitir
       </button>
     </form>

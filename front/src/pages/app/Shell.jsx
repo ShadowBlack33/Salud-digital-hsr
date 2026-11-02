@@ -10,6 +10,7 @@ import PanelDemostracion from "../../components/PanelDemostracion";
 import { DATOS_DEMO } from "../../lib/demo";
 import ConexionCaida from "../../components/ConexionCaida";
 import BuscadorRapido from "../../components/BuscadorRapido";
+import Asistente from "../../components/Asistente";
 import LimiteError from "../../components/LimiteError";
 import Esqueleto from "../../components/Esqueleto";
 import { cerrarSesion, vigilarInactividad } from "../../api";
@@ -86,6 +87,7 @@ export default function Shell() {
       </main>
       {DATOS_DEMO && <PanelDemostracion />}
       <BuscadorRapido />
+      <Asistente />
       </ProveedorTiempoReal>
     </ProveedorAvisos>
   );

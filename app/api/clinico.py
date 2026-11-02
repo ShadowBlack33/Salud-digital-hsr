@@ -199,7 +199,7 @@ class ObservacionActualizar(BaseModel):
 
 class ObservacionRespuesta(BaseModel):
     id: int
-    encuentro_id: int
+    encuentro_id: int | None = None      # un resultado externo (FHIR) puede llegar sin encuentro
     paciente_id: str
     categoria: str
     codigo_loinc: str

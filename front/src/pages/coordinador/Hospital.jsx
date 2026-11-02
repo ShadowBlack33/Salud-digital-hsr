@@ -2,6 +2,7 @@ import { Activity, AlertTriangle, BedDouble, CalendarX, Brain, Clock, HeartPulse
 import Encabezado from "../../components/Encabezado";
 import Esqueleto from "../../components/Esqueleto";
 import ErrorEstado from "../../components/ErrorEstado";
+import AlertasSinAtender from "../../components/AlertasSinAtender";
 import * as S from "../../lib/servicios";
 import { useSondeo } from "../../lib/hooks";
 import { cop, haceCuanto } from "../../lib/format";
@@ -65,6 +66,8 @@ export default function Hospital() {
                alerta={d.cancelacion_cirugia.pct_institucion >= 5} />
         )}
       </div>
+
+      <AlertasSinAtender />
 
       <section aria-labelledby="t-areas" className="rounded-[32px] bg-cloud-card p-6 sm:p-7">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-2">

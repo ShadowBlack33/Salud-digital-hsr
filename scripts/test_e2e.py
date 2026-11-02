@@ -259,6 +259,9 @@ if paciente_id:
         check("Patient bien formado (resourceType + identifier)",
               r.json().get("resourceType") == "Patient"
               and len(r.json().get("identifier", [])) > 0)
+        check("El Patient FHIR NO lleva la cédula ni el teléfono (se identifica por MRN)",
+              DOC_PRUEBA not in r.text and "telecom" not in r.json()
+              and r.json()["identifier"][0]["system"].endswith("/mrn"), r.text[:200])
 
 # -------------------------------------------------------- 10. Analítica
 print("\n[10] Analítica y caso de negocio")
@@ -514,36 +517,44 @@ if pac_m and yo_esp:
           sorted(codigos) == [200, 409, 409], str(codigos))
 
 # ---------------------------------------------------------- 17. Cierre de remisiones y vigencia del acceso
-print("\n[17] Remisión rechazada o atendida: el acceso del especialista se cierra")
-ajenos = []
-if tok_m01 and tok_e01 and yo_esp:
-    mios = [x["paciente_id"] for x in client.get("/mis-pacientes", headers=h(tok_m01)).json().get("pacientes", [])]
-    ajenos = [p for p in mios if client.get(f"/pacientes/{p}", headers=h(tok_e01)).status_code != 200]
-if ajenos:
-    pac_r = ajenos[0]
-    rid3 = client.post("/remisiones", headers=h(tok_m01), json={"paciente_id": pac_r, "especialista_id": yo_esp,
-                                                                "motivo": "Prueba de rechazo", "prioridad": "rutinaria"}).json()["id"]
-    check("Con la remisión pendiente el especialista abre la ficha",
-          client.get(f"/pacientes/{pac_r}", headers=h(tok_e01)).status_code == 200)
-    check("Rechazar sin motivo -> 422",
-          client.post(f"/remisiones/{rid3}/rechazar", headers=h(tok_e01), json={}).status_code == 422)
-    check("El médico remitente no puede rechazarla -> 403",
-          client.post(f"/remisiones/{rid3}/rechazar", headers=h(tok_m01), json={"motivo": "no me toca"}).status_code == 403)
-    r = client.post(f"/remisiones/{rid3}/rechazar", headers=h(tok_e01), json={"motivo": "No corresponde a mi especialidad"})
-    check("El especialista la rechaza con motivo", r.status_code == 200 and r.json()["estado"] == "rechazada", r.text[:120])
-    check("Tras rechazarla pierde el acceso a la ficha",
-          client.get(f"/pacientes/{pac_r}", headers=h(tok_e01)).status_code in (403, 404))
-    check("No se puede aceptar una rechazada -> 409",
-          client.post(f"/remisiones/{rid3}/aceptar", headers=h(tok_e01)).status_code == 409)
-else:
-    print("  (sin paciente del médico ajeno al especialista: se omite el rechazo)")
+print("\n[17] Remisiones: reparto de carga, sin rechazo y cierre")
+if tok_m01 and tok_e01 and pac_m:
+    esp_info = client.get("/especialidades/remision", headers=h(tok_m01))
+    check("El médico ve las especialidades y los tipos de solicitud",
+          esp_info.status_code == 200 and esp_info.json()["especialidades"] and esp_info.json()["tipos_solicitud"],
+          esp_info.text[:150])
+    check("Remitir sin especialidad ni especialista -> 422",
+          client.post("/remisiones", headers=h(tok_m01), json={"paciente_id": pac_m, "motivo": "Prueba sin destino"}).status_code == 422)
+    varios = [e for e in esp_info.json()["especialidades"] if e["especialistas"] >= 2] if esp_info.status_code == 200 else []
+    if varios:
+        espec = varios[0]["id"]
+        for vuelta in (1, 2):
+            antes = [e for e in client.get("/especialistas", headers=h(tok_m01)).json()]
+            minimo = min(e["remisiones_abiertas"] for e in antes
+                         if e["especialidad"] == varios[0]["nombre"] and e["en_linea"])
+            r = client.post("/remisiones", headers=h(tok_m01), json={
+                "paciente_id": pac_m, "especialidad_id": espec, "tipo_solicitud": "valoracion",
+                "motivo": f"Prueba de reparto {vuelta}", "prioridad": "rutinaria"})
+            asignado = next((e for e in antes if e["id"] == r.json().get("especialista_id")), None) if r.status_code == 201 else None
+            check(f"Reparto {vuelta}: va al especialista de esa especialidad con menos remisiones abiertas",
+                  asignado is not None and asignado["especialidad"] == varios[0]["nombre"]
+                  and asignado["remisiones_abiertas"] == minimo, r.text[:200])
+            check(f"Reparto {vuelta}: la remisión dice para qué se pidió",
+                  r.status_code == 201 and r.json().get("tipo_solicitud") == "valoracion")
+            if vuelta == 1:
+                primero = r.json().get("especialista_id")
+        segundo = r.json().get("especialista_id")
+        check("Con la carga igual, la segunda remisión va a otro especialista",
+              primero != segundo or len([e for e in antes if e["especialidad"] == varios[0]["nombre"] and e["en_linea"]]) == 1)
+    r = client.post(f"/remisiones/{rid2}/rechazar", headers=h(tok_e01), json={"motivo": "No corresponde a mi especialidad"})
+    check("El especialista ya no puede rechazar una remisión (la ruta no existe)", r.status_code in (404, 405), r.text[:120])
 if pac_m and yo_esp:
     r = client.post(f"/remisiones/{rid2}/atender", headers=h(tok_e01))
     check("Cerrar como atendida una remisión aceptada", r.status_code == 200 and r.json()["estado"] == "atendida", r.text[:120])
     check("Atenderla otra vez -> 409", client.post(f"/remisiones/{rid2}/atender", headers=h(tok_e01)).status_code == 409)
 
 # ---------------------------------------------------------- 18. Puerta del servidor FHIR
-print("\n[18] /fhir: qué se puede sin token")
+print("\n[18] /fhir: solo metadata es pública")
 
 
 def puerta(metodo, ruta, token=None):
@@ -553,11 +564,13 @@ def puerta(metodo, ruta, token=None):
     return client.get("/interno/puerta-fhir", headers=hd).status_code
 
 
-check("POST /fhir/Observation sin token pasa (R21)", puerta("POST", "/fhir/Observation") == 204)
+check("POST /fhir/Observation sin token -> 401 (nadie mete resultados falsos)", puerta("POST", "/fhir/Observation") == 401)
+check("POST /fhir/Observation con un médico -> 403", puerta("POST", "/fhir/Observation", tok_m01) == 403)
+check("POST /fhir/Observation con la cuenta de integración (laboratorio) pasa (R21)",
+      puerta("POST", "/fhir/Observation", tok_integracion) == 204)
 check("GET /fhir/metadata sin token pasa", puerta("GET", "/fhir/metadata") == 204)
 check("GET /fhir/Patient (listar) sin token -> 401", puerta("GET", "/fhir/Patient?_count=5") == 401)
-check("Búsqueda exacta por identificador sin token pasa (R15)", puerta("GET", "/fhir/Patient?identifier=123456") == 204)
-check("Identificador con otros parámetros sin token -> 401", puerta("GET", "/fhir/Patient?identifier=1&_count=50") == 401)
+check("Buscar un paciente por identificador sin token -> 401", puerta("GET", "/fhir/Patient?identifier=123456") == 401)
 check("Leer Patient/{id} sin token -> 401", puerta("GET", "/fhir/Patient/1") == 401)
 check("GET /fhir/Patient con token clínico pasa", puerta("GET", "/fhir/Patient", tok_m01) == 204)
 check("Un paciente no lee FHIR -> 403", puerta("GET", "/fhir/Patient", tok_paciente) == 403)
@@ -742,7 +755,7 @@ if pid_prueba and tok_urg and tok_uci:
         check("Paciente de cirugía que necesita UCI en cama general -> 422",
               client.post(f"/camas/{general}/asignar", headers=h(tok_admin), json={"encuentro_id": cx}).status_code == 422)
 else:
-    print("  (faltan las cuentas por área: aplicar db/11_areas_traslados.sql)")
+    print("  (faltan las cuentas por área: las crea scripts/generar_datos.py)")
 
 # ---------------------------------------------------------- 23. Tablero del área y turnos
 print("\n[23] Tablero del área y turnos de los jefes")

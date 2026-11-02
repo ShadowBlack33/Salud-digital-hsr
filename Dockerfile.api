@@ -17,6 +17,8 @@ RUN pip install -r requirements.txt
 # entran como variables de entorno desde docker-compose (env_file).
 COPY app ./app
 COPY scripts ./scripts
+# Guías del RAG (Semana 12): las indexa scripts/rag_indexar.py.
+COPY docs/rag/guias ./docs/rag/guias
 
 RUN useradd --create-home --uid 10001 api
 USER api

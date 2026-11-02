@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Esqueleto from "../../components/Esqueleto";
 import { Activity, Ban, KeyRound, Loader2, Lock, RefreshCw, ShieldCheck, Unlock, UserPlus, X } from "lucide-react";
 import Encabezado from "../../components/Encabezado";
+import AlertasSinAtender from "../../components/AlertasSinAtender";
 import Insignia from "../../components/Insignia";
 import CampoClave, { claveValida } from "../../components/CampoClave";
 import { useAvisos } from "../../components/Avisos";
@@ -32,6 +33,7 @@ export default function AdminPanel() {
     <div className="space-y-6 pb-16">
       <Encabezado titulo="Administración" subtitulo="Usuarios, cuentas bloqueadas, auditoría y estado del sistema." />
       <ResumenHoy bloqueadas={bloqueadas.length} />
+      <AlertasSinAtender />
 
       <div className="flex flex-wrap gap-2" role="tablist" aria-label="Secciones">
         {PESTANAS.map(([id, texto]) => (

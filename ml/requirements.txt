@@ -5,3 +5,5 @@ scikit-learn==1.5.2
 joblib==1.4.2
 pandas==2.2.3
 numpy==1.26.4
+# RAG (Semana 12): embeddings multilingües para POST /embed
+fastembed>=0.4,<0.8

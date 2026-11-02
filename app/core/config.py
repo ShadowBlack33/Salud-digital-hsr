@@ -79,6 +79,25 @@ class Settings(BaseSettings):
     ml_timeout_segundos: float = 10.0     # ML_TIMEOUT_SEGUNDOS
     # (Los minutos de escalamiento son alerta_escalamiento_minutos, arriba.)
 
+    # RAG (Semana 12, docs/RAG.md). Modelo que redacta: Gemini (capa gratuita de
+    # Google AI Studio) o Grok (xAI, de pago). Se usa el primero que tenga clave;
+    # sin ninguna, el asistente responde de forma extractiva.
+    gemini_api_key: str = ""              # GEMINI_API_KEY (aistudio.google.com)
+    gemini_model: str = "gemini-3.8-flash"   # GEMINI_MODEL: preguntas extensas o que piden razonar
+    gemini_model_lite: str = "gemini-3.5-flash-lite"   # GEMINI_MODEL_LITE: preguntas cortas y puntuales
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    xai_api_key: str = ""                 # XAI_API_KEY
+    xai_model: str = "grok-4.3"           # XAI_MODEL (confirmar en console.x.ai)
+    xai_base_url: str = "https://api.x.ai/v1"
+    rag_umbral_denso: float = 0.45        # RAG_UMBRAL_DENSO (calibrar con scripts/evaluar_rag.py)
+    rag_umbral_bm25: float = 5.0          # RAG_UMBRAL_BM25
+    # Umbrales más abiertos cuando hay modelo de lenguaje: la recuperación deja pasar y el modelo
+    # decide (responde NO_ENCONTRADO si las fuentes no alcanzan). Con preguntas en palabras propias
+    # ninguna regla sobre las señales de recuperación separa bien (ver docs/rag/eval/RESULTADOS.md).
+    rag_umbral_denso_llm: float = 0.35    # RAG_UMBRAL_DENSO_LLM
+    rag_umbral_bm25_llm: float = 4.0      # RAG_UMBRAL_BM25_LLM
+    rag_peso_denso: float = 1.0           # RAG_PESO_DENSO: peso del denso en la fusión RRF (BM25 pesa 1); ver scripts/evaluar_rag.py
+
     @property
     def cors_origenes(self) -> list[str]:
         return [o.strip() for o in self.cors_origenes_texto.split(",") if o.strip()]

@@ -50,7 +50,7 @@ diseño cumple o deja el camino listo para cumplir, no que exista una habilitaci
 | Exigencia | Control | Evidencia | Qué falta |
 |---|---|---|---|
 | La historia clínica electrónica debe ser **interoperable** entre prestadores | Servidor HL7 FHIR R4 (HAPI); pacientes, encuentros, observaciones, ubicaciones y remisiones (`ServiceRequest`) en recursos estándar | R15 y R21; `docs/MAPEO_FHIR.md` | Conexión real con el mecanismo nacional de interoperabilidad (IHCE) |
-| Seguridad y confidencialidad en el intercambio | `/fhir` cerrado detrás de la API: sin token solo `POST Observation`, `metadata` y búsqueda exacta de paciente; `DELETE` nunca | Puerta de nginx (`/_puerta_fhir`); `docs/SEGURIDAD.md` | SMART on FHIR (OAuth2 con scopes FHIR) |
+| Seguridad y confidencialidad en el intercambio | `/fhir` cerrado detrás de la API: sin token solo `metadata`; los resultados externos (`POST Observation`) exigen el token de la cuenta de integración; el `Patient` expuesto lleva un MRN interno, sin cédula ni teléfono; `DELETE` nunca | Puerta de nginx (`/_puerta_fhir`); `docs/SEGURIDAD.md` | SMART on FHIR (OAuth2 con scopes FHIR) |
 
 ### Resolución 866 de 2021 · Datos clínicos para la interoperabilidad
 
@@ -64,7 +64,7 @@ diseño cumple o deja el camino listo para cumplir, no que exista una habilitaci
 |---|---|---|---|
 | Características de **integralidad, secuencialidad y disponibilidad** | Historia del paciente en JSON y PDF con observaciones y reportes de IA **aprobados** | R11: `GET /pacientes/{id}/historia/pdf` | — |
 | Lo registrado **no se altera ni se borra** | Soft delete, edición con historial, restauración solo por admin | R14; `GET /pacientes/{id}/historial` | — |
-| **Confidencialidad** y acceso solo de quien está autorizado | Acceso por rol y por relación con el paciente; el especialista pierde el acceso al rechazar una remisión | R03 y R08 | Acceso de emergencia ("break-the-glass") auditado |
+| **Confidencialidad** y acceso solo de quien está autorizado | Acceso por rol y por relación con el paciente; el especialista recibe acceso solo por la remisión que se le asigna (por carga, sin opción de rechazarla) | R03 y R08 | Acceso de emergencia ("break-the-glass") auditado |
 | Lo que entra a la historia lo **valida un profesional** | El reporte de IA queda `pendiente` hasta que un médico lo aprueba; el rechazado se conserva como evidencia | R10 | Firma digital del profesional |
 
 ### Resolución 839 de 2017 · Retención de la historia clínica

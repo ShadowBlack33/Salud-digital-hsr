@@ -213,7 +213,7 @@ def al_alerta_critica(db, alerta) -> None:
     la fila en `alertas` (el clínico responsable es `dirigida_a_usuario`). La
     alerta sigue activa, y visible, hasta que se reconozca; si pasan
     ALERTA_ESCALAMIENTO_MINUTOS sin reconocerla, el escalamiento de
-    app/api/alertas.py avisa al admin (ver al_alerta_escalada).
+    app/api/alertas.py avisa a los otros médicos del paciente (ver al_alerta_escalada).
     """
     aid = _g(alerta, "id")
     responsable = _g(alerta, "dirigida_a_usuario") or _g(alerta, "usuario_id")
@@ -228,7 +228,7 @@ def al_alerta_critica(db, alerta) -> None:
 def al_alerta_escalada(db, alerta) -> None:
     """
     Una alerta crítica lleva ALERTA_ESCALAMIENTO_MINUTOS sin reconocerse: avisar a
-    sus `destinatarios` (los admin y otro clínico del paciente). Lo llama el
+    sus `destinatarios` (los otros médicos a cargo del paciente). Lo llama el
     escalamiento de app/api/alertas.py, que ya marcó `escalada_at` y auditó; la
     alerta sigue activa para el clínico responsable.
     """

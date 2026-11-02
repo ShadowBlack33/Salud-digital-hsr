@@ -1,0 +1,437 @@
+[
+  {
+    "id": "Q01",
+    "pregunta": "¿A partir de qué valor de glucosa se considera hipoglucemia de nivel 2?",
+    "esperado": "G01"
+  },
+  {
+    "id": "Q02",
+    "pregunta": "¿Cuántos gramos de carbohidratos se dan a un paciente consciente con azúcar baja y cuándo se vuelve a medir?",
+    "esperado": "G01"
+  },
+  {
+    "id": "Q03",
+    "pregunta": "¿Cuándo está indicado el glucagón?",
+    "esperado": "G01"
+  },
+  {
+    "id": "Q04",
+    "pregunta": "¿Desde qué cifra de potasio la hiperpotasemia es grave?",
+    "esperado": "G02"
+  },
+  {
+    "id": "Q05",
+    "pregunta": "¿Qué dosis de gluconato de calcio se usa para proteger el corazón?",
+    "esperado": "G02"
+  },
+  {
+    "id": "Q06",
+    "pregunta": "¿Cuál es el primer cambio en el electrocardiograma cuando sube el potasio?",
+    "esperado": "G02"
+  },
+  {
+    "id": "Q07",
+    "pregunta": "¿Cada cuánto se mide la glucosa después de dar insulina para bajar el potasio?",
+    "esperado": "G02"
+  },
+  {
+    "id": "Q08",
+    "pregunta": "¿Con qué hemoglobina se transfunde a un adulto hospitalizado estable?",
+    "esperado": "G03"
+  },
+  {
+    "id": "Q09",
+    "pregunta": "¿Qué umbral de transfusión se acepta en cirugía cardiaca?",
+    "esperado": "G03"
+  },
+  {
+    "id": "Q10",
+    "pregunta": "¿Qué umbral de hemoglobina aplica en cirugía ortopédica o enfermedad cardiovascular previa?",
+    "esperado": "G03"
+  },
+  {
+    "id": "Q11",
+    "pregunta": "¿Qué significa ASA III?",
+    "esperado": "G04"
+  },
+  {
+    "id": "Q12",
+    "pregunta": "¿Qué indica la letra E junto a la clase ASA?",
+    "esperado": "G04"
+  },
+  {
+    "id": "Q13",
+    "pregunta": "¿Un paciente con sepsis qué clase de estado físico anestésico tiene?",
+    "esperado": "G04"
+  },
+  {
+    "id": "Q14",
+    "pregunta": "¿Qué pacientes tienen prioridad 1 para ingresar a cuidados intensivos?",
+    "esperado": "G05"
+  },
+  {
+    "id": "Q15",
+    "pregunta": "¿Es preferible el sobretriaje o el subtriaje?",
+    "esperado": "G05"
+  },
+  {
+    "id": "Q16",
+    "pregunta": "¿En cuánto tiempo debería pasar un paciente de urgencias a la UCI?",
+    "esperado": "G05"
+  },
+  {
+    "id": "Q17",
+    "pregunta": "¿Qué se verifica en la pausa quirúrgica antes de la incisión?",
+    "esperado": "G06"
+  },
+  {
+    "id": "Q18",
+    "pregunta": "¿Cuánto redujo la mortalidad la lista de cirugía segura?",
+    "esperado": "G06"
+  },
+  {
+    "id": "Q19",
+    "pregunta": "¿Por qué el umbral del modelo de riesgo es 0,40 y no 0,50?",
+    "esperado": "G07"
+  },
+  {
+    "id": "Q20",
+    "pregunta": "¿Qué pasa si nadie reconoce una alerta crítica en 5 minutos?",
+    "esperado": "G07"
+  },
+  {
+    "id": "Q21",
+    "pregunta": "¿Un reporte de IA rechazado se borra?",
+    "esperado": "G07"
+  },
+  {
+    "id": "Q22",
+    "pregunta": "¿Cuántos días pasó en UCI la paciente P-7C1A después de la colecistectomía?",
+    "esperado": "H01"
+  },
+  {
+    "id": "Q23",
+    "pregunta": "¿Qué riesgo de UCI dio el reporte aprobado de la paciente de 78 años con potasio 6,6?",
+    "esperado": "H01"
+  },
+  {
+    "id": "Q24",
+    "pregunta": "¿El paciente P-2B9E necesitó cuidados intensivos tras la herniorrafia?",
+    "esperado": "H02"
+  },
+  {
+    "id": "Q25",
+    "pregunta": "¿Por qué se canceló la lobectomía de P-5D40?",
+    "esperado": "H03"
+  },
+  {
+    "id": "Q26",
+    "pregunta": "¿Qué remisión le rechazaron a la paciente con insuficiencia cardiaca?",
+    "esperado": "H03"
+  },
+  {
+    "id": "Q27",
+    "pregunta": "¿Se puede anular una factura que ya está pagada?",
+    "esperado": "G08"
+  },
+  {
+    "id": "Q28",
+    "pregunta": "¿Cuánto paga de cuota moderadora un paciente del régimen contributivo en urgencias?",
+    "esperado": "G08"
+  },
+  {
+    "id": "Q29",
+    "pregunta": "¿Cuál es el tiempo máximo de atención para un paciente clasificado como triage II?",
+    "esperado": "G09"
+  },
+  {
+    "id": "Q30",
+    "pregunta": "¿Quién puede hacer el triage en un servicio de urgencias de baja complejidad?",
+    "esperado": "G09"
+  },
+  {
+    "id": "Q31",
+    "pregunta": "¿Se le puede negar la atención de urgencias a alguien por su clasificación de triage?",
+    "esperado": "G09"
+  },
+  {
+    "id": "Q32",
+    "pregunta": "¿Qué puntaje NEWS2 obliga a una respuesta de emergencia con equipo de cuidado crítico?",
+    "esperado": "G10"
+  },
+  {
+    "id": "Q33",
+    "pregunta": "¿Cuántos puntos suma en NEWS2 que el paciente reciba oxígeno suplementario?",
+    "esperado": "G10"
+  },
+  {
+    "id": "Q34",
+    "pregunta": "¿En qué pacientes no se debe usar la escala NEWS2?",
+    "esperado": "G10"
+  },
+  {
+    "id": "Q35",
+    "pregunta": "¿En cuánto tiempo hay que iniciar antibióticos si se sospecha choque séptico?",
+    "esperado": "G11"
+  },
+  {
+    "id": "Q36",
+    "pregunta": "¿Cuál es el vasopresor de primera línea en el choque séptico y la meta de presión arterial media?",
+    "esperado": "G11"
+  },
+  {
+    "id": "Q37",
+    "pregunta": "¿Cuántos mililitros por kilo de cristaloides se sugieren en la reanimación inicial de la sepsis?",
+    "esperado": "G11"
+  },
+  {
+    "id": "Q38",
+    "pregunta": "¿Cuántas horas antes de la cirugía puede tomar líquidos claros un adulto sano?",
+    "esperado": "G12"
+  },
+  {
+    "id": "Q39",
+    "pregunta": "¿Cuánto ayuno se necesita después de una comida frita o grasosa?",
+    "esperado": "G12"
+  },
+  {
+    "id": "Q40",
+    "pregunta": "¿Mascar chicle es motivo para cancelar la anestesia?",
+    "esperado": "G12"
+  },
+  {
+    "id": "Q41",
+    "pregunta": "¿Cuántos años se debe conservar la historia clínica?",
+    "esperado": "G13"
+  },
+  {
+    "id": "Q42",
+    "pregunta": "¿Quiénes pueden acceder a la historia clínica de un paciente?",
+    "esperado": "G13"
+  },
+  {
+    "id": "Q43",
+    "pregunta": "¿Cómo se corrige un error en la historia clínica?",
+    "esperado": "G13"
+  },
+  {
+    "id": "Q44",
+    "pregunta": "¿Me pueden exigir un pago antes de atenderme en urgencias?",
+    "esperado": "G14"
+  },
+  {
+    "id": "Q45",
+    "pregunta": "¿En cuántos días me deben entregar la copia de mi historia clínica?",
+    "esperado": "G14"
+  },
+  {
+    "id": "Q46",
+    "pregunta": "¿Qué cirugías cuentan en el indicador de cancelación de cirugía programada P.2.15?",
+    "esperado": "G15"
+  },
+  {
+    "id": "Q47",
+    "pregunta": "¿Cada cuánto se reportan los indicadores de calidad de la Resolución 256 de 2016?",
+    "esperado": "G15"
+  },
+  {
+    "id": "Q48",
+    "pregunta": "¿Cuáles son los siete estándares de habilitación de un servicio de salud?",
+    "esperado": "G16"
+  },
+  {
+    "id": "Q49",
+    "pregunta": "¿Cuánto dura la inscripción inicial de un prestador en el REPS?",
+    "esperado": "G16"
+  },
+  {
+    "id": "Q50",
+    "pregunta": "¿Cuánto es la cuota moderadora en 2026 para un afiliado que gana entre 2 y 5 salarios mínimos?",
+    "esperado": "G17"
+  },
+  {
+    "id": "Q51",
+    "pregunta": "¿Cuál es el tope anual de copagos en el régimen subsidiado en 2026?",
+    "esperado": "G17"
+  },
+  {
+    "id": "Q52",
+    "pregunta": "¿Cuánto vale la UVB en 2026?",
+    "esperado": "G17"
+  },
+  {
+    "id": "Q53",
+    "pregunta": "¿Con qué algoritmo se guardan las contraseñas en Pulso?",
+    "esperado": "G18"
+  },
+  {
+    "id": "Q54",
+    "pregunta": "¿Cuántos intentos fallidos bloquean una cuenta?",
+    "esperado": "G18"
+  },
+  {
+    "id": "P01",
+    "pregunta": "Mi paciente diabético tiene el azúcar muy baja y está dormido, ¿qué le pongo?",
+    "esperado": "G01",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P02",
+    "pregunta": "¿Cómo protejo el corazón cuando el K en sangre está peligrosamente alto?",
+    "esperado": "G02",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P03",
+    "pregunta": "¿Hasta qué nivel de sangre se tolera antes de pasar glóbulos rojos a un adulto hospitalizado?",
+    "esperado": "G03",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P04",
+    "pregunta": "¿Cómo se califica para anestesia a alguien con una enfermedad que amenaza su vida todo el tiempo?",
+    "esperado": "G04",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P05",
+    "pregunta": "¿Cuánto tiempo debe estar sin comer un paciente antes de entrar a cirugía?",
+    "esperado": "G12",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P06",
+    "pregunta": "¿Me pueden cobrar plata en la puerta antes de que me vean en urgencias?",
+    "esperado": "G14",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P07",
+    "pregunta": "¿Cuánto tengo que pagar de mi bolsillo por una consulta si cotizo en una EPS?",
+    "esperado": "G17",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P08",
+    "pregunta": "¿Por cuántos años tiene que guardar el hospital el expediente de un paciente?",
+    "esperado": "G13",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P09",
+    "pregunta": "¿En cuántas horas hay que dar el primer antimicrobiano a quien tiene una infección y está en choque?",
+    "esperado": "G11",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P10",
+    "pregunta": "¿Cuánto puede esperar alguien que llega casi muriéndose a urgencias?",
+    "esperado": "G09",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P11",
+    "pregunta": "¿Qué revisa el equipo del quirófano justo antes de hacer el corte?",
+    "esperado": "G06",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P12",
+    "pregunta": "¿Qué herramienta avisa que un enfermo se va a complicar y necesitará cuidados intensivos?",
+    "esperado": "G07",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P13",
+    "pregunta": "¿Cada cuánto tiempo el hospital tiene que renovar el permiso para ofrecer sus servicios?",
+    "esperado": "G16",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P14",
+    "pregunta": "¿Qué datos de los usuarios se guardan encriptados en el sistema?",
+    "esperado": "G18",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "P15",
+    "pregunta": "¿A quién le avisa el sistema si un médico ignora una alerta urgente?",
+    "esperado": "G07",
+    "tipo": "parafraseada"
+  },
+  {
+    "id": "N01",
+    "pregunta": "¿Cuál es el tratamiento de la malaria complicada?",
+    "esperado": null
+  },
+  {
+    "id": "N02",
+    "pregunta": "¿Cuánto cuesta el parqueadero del hospital?",
+    "esperado": null
+  },
+  {
+    "id": "N03",
+    "pregunta": "¿Qué vacunas necesita un niño de dos meses?",
+    "esperado": null
+  },
+  {
+    "id": "N04",
+    "pregunta": "¿Cómo se trata una fractura de tibia?",
+    "esperado": null
+  },
+  {
+    "id": "N05",
+    "pregunta": "¿Cuál es la dosis de amoxicilina en un niño con otitis?",
+    "esperado": null
+  },
+  {
+    "id": "N06",
+    "pregunta": "¿Quién ganó el Mundial de fútbol de 2022?",
+    "esperado": null
+  },
+  {
+    "id": "N07",
+    "pregunta": "¿Cómo se liquida la nómina del personal de enfermería?",
+    "esperado": null
+  },
+  {
+    "id": "N08",
+    "pregunta": "¿Cuánto cuesta una consulta particular con un cardiólogo?",
+    "esperado": null
+  },
+  {
+    "id": "N09",
+    "pregunta": "¿Cómo se diagnostica la diabetes tipo 1?",
+    "esperado": null
+  },
+  {
+    "id": "N10",
+    "pregunta": "¿Cómo se interpreta una radiografía de tórax?",
+    "esperado": null
+  },
+  {
+    "id": "N11",
+    "pregunta": "¿Cuáles son los síntomas del dengue?",
+    "esperado": null
+  },
+  {
+    "id": "N12",
+    "pregunta": "¿Cómo se configura una impresora de red en el hospital?",
+    "esperado": null
+  },
+  {
+    "id": "N13",
+    "pregunta": "¿Cuántos días de incapacidad corresponden después de una apendicectomía?",
+    "esperado": null
+  },
+  {
+    "id": "N14",
+    "pregunta": "¿Cómo se calcula la dosis de heparina en una trombosis venosa?",
+    "esperado": null
+  },
+  {
+    "id": "N15",
+    "pregunta": "¿Qué turnos tiene el personal de enfermería los fines de semana?",
+    "esperado": null
+  }
+]

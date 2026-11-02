@@ -9,13 +9,12 @@ volver a aplicarlos podría chocar con lo que ya está cargado
 (tablas duplicadas, filas repetidas, error de llave única, etc.).
 
 Uso:
-    python scripts/aplicar_sql.py db/01_schema.sql
-    python scripts/aplicar_sql.py db/02_seed_catalogos.sql
-    python scripts/aplicar_sql.py db/03_datos_sinteticos.sql
+    python scripts/aplicar_sql.py db/esquema_completo.sql      # base vacía
+    python scripts/aplicar_sql.py db/03_datos_sinteticos.sql   # salida de generar_datos.py
     python scripts/aplicar_sql.py db/00_reset_datos.sql
 
 Para saltar la confirmación (por ejemplo, en un script automatizado):
-    python scripts/aplicar_sql.py db/01_schema.sql --forzar
+    python scripts/aplicar_sql.py db/esquema_completo.sql --forzar
 """
 import os
 import sys
@@ -45,7 +44,7 @@ def verificar_estado(cur, archivo: str):
     """
     nombre = os.path.basename(archivo).lower()
 
-    if "01_schema" in nombre:
+    if "01_schema" in nombre or "esquema_completo" in nombre:
         if existe_tabla(cur, "roles"):
             return ("El esquema ya está creado (la tabla 'roles' ya existe). "
                     "Volver a crearlo va a fallar en cada tabla que ya exista, "

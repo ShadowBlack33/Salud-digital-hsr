@@ -39,6 +39,9 @@ SYS_LOC_STATUS = "http://terminology.hl7.org/CodeSystem/v2-0116"
 SYS_LOC_TYPE = "http://terminology.hl7.org/CodeSystem/location-physical-type"
 SYS_ID_TYPE = "http://terminology.hl7.org/CodeSystem/v2-0203"
 SYS_HOSPITAL = "http://hsanrafael.co/fhir/identifier"
+# Número de historia del hospital (MRN): el uuid del paciente. No tiene
+# significado fuera de Pulso, a diferencia de la cédula.
+SYS_MRN = f"{SYS_HOSPITAL}/mrn"
 
 # ---------------------------------------------------------------- mapeos
 # Encuentro.tipo -> Encounter.class (v3-ActCode)
@@ -80,29 +83,30 @@ def _fecha(v) -> str | None:
 # ==========================================================================
 
 def paciente_a_fhir(p) -> dict:
-    """pacientes -> Patient. Descifra solo lo necesario para el recurso."""
-    documento = descifrar(p.documento_cifrado, "pacientes.documento")
+    """
+    pacientes -> Patient, con lo mínimo para la interoperabilidad clínica.
+
+    NO lleva la cédula ni el teléfono: el servidor FHIR es la puerta hacia otros
+    sistemas, y con la cédula cualquiera que la conociera podía ubicar al
+    paciente y leer sus datos. Se identifica con el número de historia del
+    hospital (MRN = uuid del paciente), que no sirve fuera de Pulso. Un
+    laboratorio externo refiere al paciente por ese MRN o por Patient/{id}.
+    """
     nombre = descifrar(p.nombre_cifrado, "pacientes.nombre")
     apellido = descifrar(p.apellido_cifrado, "pacientes.apellido")
-    telefono = descifrar(p.telefono_cifrado, "pacientes.telefono") if p.telefono_cifrado else None
-
-    recurso = {
+    return {
         "resourceType": "Patient",
         "identifier": [{
-            "use": "official",
-            "type": {"coding": [{"system": SYS_ID_TYPE, "code": "NI",
-                                 "display": "National unique individual identifier"}]},
-            "system": SYS_HOSPITAL,
-            "value": documento,
+            "use": "usual",
+            "type": {"coding": [{"system": SYS_ID_TYPE, "code": "MR", "display": "Medical record number"}]},
+            "system": SYS_MRN,
+            "value": str(p.uuid),
         }],
         "active": bool(p.activo),
         "name": [{"use": "official", "family": apellido, "given": [nombre]}],
         "gender": SEXO_FHIR.get(p.sexo, "unknown"),
         "birthDate": _fecha(p.fecha_nacimiento),
     }
-    if telefono:
-        recurso["telecom"] = [{"system": "phone", "value": telefono, "use": "mobile"}]
-    return recurso
 
 
 def encuentro_a_fhir(e, fhir_patient_id: str | None = None) -> dict:
@@ -295,10 +299,10 @@ PRIORIDAD_REMISION = {"rutinaria": "routine", "prioritaria": "urgent", "urgente"
 
 def remision_a_fhir(r: dict, fhir_patient_id: str | None = None,
                     medico: str | None = None, especialista: str | None = None,
-                    especialidad: str | None = None) -> dict:
-    """Solo referencias y el motivo: ni nombre ni documento del paciente."""
+                    especialidad: str | None = None, mrn: str | None = None) -> dict:
+    """Solo referencias y el motivo: ni nombre ni documento del paciente (ni su índice ciego)."""
     sujeto = ({"reference": f"Patient/{fhir_patient_id}"} if fhir_patient_id
-              else {"identifier": {"system": SYS_HOSPITAL, "value": r["paciente_id"]}})
+              else {"identifier": {"system": SYS_MRN, "value": mrn or "desconocido"}})
     recurso = {
         "resourceType": "ServiceRequest",
         "identifier": [{"system": SYS_REMISION, "value": str(r["id"])}],

@@ -39,6 +39,8 @@ usuarios:
   especialista: { username: especialista01, password: "Demo#Hospital2026" }
   paciente:     { username: paciente_demo,  password: "Demo#Hospital2026" }
   contable:     { username: contable01,     password: "Demo#Hospital2026" }
+  # Cuenta con la que un laboratorio externo (o el tester) publica en /fhir (R15, R21).
+  integracion:  { username: integracion_svc, password: "Demo#Hospital2026" }
   # Cuenta que el tester bloquea con 3 intentos fallidos (R02). No es de ningún integrante.
   bloqueo:      { username: facturacion01,  password: "Demo#Hospital2026", id: 271 }
 
@@ -91,8 +93,12 @@ rutas:
   # R07 · Clusters
   clusters:           { metodo: GET,   ruta: /analitica/clusters }
   # R08 · Remisiones
+  # El médico remite a una especialidad y dice para qué (tipo_solicitud); el sistema
+  # asigna el especialista con menos carga. especialista_id fijo queda solo para el
+  # tester, así especialista01 puede aceptarla. El especialista no puede rechazar.
   remitir:            { metodo: POST,  ruta: /remisiones,
-                        cuerpo: { paciente_id: "{paciente_id}", especialista_id: 1, motivo: "Remisión de prueba del tester", prioridad: prioritaria } }
+                        cuerpo: { paciente_id: "{paciente_id}", especialista_id: 1, tipo_solicitud: valoracion,
+                                  motivo: "Remisión de prueba del tester", prioridad: prioritaria } }
   remisiones:         { metodo: GET,   ruta: /remisiones }
   remision_aceptar:   { metodo: POST,  ruta: "/remisiones/{remision_id}/aceptar" }
   # R09 · Contabilidad (MongoDB)
@@ -113,10 +119,17 @@ rutas:
   # R14 · Soft delete y restauración
   paciente_borrar:    { metodo: DELETE, ruta: "/pacientes/{paciente_id}" }
   paciente_restaurar: { metodo: POST,  ruta: "/pacientes/{paciente_id}/restaurar" }
-  # R15 · FHIR: búsqueda exacta del paciente por su identificador (no requiere token)
-  fhir_paciente:      { metodo: GET,   ruta: "/fhir/Patient?identifier={documento}", base: fhir }
-  # R21 · Observation publicada en el servidor FHIR (no requiere token)
-  fhir_observation:   { metodo: POST,  ruta: /fhir/Observation, base: fhir, loinc: "2339-0" }
+  # R15 · FHIR: búsqueda del paciente por su número de historia (MRN). Requiere token con
+  # fhir:read (admin o integración): sin token ya no se puede buscar a nadie, y el Patient
+  # ya no lleva la cédula. El MRN es el uuid del paciente (sistema .../identifier/mrn).
+  fhir_paciente:      { metodo: GET,   ruta: "/fhir/Patient?identifier={mrn}", base: fhir, usuario: integracion }
+  # R21 · Observation publicada en el servidor FHIR. Requiere el token de la cuenta de
+  # integración; el subject es Patient/{fhir_patient_id} o el MRN (nunca la cédula).
+  fhir_observation:   { metodo: POST,  ruta: /fhir/Observation, base: fhir, loinc: "2339-0", usuario: integracion }
+  # Semana 12 · Asistente RAG: todos los perfiles; cada uno solo recupera lo suyo.
+  rag_preguntar:      { metodo: POST,  ruta: /rag/preguntar, cuerpo: { pregunta: "¿Desde qué cifra de potasio la hiperpotasemia es grave?" } }
+  # R20 · Supervisión: alertas sin atender por médico (coordinador y admin)
+  alertas_sin_atender: { metodo: GET,  ruta: /alertas/sin-atender }
 
 # R17 · Canal en tiempo real (SSE)
 tiempo_real:

@@ -23,7 +23,7 @@ Calibración
 
 Uso
 ---
-    python scripts/generar_datos.py --meses 6 --salida db/03_datos.sql
+    python scripts/generar_datos.py --meses 6 --salida db/03_datos_sinteticos.sql
 """
 from __future__ import annotations
 
@@ -66,6 +66,9 @@ PERSONAL_POR_TIPO = {
     "auxiliar_enfermeria": 60,
     "secretaria": 10,
 }
+
+# Tipo de personal -> rol (los demás tipos se llaman igual que su rol).
+ROL_DEL_TIPO = {"medico_general": "medico", "medico_especialista": "especialista"}
 
 TASA_CANCELACION = 0.052        # punto medio del rango 2,7 %-7,6 %
 CIRUGIAS_POR_DIA_HABIL = 34
@@ -125,8 +128,9 @@ def gen_usuarios_y_personal():
     pid = 0
     uid = 0
 
-    # Mapa de tipo de personal -> código de rol
-    rol_por_tipo = {t: t for t in PERSONAL_POR_TIPO}
+    # Mapa de tipo de personal -> código de rol. Los roles de médico se
+    # llaman 'medico' y 'especialista' desde el Corte 2 (db/esquema_completo.sql).
+    rol_por_tipo = {t: ROL_DEL_TIPO.get(t, t) for t in PERSONAL_POR_TIPO}
 
     esp_quirurgicas = list(range(1, 11))   # ids de especialidades quirúrgicas
     pwd_demo = hash_password("Demo#Hospital2026")
@@ -191,10 +195,10 @@ def gen_usuarios_y_personal():
     # Cuentas especiales para la demo de roles
     especiales = [
         ("admin",                  "admin"),
-        ("director",               "director_medico"),
-        ("coordinador",            "coordinador_quirurgico"),
+        ("director",               "coordinador"),
+        ("coordinador",            "coordinador"),
         ("integracion_svc",        "servicio_integracion"),
-        ("facturacion01",          "facturacion"),
+        ("facturacion01",          "contable"),
     ]
     for username, rol in especiales:
         uid += 1
@@ -261,7 +265,7 @@ def gen_pacientes(n: int) -> list[str]:
     """
     Genera n pacientes. La llave primaria de `pacientes` ya no es un id
     autoincremental -- es documento_bidx, el índice ciego de la cédula
-    (ver la nota en db/01_schema.sql). Por eso esta función YA NO recibe
+    (ver la nota en db/historial/01_schema.sql). Por eso esta función YA NO recibe
     ni asigna un id secuencial: cada fila se identifica por su propio
     documento_bidx, calculado aquí mismo.
 
@@ -509,14 +513,105 @@ def gen_encuentros(pacientes_bidx: list[str], n_personal, n_camas, meses: int):
 
 
 # ---------------------------------------------------------------------------
+# Lo que antes hacían las migraciones 04, 07, 08, 09, 11 y 12 sobre los datos
+# ya cargados (db/historial/). Va al final del archivo generado porque
+# necesita el personal, la cuenta 'admin' (su hash es la clave de demostración)
+# y los eventos. Todo es idempotente.
+CUENTAS_Y_AJUSTES_DEMO = """
+-- ---------------------------------------------------------------- ajustes y cuentas de demostración
+-- Subtipo de cama y de quirófano en los eventos (horas ociosas por tipo de recurso).
+UPDATE eventos_estado e SET entidad_subtipo = tc.codigo
+  FROM camas c JOIN tipos_cama tc ON tc.id = c.tipo_cama_id
+ WHERE e.entidad_tipo = 'cama' AND e.entidad_id = c.id AND e.entidad_subtipo IS NULL;
+UPDATE eventos_estado e SET entidad_subtipo = CASE
+         WHEN q.tiene_circulacion_extracorporea THEN 'CARDIOVASCULAR'
+         WHEN q.tiene_arco_c THEN 'CON_ARCO_C' ELSE 'GENERAL' END
+  FROM quirofanos q
+ WHERE e.entidad_tipo = 'quirofano' AND e.entidad_id = q.id AND e.entidad_subtipo IS NULL;
+
+-- Tipo de documento coherente con la edad.
+UPDATE pacientes SET tipo_documento = CASE
+    WHEN fecha_nacimiento > CURRENT_DATE - INTERVAL '7 years'  THEN 'RC'
+    WHEN fecha_nacimiento > CURRENT_DATE - INTERVAL '18 years' THEN 'TI'
+    WHEN tipo_documento IN ('RC', 'TI') THEN 'CC'
+    ELSE tipo_documento END
+ WHERE activo;
+
+-- Cuentas de demostración con la misma clave que 'admin'. medico01,
+-- especialista01 y jefe01 quedan ligados a un registro de personal real.
+SELECT setval(pg_get_serial_sequence('usuarios', 'id'), (SELECT COALESCE(MAX(id), 1) FROM usuarios));
+INSERT INTO usuarios (username, password_hash, rol_id, personal_id, debe_cambiar_password)
+SELECT v.usuario, (SELECT password_hash FROM usuarios WHERE username = 'admin'),
+       (SELECT id FROM roles WHERE codigo = v.rol),
+       (SELECT p.id FROM personal p WHERE p.tipo_personal = v.tipo_personal AND p.activo ORDER BY p.id LIMIT 1),
+       FALSE
+FROM (VALUES (1, 'medico01', 'medico', 'medico_general'),
+             (2, 'especialista01', 'especialista', 'medico_especialista'),
+             (3, 'contable01', 'contable', NULL),
+             (4, 'bloqueo_prueba', 'medico', NULL),       -- prueba de bloqueo del tester (R02)
+             (5, 'jefe01', 'enfermero_jefe', 'enfermero_jefe')) AS v(orden, usuario, rol, tipo_personal)
+WHERE NOT EXISTS (SELECT 1 FROM usuarios u WHERE u.username = v.usuario)
+ORDER BY v.orden;
+
+-- Jefes de enfermería por área: jefe01 en Cirugía y tres por cada área.
+UPDATE usuarios SET servicio_id = (SELECT id FROM servicios WHERE codigo = 'CIR') WHERE username = 'jefe01';
+INSERT INTO usuarios (username, password_hash, rol_id, personal_id, servicio_id, debe_cambiar_password)
+SELECT a.base || n.n, (SELECT password_hash FROM usuarios WHERE username = 'admin'),
+       (SELECT id FROM roles WHERE codigo = 'enfermero_jefe'), NULL,
+       (SELECT id FROM servicios WHERE codigo = a.servicio), FALSE
+FROM (VALUES (1, 'jefe_urg', 'URG'), (2, 'jefe_uci', 'UCI_ADU'), (3, 'jefe_ucip', 'UCI_PED'),
+             (4, 'jefe_piso4', 'HOSP_1'), (5, 'jefe_piso5', 'HOSP_2')) AS a(orden, base, servicio)
+CROSS JOIN (VALUES (''), ('2'), ('3')) AS n(n)
+WHERE NOT EXISTS (SELECT 1 FROM usuarios u WHERE u.username = a.base || n.n)
+ORDER BY n.n, a.orden;
+
+-- Turnos de los jefes por área: de ayer a dos semanas.
+DELETE FROM turnos_area WHERE tipo <> 'cobertura' AND fin > (CURRENT_DATE - 1);
+WITH jefes AS (
+    SELECT s.id AS servicio_id, u.id AS usuario_id,
+           ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY u.username) - 1 AS k
+    FROM servicios s
+    JOIN usuarios u ON u.servicio_id = s.id AND u.activo
+    JOIN roles r ON r.id = u.rol_id AND r.codigo = 'enfermero_jefe'
+    WHERE s.codigo IN ('URG', 'UCI_ADU', 'UCI_PED', 'HOSP_1', 'HOSP_2')
+),
+cuantos AS (SELECT servicio_id, COUNT(*) AS n FROM jefes GROUP BY servicio_id),
+dias AS (SELECT d::date AS dia, ROW_NUMBER() OVER (ORDER BY d) AS i
+         FROM generate_series(CURRENT_DATE - 1, CURRENT_DATE + 14, INTERVAL '1 day') AS d),
+franjas AS (SELECT * FROM (VALUES (0, 'manana', '07:00'::time, INTERVAL '6 hours'),
+                                  (1, 'tarde',  '13:00'::time, INTERVAL '6 hours'),
+                                  (2, 'noche',  '19:00'::time, INTERVAL '12 hours')) AS f(s, tipo, hora, dur))
+INSERT INTO turnos_area (servicio_id, usuario_id, inicio, fin, tipo)
+SELECT j.servicio_id, j.usuario_id,
+       (d.dia + f.hora) AT TIME ZONE 'America/Bogota',
+       (d.dia + f.hora + f.dur) AT TIME ZONE 'America/Bogota',
+       f.tipo
+FROM dias d CROSS JOIN franjas f
+JOIN cuantos c ON TRUE
+JOIN jefes j ON j.servicio_id = c.servicio_id AND j.k = (d.i + f.s) % c.n;
+"""
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--meses", type=int, default=6)
     ap.add_argument("--pacientes", type=int, default=4000)
     ap.add_argument("--salida", default="db/03_datos_sinteticos.sql")
+    ap.add_argument("--claves-efimeras", action="store_true",
+                    help="Cifrar con claves al azar (los datos NO los podrá leer la API)")
     args = ap.parse_args()
 
-    # Claves efímeras si no hay entorno configurado (solo para generar)
+    # Las claves deben ser las mismas de la API (.env): con otras, la API no
+    # puede descifrar los nombres ni encontrar a nadie por cédula.
+    try:
+        from dotenv import load_dotenv  # noqa: PLC0415
+        load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+    except ImportError:
+        pass
+    faltan = [k for k in ("APP_ENCRYPTION_KEY", "APP_BLIND_INDEX_KEY") if not os.getenv(k)]
+    if faltan and not args.claves_efimeras:
+        sys.exit(f"Faltan {', '.join(faltan)} (en el .env o en el entorno). Sin ellas los datos "
+                 "quedarían cifrados con otra clave. Para generar igual: --claves-efimeras")
     os.environ.setdefault("APP_ENCRYPTION_KEY", generar_clave())
     os.environ.setdefault("APP_BLIND_INDEX_KEY", generar_clave())
 
@@ -564,6 +659,7 @@ def main():
             f"SELECT setval(pg_get_serial_sequence('{t}','id'), "
             f"COALESCE((SELECT MAX(id) FROM {t}), 1));"
         )
+    sql.append(CUENTAS_Y_AJUSTES_DEMO)
     sql.append("COMMIT;")
 
     os.makedirs(os.path.dirname(args.salida) or ".", exist_ok=True)
