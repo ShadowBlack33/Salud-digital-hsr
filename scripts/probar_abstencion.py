@@ -55,7 +55,7 @@ def _crudo(pregunta: str, marco: list[dict], extensa: bool) -> str:
         hecho = rag._llm(pregunta, marco, None, extensa)
         return hecho[1] + " -> " + hecho[0][:400].replace("\n", " ") if hecho else "(sin proveedor)"
     except Exception as e:  # noqa: BLE001
-        return f"(falló: {type(e).__name__})"
+        return f"(falló: {type(e).__name__} {getattr(getattr(e, 'response', None), 'status_code', '')})"
 
 
 def main() -> None:
@@ -89,11 +89,10 @@ def main() -> None:
                   "texto": frags[i].texto} for i in orden[:rag.TOP_K_EXTENSA]]
         if ids:
             print(f"\n== {p['id']} (esperado {p['esperado']}): {p['pregunta']}")
-            print("   Lo que vio el lite (4):   " + " | ".join(f"{m['documento_id']}·{m['seccion']}" for m in marco[:rag.TOP_K]))
-            print("   Lo que vio el completo (8): " + " | ".join(f"{m['documento_id']}·{m['seccion']}" for m in marco))
-            print("   Lite, 4 fragmentos:     " + _crudo(p["pregunta"], marco[:rag.TOP_K], False))
+            print("   Fragmentos recuperados: " + " | ".join(f"{m['documento_id']}·{m['seccion']}" for m in marco))
+            print("   Lite:     " + _crudo(p["pregunta"], marco, False))
             time.sleep(PAUSA)
-            print("   Completo, 8 fragmentos: " + _crudo(p["pregunta"], marco, True))
+            print("   Completo: " + _crudo(p["pregunta"], marco, True))
             time.sleep(PAUSA)
             continue
         if not pasa:

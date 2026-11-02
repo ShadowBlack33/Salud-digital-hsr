@@ -39,8 +39,8 @@ UMBRAL_DENSO = _cfg.rag_umbral_denso   # RAG_UMBRAL_DENSO: calibrar con scripts/
 UMBRAL_BM25 = _cfg.rag_umbral_bm25     # RAG_UMBRAL_BM25: solo si no hay vectores; calibrado en la evaluación
 UMBRAL_DENSO_LLM = _cfg.rag_umbral_denso_llm
 UMBRAL_BM25_LLM = _cfg.rag_umbral_bm25_llm
-TOP_K = 4            # fragmentos que recibe el modelo lite (preguntas cortas)
-TOP_K_EXTENSA = 8    # fragmentos que recibe el modelo completo (preguntas extensas)
+TOP_K = 8            # fragmentos que recibe el modelo (completo o lite)
+TOP_K_EXTENSA = TOP_K   # nombre anterior; los dos modelos reciben lo mismo
 CANDIDATOS_DENSOS = 20
 
 
@@ -50,16 +50,16 @@ _EXTENSA = re.compile(r"\b(explica\w*|por que|porque|compar\w*|diferencia\w*|res
                       r"que hago|que debo|paso a paso|ventajas|desventajas|relacion|justifica\w*|evalua\w*)\b")
 
 
-def es_extensa(pregunta: str, frags: list[dict]) -> bool:
+def es_extensa(pregunta: str, frags: list[dict] | None = None) -> bool:
     """
     ¿Modelo completo o lite? Completo si la pregunta es larga (más de 18
-    palabras), pide explicar, comparar o resumir, o mezcla varias fuentes
-    distintas (por ejemplo, una historia y una guía). Lo demás, el lite:
-    preguntas cortas y puntuales ("¿desde qué potasio es grave?").
+    palabras) o pide explicar, comparar o resumir; lo demás, el lite. Antes
+    también iban al completo las preguntas cuyos fragmentos venían de tres o más
+    documentos, pero esas son sobre todo preguntas fuera del corpus, y el
+    completo tarda más: ver docs/RAG.md.
     """
     norm = core.normalizar(pregunta)
-    documentos = {f["documento_id"] for f in frags if f.get("documento_id")}
-    return len(norm.split()) > 18 or bool(_EXTENSA.search(norm)) or len(documentos) >= 3
+    return len(norm.split()) > 18 or bool(_EXTENSA.search(norm))
 
 
 def _proveedor(extensa: bool = True) -> tuple[str, str, str, str] | None:
@@ -432,12 +432,12 @@ def _llm(pregunta: str, frags: list[dict], rol: str | None = None,
     y Grok exponen la misma API de chat compatible con OpenAI, así que la
     llamada es una sola. Devuelve (texto, "proveedor:modelo") o None si no hay clave.
     """
-    prov = _proveedor(es_extensa(pregunta, frags) if extensa is None else extensa)
+    prov = _proveedor(es_extensa(pregunta) if extensa is None else extensa)
     if prov is None:
         return None
     nombre, base, clave, modelo = prov
     import httpx  # noqa: PLC0415
-    r = httpx.post(f"{base.rstrip('/')}/chat/completions", timeout=45,
+    r = httpx.post(f"{base.rstrip('/')}/chat/completions", timeout=30,
                    headers={"Authorization": f"Bearer {clave}"},
                    json={"model": modelo, "temperature": 0, "max_tokens": 2048,   # holgado: Gemini 2.5 también gasta tokens pensando
                          "messages": [{"role": "system", "content": SISTEMA + (
@@ -469,15 +469,14 @@ def responder(pregunta: str, frags: list[dict], rol: str | None = None, estricto
         return {"respuesta": "No encuentro información suficiente en las fuentes autorizadas para responder.",
                 "abstencion": True, "citas_usadas": [], "generador": "ninguno"}
     texto = generador = None
-    # Se recuperan hasta 8 fragmentos ya ordenados: el modelo completo los recibe
-    # todos y el lite solo los 4 primeros (más contexto en una pregunta puntual es
-    # ruido). Como es un prefijo, [F1]..[F4] significan lo mismo en los dos casos.
-    extensa = es_extensa(pregunta, frags[:TOP_K]) if forzar_extensa is None else forzar_extensa   # forzar: solo para diagnóstico
+    # Los dos modelos reciben los mismos 8 fragmentos: en la prueba de abstención el pasaje
+    # que respondía quedó a veces en el puesto 7 (P11), fuera de los 4 primeros.
+    extensa = es_extensa(pregunta) if forzar_extensa is None else forzar_extensa   # forzar: solo para diagnóstico
     # Primero el modelo que corresponde; si falla (límite de la capa gratuita, red),
     # el otro; si también falla, la respuesta extractiva.
     for intento in (extensa, not extensa):
         try:
-            hecho = _llm(pregunta, frags if intento else frags[:TOP_K], rol, intento)
+            hecho = _llm(pregunta, frags, rol, intento)
         except Exception:  # noqa: BLE001 -- sin red, sin saldo o error del proveedor: no se cae la consulta
             log.warning("El modelo (%s) no respondió", "completo" if intento else "lite", exc_info=True)
             continue
