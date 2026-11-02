@@ -91,6 +91,11 @@ class Settings(BaseSettings):
     xai_base_url: str = "https://api.x.ai/v1"
     rag_umbral_denso: float = 0.45        # RAG_UMBRAL_DENSO (calibrar con scripts/evaluar_rag.py)
     rag_umbral_bm25: float = 5.0          # RAG_UMBRAL_BM25
+    # Umbrales más abiertos cuando hay modelo de lenguaje: la recuperación deja pasar y el modelo
+    # decide (responde NO_ENCONTRADO si las fuentes no alcanzan). Con preguntas en palabras propias
+    # ninguna regla sobre las señales de recuperación separa bien (ver docs/rag/eval/RESULTADOS.md).
+    rag_umbral_denso_llm: float = 0.35    # RAG_UMBRAL_DENSO_LLM
+    rag_umbral_bm25_llm: float = 4.0      # RAG_UMBRAL_BM25_LLM
     rag_peso_denso: float = 1.0           # RAG_PESO_DENSO: peso del denso en la fusión RRF (BM25 pesa 1); ver scripts/evaluar_rag.py
 
     @property

@@ -37,6 +37,8 @@ CARPETA_GUIAS = RAIZ / "docs" / "rag" / "guias"
 _cfg = get_settings()
 UMBRAL_DENSO = _cfg.rag_umbral_denso   # RAG_UMBRAL_DENSO: calibrar con scripts/evaluar_rag.py
 UMBRAL_BM25 = _cfg.rag_umbral_bm25     # RAG_UMBRAL_BM25: solo si no hay vectores; calibrado en la evaluación
+UMBRAL_DENSO_LLM = _cfg.rag_umbral_denso_llm
+UMBRAL_BM25_LLM = _cfg.rag_umbral_bm25_llm
 TOP_K = 4            # fragmentos que recibe el modelo lite (preguntas cortas)
 TOP_K_EXTENSA = 8    # fragmentos que recibe el modelo completo (preguntas extensas)
 CANDIDATOS_DENSOS = 20
@@ -308,6 +310,24 @@ def _filtro(db: Session, ctx, paciente_id: str | None) -> tuple[str, dict]:
     return guias, params
 
 
+def evaluar_umbral(denso: float | None, bm25: float, metodo: str) -> tuple[bool, bool]:
+    """
+    (pasa, pasa_estricto). `pasa_estricto` es la regla calibrada sin modelo de lenguaje: denso Y BM25
+    sobre su umbral (solo BM25 si no hay vectores). Con un modelo configurado `pasa` es la regla
+    abierta (denso O BM25): la recuperación solo descarta lo claramente ajeno y el modelo decide
+    con NO_ENCONTRADO. Sin modelo, `pasa` es la estricta: la respuesta extractiva no puede
+    corregir un fragmento irrelevante.
+    """
+    if denso is None:
+        estricto, abierto = bm25 >= UMBRAL_BM25, bm25 >= UMBRAL_BM25_LLM
+    elif metodo == "denso":
+        estricto, abierto = denso >= UMBRAL_DENSO, denso >= UMBRAL_DENSO_LLM
+    else:
+        estricto = denso >= UMBRAL_DENSO and bm25 >= UMBRAL_BM25
+        abierto = denso >= UMBRAL_DENSO_LLM or bm25 >= UMBRAL_BM25_LLM
+    return (abierto if _proveedor(True) is not None else estricto), estricto
+
+
 def buscar(db: Session, ctx, pregunta: str, paciente_id: str | None = None,
            metodo: str = "hibrido", k: int = TOP_K_EXTENSA) -> dict:
     """Devuelve {"fragmentos": [...], "confianza": float, "metodo_usado": str}."""
@@ -341,7 +361,7 @@ def buscar(db: Session, ctx, pregunta: str, paciente_id: str | None = None,
         usado = "bm25"
         top = rank_bm25[0][1] if rank_bm25 else 0.0
         confianza = min(1.0, top / (UMBRAL_BM25 * 2)) if top else 0.0
-        supera = top >= UMBRAL_BM25
+        supera, estricto = evaluar_umbral(None, top, "bm25")
     else:
         if metodo == "denso":
             orden, usado = [i for i, _ in rank_denso], "denso"
@@ -351,18 +371,18 @@ def buscar(db: Session, ctx, pregunta: str, paciente_id: str | None = None,
             orden, usado = [i for i, _ in fusion], "hibrido"
         confianza = rank_denso[0][1]
         top_bm25 = rank_bm25[0][1] if rank_bm25 else 0.0
-        # Híbrido: las dos señales deben estar de acuerdo. Con la guía de
-        # facturación, "¿cuánto cuesta el parqueadero?" se parece en significado
-        # a los cobros (coseno 0,57) aunque no comparte términos (BM25 4,6): solo
-        # con el denso no habría umbral que separe; con los dos, sí.
-        supera = confianza >= UMBRAL_DENSO and (metodo == "denso" or top_bm25 >= UMBRAL_BM25)
+        # La regla estricta pide que las dos señales estén de acuerdo (con la guía de
+        # facturación, "¿cuánto cuesta el parqueadero?" se parece en significado a los
+        # cobros, coseno 0,57, aunque no comparte términos, BM25 4,6). Con modelo de
+        # lenguaje se usa la abierta; ver evaluar_umbral().
+        supera, estricto = evaluar_umbral(confianza, top_bm25, usado)
 
     if paciente_id:
         # Si se pregunta por un paciente, su historia (ya ordenada por relevancia) va
         # antes que las guías: estas quedan como respaldo en las posiciones siguientes.
         orden = sorted(orden, key=lambda i: por_id[i]["tipo"] != "historia")
     frags = [por_id[i] for i in orden[:k]] if supera else []
-    return {"fragmentos": frags, "confianza": round(confianza, 3), "metodo_usado": usado}
+    return {"fragmentos": frags, "confianza": round(confianza, 3), "metodo_usado": usado, "estricto": estricto}
 
 
 # ================================================================== generación
@@ -438,8 +458,12 @@ def citas_en(texto: str, n_fuentes: int) -> list[int]:
     return sorted(n for n in numeros if 1 <= n <= n_fuentes)
 
 
-def responder(pregunta: str, frags: list[dict], rol: str | None = None) -> dict:
-    """Redacta la respuesta y devuelve solo las citas que realmente usa."""
+def responder(pregunta: str, frags: list[dict], rol: str | None = None, estricto: bool = True) -> dict:
+    """
+    Redacta la respuesta y devuelve solo las citas que realmente usa. `estricto` dice si los
+    fragmentos pasaron la regla estricta de recuperación: si el modelo falla y solo queda la
+    respuesta extractiva, sin esa garantía es mejor abstenerse que devolver texto ajeno.
+    """
     if not frags:
         return {"respuesta": "No encuentro información suficiente en las fuentes autorizadas para responder.",
                 "abstencion": True, "citas_usadas": [], "generador": "ninguno"}
@@ -460,6 +484,9 @@ def responder(pregunta: str, frags: list[dict], rol: str | None = None) -> dict:
             texto, generador = hecho
         break
     if not texto:
+        if not estricto:
+            return {"respuesta": "No encuentro información suficiente en las fuentes autorizadas para responder.",
+                    "abstencion": True, "citas_usadas": [], "generador": "ninguno"}
         texto, generador = _extractiva(pregunta, frags), "extractivo"
     usadas = citas_en(texto, len(frags))
     if NO_ENCONTRADO in texto or not usadas:

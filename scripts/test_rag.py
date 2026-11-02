@@ -203,6 +203,16 @@ desviadas = [p["id"] for p in preg
 check("Ninguna pregunta de la evaluación se desvía a los datos en vivo (siguen yendo al RAG)", not desviadas, desviadas)
 
 print("\n[RAG 6] Citas, abstención y auditoría")
+_prov = rag._proveedor
+try:
+    rag._proveedor = lambda extensa=True: None
+    sin_llm = rag.evaluar_umbral(0.26, 4.9, "hibrido"), rag.evaluar_umbral(0.61, 5.8, "hibrido")
+    rag._proveedor = lambda extensa=True: ("gemini", "", "x", "m")
+    con_llm = rag.evaluar_umbral(0.26, 4.9, "hibrido"), rag.evaluar_umbral(0.20, 3.1, "hibrido")
+finally:
+    rag._proveedor = _prov
+check("Sin modelo la compuerta es estricta (denso Y BM25); con modelo se abre (denso O BM25)",
+      sin_llm == ((False, False), (True, True)) and con_llm == ((True, False), (False, False)), (sin_llm, con_llm))
 r = preguntar(tok_med, "¿Desde qué cifra de potasio la hiperpotasemia es grave?", metodo="bm25")
 j = r.json()
 check("Pregunta de guía: responde con cita", r.status_code == 200 and not j["abstencion"] and j["citas"], j)

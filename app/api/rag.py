@@ -113,7 +113,7 @@ def preguntar(datos: Pregunta, request: Request,
     hallazgo = svc.buscar(db, ctx, datos.pregunta, datos.paciente_id, datos.metodo)
     frags = hallazgo["fragmentos"]
     rol = ctx.payload.get("rol")
-    resp = svc.responder(datos.pregunta, frags, rol)
+    resp = svc.responder(datos.pregunta, frags, rol, estricto=hallazgo.get("estricto", True))
 
     citas = []
     for n in resp["citas_usadas"]:
