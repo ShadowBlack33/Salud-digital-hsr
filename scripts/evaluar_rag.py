@@ -152,6 +152,29 @@ def main() -> None:
         lineas.append(f"- Preguntas con respuesta que se abstendrían por error: {', '.join(malas_con) or 'ninguna'}.")
         lineas.append(f"- Preguntas sin respuesta que se responderían por error: {', '.join(malas_sin) or 'ninguna'}.")
 
+        # Señales de cada pregunta que la regla actual clasifica mal, y búsqueda de una regla mejor.
+        senal = {p["id"]: (max_sim(p["id"]), top_bm25(p["pregunta"])) for p in preguntas}
+        if malas_con or malas_sin:
+            lineas += ["\n### Preguntas mal clasificadas (coseno máximo, BM25 máximo)\n", "| Pregunta | Debería | Coseno | BM25 |", "| --- | --- | --- | --- |"]
+            for p in preguntas:
+                if p["id"] in malas_con + malas_sin:
+                    lineas.append(f"| {p['id']} | {'responder' if p['esperado'] else 'abstenerse'} | {senal[p['id']][0]:.2f} | {senal[p['id']][1]:.1f} |")
+        sin_ids = [p["id"] for p in sin_respuesta]
+        lineas.append(f"\nPreguntas sin respuesta ({len(sin_ids)}), mayor coseno / mayor BM25: "
+                      + "; ".join(f"{i} {senal[i][0]:.2f}/{senal[i][1]:.1f}" for i in sorted(sin_ids, key=lambda i: -senal[i][0])[:5]) + ".")
+        reglas = []
+        for ud in (0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60):
+            for ub in (0.0, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0):
+                for op, f in (("y", lambda c, b, ud=ud, ub=ub: c >= ud and b >= ub), ("o", lambda c, b, ud=ud, ub=ub: c >= ud or b >= ub)):
+                    e1 = sum(1 for p in con_respuesta if not f(*senal[p["id"]]))
+                    e2 = sum(1 for p in sin_respuesta if f(*senal[p["id"]]))
+                    reglas.append((e1 + e2, e1, e2, ud, ub, op))
+        reglas.sort(key=lambda r: (r[0], r[2], -r[3], -r[4]))
+        lineas += ["\n### Mejores reglas de abstención probadas (denso ≥ u_d `y`/`o` BM25 ≥ u_b)\n",
+                   "| Errores | Se abstiene sin deber | Responde sin deber | u_d | u_b | Operador |", "| --- | --- | --- | --- | --- | --- |"]
+        lineas += [f"| {t} | {a_} | {b_} | {ud} | {ub} | {op} |" for t, a_, b_, ud, ub, op in reglas[:6]]
+        lineas.append(f"\nCon {len(sin_respuesta)} preguntas sin respuesta y {len(con_respuesta)} con respuesta, elegir un umbral sobre estos mismos datos lo ajusta a ellos: se reporta como calibración, no como garantía.")
+
     salida = "\n".join(lineas) + "\n"
     print(salida)
     (RAIZ / "docs/rag/eval/RESULTADOS.md").write_text(salida, encoding="utf-8")
