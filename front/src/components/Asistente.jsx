@@ -19,6 +19,15 @@ const EJEMPLOS = {
   coordinador: ["¿Hay alertas sin atender?", "¿Cuántas camas libres hay?",
                 "¿Qué pasa si nadie reconoce una alerta crítica en 5 minutos?"],
 };
+/** Quién produjo la respuesta: útil para explicar el RAG (y para saber si el modelo falló). */
+function origen(g) {
+  if (!g) return null;
+  if (g === "sistema") return "Datos en vivo de Pulso";
+  if (g === "extractivo") return "Extractivo: frases de la fuente, sin modelo";
+  if (g === "ninguno") return "Sin evidencia en las fuentes: no se llamó al modelo";
+  return `Redactado por ${g.split(":").pop()} solo con las fuentes citadas`;
+}
+
 const EJEMPLOS_CLINICOS = ["¿Cuántos pacientes tengo?", "¿Tengo alertas?",
                            "¿Desde qué cifra de potasio la hiperpotasemia es grave?",
                            "¿Con qué hemoglobina se transfunde a un paciente estable?"];
@@ -60,7 +69,7 @@ export default function Asistente() {
     try {
       const r = await S.preguntarAsistente(q, pacienteId && soloPaciente ? pacienteId : null);
       setConversacion((c) => [...c, { quien: "asistente", texto: r.respuesta, citas: r.citas || [], abstencion: r.abstencion,
-                                      fuentes: r.fuentes_disponibles || [] }]);
+                                      fuentes: r.fuentes_disponibles || [], generador: r.generador }]);
     } catch (err) {
       setConversacion((c) => [...c, { quien: "asistente", texto: err.message, error: true }]);
     } finally { setEnviando(false); }
@@ -109,6 +118,7 @@ export default function Asistente() {
             {conversacion.map((m, i) => (
               <div key={i} className={m.quien === "yo" ? "ml-8 rounded-2xl bg-charcoal px-4 py-2.5 text-sm text-white" : `mr-4 rounded-2xl px-4 py-2.5 text-sm ${m.error ? "bg-coral-soft text-coral-ink" : "bg-cloud-card"}`}>
                 <p className="whitespace-pre-wrap">{m.texto}</p>
+                {origen(m.generador) && <p className="mt-1 text-[11px] text-gray-strong">{origen(m.generador)}</p>}
                 {m.abstencion && m.fuentes?.length > 0 && (
                   <div className="mt-2 border-t border-paper-white pt-2 text-xs text-gray-strong">
                     <p className="font-medium">Puedo responder sobre:</p>
