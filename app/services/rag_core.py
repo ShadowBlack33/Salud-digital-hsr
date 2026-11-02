@@ -218,12 +218,17 @@ def coseno(a: list[float], b: list[float]) -> float:
 
 
 # ------------------------------------------------------------------ fusión y métricas
-def rrf(rankings: list[list[int]], k: int = 60) -> list[tuple[int, float]]:
-    """Reciprocal Rank Fusion: suma 1/(k + posición) de cada lista. No necesita calibrar escalas."""
+def rrf(rankings: list[list[int]], k: int = 60, pesos: list[float] | None = None) -> list[tuple[int, float]]:
+    """
+    Reciprocal Rank Fusion: suma peso/(k + posición) de cada lista. No necesita calibrar
+    escalas. `pesos` (uno por lista, por defecto todos 1) deja darle menos voz a un método;
+    se elige con scripts/evaluar_rag.py sobre preguntas separadas de las que se reportan.
+    """
+    pesos = pesos or [1.0] * len(rankings)
     total: dict[int, float] = {}
-    for lista in rankings:
+    for lista, w in zip(rankings, pesos):
         for pos, idx in enumerate(lista, start=1):
-            total[idx] = total.get(idx, 0.0) + 1.0 / (k + pos)
+            total[idx] = total.get(idx, 0.0) + w / (k + pos)
     return sorted(total.items(), key=lambda x: -x[1])
 
 

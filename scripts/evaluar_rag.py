@@ -6,7 +6,7 @@ Usa el mismo corpus y el mismo código de recuperación que la API
 (app/services/rag_core.py): guías de docs/rag/guias y las historias de
 evaluación de docs/rag/eval/historias (pacientes ficticios ya seudonimizados).
 
-Mide Recall@1, Recall@3 y MRR a nivel de documento para BM25, denso e
+Mide Recall@1, Recall@3 y MRR a nivel de documento (en total y por tipo de pregunta) para BM25, denso e
 híbrido (RRF), sobre las preguntas de docs/rag/eval/preguntas.json que
 tienen documento esperado. Las preguntas sin documento esperado sirven para
 calibrar la abstención: se reporta la similitud máxima que alcanzan.
@@ -51,10 +51,32 @@ def main() -> None:
         sims = sorted(((i, coseno(qv, v)) for i, v in enumerate(vec_frags)), key=lambda x: -x[1])
         return [i for i, _ in sims[:K]]
 
+    PESOS = [1.0, 0.75, 0.5, 0.35, 0.25, 0.15]   # peso del denso en la fusión (BM25 siempre 1)
+
+    def hibrido(p, w):
+        return [i for i, _ in rrf([rank_bm25(p["pregunta"]), rank_denso(p["id"])], pesos=[1.0, w])][:K]
+
+    # Separación para elegir el peso sin ajustar sobre lo que se reporta: dentro de cada
+    # grupo (literales / parafraseadas) las preguntas se reparten una a una entre
+    # "ajuste" (elige el peso) y "prueba" (se reporta). Es determinista.
+    ajuste, prueba = [], []
+    for grupo in ("literal", "parafraseada"):
+        del_grupo = [p for p in con_respuesta if p.get("tipo", "literal") == grupo]
+        ajuste += del_grupo[0::2]
+        prueba += del_grupo[1::2]
+
+    def medir(fn, preguntas):
+        return metricas([(documentos_en_orden(fn(p), frags), p["esperado"]) for p in preguntas])
+
     metodos = {"BM25": lambda p: rank_bm25(p["pregunta"])}
+    peso_elegido = 1.0
     if vec_frags:
         metodos["Denso"] = lambda p: rank_denso(p["id"])
-        metodos["Híbrido (RRF)"] = lambda p: [i for i, _ in rrf([rank_bm25(p["pregunta"]), rank_denso(p["id"])])][:K]
+        metodos["Híbrido (RRF, pesos iguales)"] = lambda p: hibrido(p, 1.0)
+        # El peso se elige con el MRR de las preguntas de ajuste; a igualdad, el mayor peso.
+        peso_elegido = max(PESOS, key=lambda w: (round(medir(lambda p: hibrido(p, w), ajuste)["mrr"], 4), w))
+        if peso_elegido != 1.0:
+            metodos[f"Híbrido (RRF, peso del denso {peso_elegido})"] = lambda p: hibrido(p, peso_elegido)
 
     filas, fallos = [], {}
     for nombre, fn in metodos.items():
@@ -69,11 +91,33 @@ def main() -> None:
         f"Corpus: {len(docs)} documentos ({sum(d.tipo == 'guia' for d in docs)} guías, "
         f"{sum(d.tipo == 'historia' for d in docs)} historias de evaluación), {len(frags)} fragmentos. "
         f"Preguntas con documento esperado: {len(con_respuesta)}. Modelo denso: `{MODELO_EMBEDDING}`.\n",
+        "## Todas las preguntas\n",
         "| Método | Recall@1 | Recall@3 | MRR |", "| --- | --- | --- | --- |",
     ]
     lineas += [f"| {n} | {m['recall@1']:.2f} | {m['recall@3']:.2f} | {m['mrr']:.2f} |" for n, m in filas]
     if not vec_frags:
         lineas.append("\n_Sin modelo denso disponible: solo se midió BM25. Instalar con `pip install fastembed` (con internet para descargar el modelo) y repetir._")
+
+    # Por tipo de pregunta: literales (usan las palabras de la guía) y parafraseadas (palabras propias).
+    for grupo, titulo in (("literal", "Preguntas literales (con las palabras de la guía)"),
+                          ("parafraseada", "Preguntas parafraseadas (sin las palabras de la guía)")):
+        sub = [p for p in con_respuesta if p.get("tipo", "literal") == grupo]
+        lineas += [f"\n## {titulo}: {len(sub)}\n", "| Método | Recall@1 | Recall@3 | MRR |", "| --- | --- | --- | --- |"]
+        for n, fn in metodos.items():
+            m = medir(fn, sub)
+            lineas.append(f"| {n} | {m['recall@1']:.2f} | {m['recall@3']:.2f} | {m['mrr']:.2f} |")
+
+    if vec_frags:
+        lineas += [f"\n## Elección del peso del denso en la fusión\n",
+                   f"Las preguntas se reparten (una a una, dentro de cada tipo) en {len(ajuste)} de ajuste y {len(prueba)} de prueba. "
+                   "El peso se elige con el MRR de las de **ajuste**; el resultado que se reporta es el de las de **prueba**, que no intervinieron en la elección.\n",
+                   "| Peso del denso | MRR (ajuste) | MRR (prueba) | Recall@1 (prueba) |", "| --- | --- | --- | --- |"]
+        for w in PESOS:
+            a_, t_ = medir(lambda p: hibrido(p, w), ajuste), medir(lambda p: hibrido(p, w), prueba)
+            lineas.append(f"| {w}{' ←' if w == peso_elegido else ''} | {a_['mrr']:.2f} | {t_['mrr']:.2f} | {t_['recall@1']:.2f} |")
+        b_, d_ = medir(metodos["BM25"], prueba), medir(metodos["Denso"], prueba)
+        lineas.append(f"\nEn las de prueba: BM25 R@1 {b_['recall@1']:.2f} / MRR {b_['mrr']:.2f}; denso R@1 {d_['recall@1']:.2f} / MRR {d_['mrr']:.2f}.")
+        lineas.append(f"\nPeso elegido: **{peso_elegido}** (`RAG_PESO_DENSO` en `.env`; por defecto 1,0).")
 
     lineas.append("\n## Preguntas donde el primer documento no fue el esperado\n")
     for nombre, lista in fallos.items():
