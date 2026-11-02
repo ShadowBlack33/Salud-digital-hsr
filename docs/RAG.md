@@ -84,21 +84,21 @@ Al servicio `ml` (embeddings) y al modelo que redacta (Gemini o Grok) solo llega
 | Método | Recall@1 | Recall@3 | MRR |
 | --- | --- | --- | --- |
 | BM25 | 0,94 | 1,00 | 0,97 |
-| Denso | por medir con el corpus de 18 guías | | |
-| Híbrido (RRF) | por medir con el corpus de 18 guías | | |
+| Denso | 0,80 | 0,89 | 0,85 |
+| Híbrido (RRF) | 0,87 | 0,94 | 0,91 |
 
-Con las 8 guías iniciales (28 preguntas) los resultados fueron BM25 0,96 / 1,00 / 0,98; denso 0,79 / 0,96 / 0,88; híbrido 0,96 / 0,96 / 0,97. Con 18 guías BM25 falla en primera posición Q08, Q16 y Q45, siempre con el documento correcto en el top 3.
+Con las 8 guías iniciales (28 preguntas) los resultados fueron BM25 0,96 / 1,00 / 0,98; denso 0,79 / 0,96 / 0,88; híbrido 0,96 / 0,96 / 0,97. Con 18 guías BM25 falla en primera posición Q08, Q16 y Q45, siempre con el documento correcto en el top 3. El híbrido falla siete (Q13, Q16, Q23, Q41, Q43, Q44, Q45): en casi todas el denso empuja un documento vecino (historia clínica frente a derechos del paciente, las historias de evaluación entre sí, ASA frente a sepsis) y la fusión le da el mismo peso que a BM25.
 
 Detalle y fallos por pregunta en `docs/rag/eval/RESULTADOS.md`. BM25 falla una pregunta en la primera posición (Q08) y el híbrido otra (Q23). El denso falla seis: confunde guías que comparten vocabulario clínico (por ejemplo, hipoglucemia con hiperpotasemia) y dos de las tres historias entre sí, porque las tres tienen la misma estructura y solo cambian las cifras.
 
-**Método elegido: híbrido (RRF).** En este corpus BM25 sale igual o un poco mejor (Recall@1 empatado, MRR 0,98 frente a 0,97). Aun así se usa el híbrido:
+**Método elegido: híbrido (RRF).** En este corpus BM25 sale mejor (con 18 guías, Recall@1 0,94 frente a 0,87 y MRR 0,97 frente a 0,91; con 8 guías estaban empatados). Aun así se usa el híbrido, porque la evaluación favorece a BM25 y no al uso real:
 
 - Las preguntas las escribió el equipo leyendo las guías, así que repiten sus mismas palabras, y eso favorece a BM25. Un médico pregunta con sus propias palabras ("azúcar baja", "potasio alto", "estado físico para anestesia"), y ahí BM25 no encuentra el término y el denso sí.
 - BM25 sigue dentro de la fusión, así que se conserva su fuerza con cifras, códigos y términos exactos ("6,5 mmol/L", "ASA III", "P-7C1A").
 - RRF combina posiciones, no puntajes: no hay que calibrar dos escalas distintas.
 - Si el servicio de embeddings no responde, la búsqueda sigue solo con BM25, y el endpoint permite pedir `metodo: "bm25"` o `"denso"`.
 
-**Abstención calibrada.** Con las 8 guías iniciales, ninguna señal sola alcanzaba (con 18 guías BM25 sigue separando: mínimo con respuesta 5,3, máximo sin respuesta 4,3):
+**Abstención calibrada.** Con las 8 guías iniciales ninguna señal sola alcanzaba. Con 18 guías pasa lo mismo: BM25 separa (mínimo con respuesta 5,3, máximo sin respuesta 4,3), pero el denso no (mínimo con respuesta 0,47, máximo sin respuesta 0,57). La regla combinada sigue sin errores: ninguna pregunta con respuesta se abstiene y ninguna sin respuesta se responde. Valores con 8 guías:
 
 | Señal | Preguntas con respuesta (mínimo) | Preguntas sin respuesta (máximo) | ¿Separa? |
 | --- | --- | --- | --- |
