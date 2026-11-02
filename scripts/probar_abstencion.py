@@ -15,10 +15,15 @@ Usa el mismo corpus, la misma recuperación y el mismo prompt que la API, pero e
 Hace una llamada por pregunta (con pausa, por el límite de la capa gratuita).
 
 Uso:  python scripts/probar_abstencion.py            (escribe docs/rag/eval/RESULTADOS_ABSTENCION.md)
+
+Diagnóstico de unas preguntas (no escribe el archivo): qué fragmentos recibió el modelo, qué
+contestó y cómo cambia con el modelo completo y los 8 fragmentos:
+      python scripts/probar_abstencion.py --ids P04,P05,P11,P12
 """
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import time
 from pathlib import Path
@@ -33,6 +38,26 @@ from app.services.rag_core import BM25, coseno, embeber, fragmentar, leer_docume
 PAUSA = 5   # segundos entre preguntas
 
 
+class _Fallos(logging.Handler):
+    """Cuenta las veces que el modelo no respondió (tiempo agotado, 503...) sin imprimir el rastro."""
+    def __init__(self) -> None:
+        super().__init__(logging.WARNING)
+        self.n = 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if "no respondió" in record.getMessage():
+            self.n += 1
+
+
+def _crudo(pregunta: str, marco: list[dict], extensa: bool) -> str:
+    """Respuesta tal cual del modelo, para ver por qué se abstuvo."""
+    try:
+        hecho = rag._llm(pregunta, marco, None, extensa)
+        return hecho[1] + " -> " + hecho[0][:400].replace("\n", " ") if hecho else "(sin proveedor)"
+    except Exception as e:  # noqa: BLE001
+        return f"(falló: {type(e).__name__})"
+
+
 def main() -> None:
     if rag._proveedor(True) is None:
         sys.exit("No hay GEMINI_API_KEY ni XAI_API_KEY en el .env: esta prueba necesita el modelo.")
@@ -45,6 +70,13 @@ def main() -> None:
     preguntas = [p for p in json.loads((RAIZ / "docs/rag/eval/preguntas.json").read_text(encoding="utf-8"))
                  if p["id"].startswith(("N", "P"))]
 
+    ids = None
+    if "--ids" in sys.argv:
+        ids = set(sys.argv[sys.argv.index("--ids") + 1].split(","))
+        preguntas = [p for p in preguntas if p["id"] in ids]
+    fallos = _Fallos()
+    logging.getLogger("app.services.rag").addHandler(fallos)
+    logging.getLogger("app.services.rag").propagate = False
     filas, ok_n, n_n, ok_p, n_p = [], 0, 0, 0, 0
     for p in preguntas:
         qv = embeber([p["pregunta"]])[0]
@@ -55,6 +87,15 @@ def main() -> None:
         pasa, estricto = rag.evaluar_umbral(denso[0][1], lex[0][1] if lex else 0.0, "hibrido")
         marco = [{"documento_id": frags[i].documento_id, "titulo": frags[i].titulo, "seccion": frags[i].seccion,
                   "texto": frags[i].texto} for i in orden[:rag.TOP_K_EXTENSA]]
+        if ids:
+            print(f"\n== {p['id']} (esperado {p['esperado']}): {p['pregunta']}")
+            print("   Lo que vio el lite (4):   " + " | ".join(f"{m['documento_id']}·{m['seccion']}" for m in marco[:rag.TOP_K]))
+            print("   Lo que vio el completo (8): " + " | ".join(f"{m['documento_id']}·{m['seccion']}" for m in marco))
+            print("   Lite, 4 fragmentos:     " + _crudo(p["pregunta"], marco[:rag.TOP_K], False))
+            time.sleep(PAUSA)
+            print("   Completo, 8 fragmentos: " + _crudo(p["pregunta"], marco, True))
+            time.sleep(PAUSA)
+            continue
         if not pasa:
             resultado, gen, citados = "abstiene", "recuperación", []
         else:
@@ -74,10 +115,13 @@ def main() -> None:
         filas.append((p["id"], p["esperado"] or "-", resultado, gen, ", ".join(citados) or "-", "sí" if bien else "NO"))
         print(f"{p['id']}: {resultado} ({gen}) {', '.join(citados)} -> {'ok' if bien else 'MAL'}", flush=True)
 
+    if ids:
+        return
     lineas = ["# Abstención con modelo de lenguaje\n",
               f"Compuerta abierta (denso ≥ {rag.UMBRAL_DENSO_LLM} o BM25 ≥ {rag.UMBRAL_BM25_LLM}); decide el modelo.\n",
               f"- Preguntas sin respuesta que terminan en abstención: **{ok_n} de {n_n}**.",
               f"- Preguntas parafraseadas respondidas citando la guía esperada: **{ok_p} de {n_p}**.\n",
+              f"- Llamadas al modelo que fallaron y pasaron al otro modelo (tiempo agotado, 503): {fallos.n}.\n",
               "| Pregunta | Esperado | Resultado | Quién decidió | Citó | ¿Bien? |", "| --- | --- | --- | --- | --- | --- |"]
     lineas += [f"| {' | '.join(f)} |" for f in filas]
     salida = "\n".join(lineas) + "\n"
