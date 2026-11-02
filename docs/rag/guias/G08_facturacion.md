@@ -25,7 +25,7 @@ Los tipos de cobro son consulta, urgencias, hospitalización, cirugía, imagenol
 
 ## Quién paga: cobertura y reparto del valor
 
-La cobertura puede ser particular, EPS, régimen especial, SOAT o medicina prepagada. Un paciente particular paga todo. Con SOAT o régimen especial el paciente paga 0. Con prepagada paga el menor valor entre el servicio y 35.000 pesos. En consulta y urgencias con EPS paga la cuota moderadora: 4.700 pesos en el régimen contributivo y 0 en el subsidiado. En los demás servicios con EPS paga un copago del 11,5 % en el contributivo y del 10 % en el subsidiado; el resto lo paga la entidad.
+La cobertura puede ser particular, EPS, régimen especial, SOAT o medicina prepagada. Un paciente particular paga todo. Con SOAT o régimen especial el paciente paga 0. Con prepagada paga el menor valor entre el servicio y 35.000 pesos. En consulta y urgencias con EPS paga la cuota moderadora: Pulso usa como referencia interna 4.700 pesos en el régimen contributivo (el valor de 2025 del rango de menos de 2 salarios mínimos) y 0 en el subsidiado. En los demás servicios con EPS paga un copago del 11,5 % en el contributivo y del 10 % en el subsidiado; el resto lo paga la entidad. Los valores oficiales vigentes, por rango de ingreso y con sus topes, están en la guía de cuotas moderadoras y copagos.
 
 ## Factura automática del análisis de IA
 

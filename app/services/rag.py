@@ -37,7 +37,8 @@ CARPETA_GUIAS = RAIZ / "docs" / "rag" / "guias"
 _cfg = get_settings()
 UMBRAL_DENSO = _cfg.rag_umbral_denso   # RAG_UMBRAL_DENSO: calibrar con scripts/evaluar_rag.py
 UMBRAL_BM25 = _cfg.rag_umbral_bm25     # RAG_UMBRAL_BM25: solo si no hay vectores; calibrado en la evaluación
-TOP_K = 4
+TOP_K = 4            # fragmentos que recibe el modelo lite (preguntas cortas)
+TOP_K_EXTENSA = 8    # fragmentos que recibe el modelo completo (preguntas extensas)
 CANDIDATOS_DENSOS = 20
 
 
@@ -201,10 +202,22 @@ def texto_historia_aprobada(db: Session, p: Paciente) -> str | None:
 _CLINICOS = ["admin", "medico", "especialista", "anestesiologo", "enfermero_jefe", "enfermero",
              "instrumentador", "auxiliar_enfermeria"]
 AUDIENCIAS = {
-    "clinica": _CLINICOS,                         # guías de manejo clínico (G01-G06)
-    "operativa": _CLINICOS + ["coordinador"],     # protocolo interno de Pulso (G07)
-    "facturacion": ["contable", "admin"],          # facturación (G08)
+    "clinica": _CLINICOS,                         # guías de manejo clínico
+    "operativa": _CLINICOS + ["coordinador"],     # protocolo de Pulso, triage
+    "facturacion": ["contable", "admin"],          # facturación, cuotas y copagos
+    "paciente": ["paciente", "admin"],             # historia clínica, derechos del paciente
+    "coordinacion": ["coordinador", "admin"],      # indicadores de calidad, habilitación
+    "admin": ["admin"],                            # seguridad y normativa de Pulso
 }
+
+
+def perfiles_de(audiencia: str) -> list[str]:
+    """'clinica, paciente' -> unión de los perfiles de cada grupo (una guía puede ir a varios)."""
+    grupos = [g.strip() for g in audiencia.split(",") if g.strip()]
+    desconocidos = [g for g in grupos if g not in AUDIENCIAS]
+    if not grupos or desconocidos:
+        raise ValueError(f"audiencia '{audiencia}' desconocida (opciones: {sorted(AUDIENCIAS)})")
+    return sorted({r for g in grupos for r in AUDIENCIAS[g]})
 
 
 # ================================================================== escritura del índice
@@ -234,9 +247,7 @@ def indexar_guias(db: Session) -> int:
     for ruta in sorted(CARPETA_GUIAS.glob("*.md")):
         doc = core.leer_documento(ruta)
         db.execute(text("DELETE FROM rag_fragmentos WHERE documento_id = :d"), {"d": doc.id})
-        if doc.audiencia not in AUDIENCIAS:
-            raise ValueError(f"{ruta.name}: audiencia '{doc.audiencia}' desconocida (opciones: {sorted(AUDIENCIAS)})")
-        total += _guardar(db, core.fragmentar(doc), None, "aprobado", AUDIENCIAS[doc.audiencia])
+        total += _guardar(db, core.fragmentar(doc), None, "aprobado", perfiles_de(doc.audiencia))
     db.commit()
     return total
 
@@ -298,7 +309,7 @@ def _filtro(db: Session, ctx, paciente_id: str | None) -> tuple[str, dict]:
 
 
 def buscar(db: Session, ctx, pregunta: str, paciente_id: str | None = None,
-           metodo: str = "hibrido", k: int = TOP_K) -> dict:
+           metodo: str = "hibrido", k: int = TOP_K_EXTENSA) -> dict:
     """Devuelve {"fragmentos": [...], "confianza": float, "metodo_usado": str}."""
     where, params = _filtro(db, ctx, paciente_id)
     candidatos = db.execute(text(f"""
@@ -432,12 +443,15 @@ def responder(pregunta: str, frags: list[dict], rol: str | None = None) -> dict:
         return {"respuesta": "No encuentro información suficiente en las fuentes autorizadas para responder.",
                 "abstencion": True, "citas_usadas": [], "generador": "ninguno"}
     texto = generador = None
-    extensa = es_extensa(pregunta, frags)
+    # Se recuperan hasta 8 fragmentos ya ordenados: el modelo completo los recibe
+    # todos y el lite solo los 4 primeros (más contexto en una pregunta puntual es
+    # ruido). Como es un prefijo, [F1]..[F4] significan lo mismo en los dos casos.
+    extensa = es_extensa(pregunta, frags[:TOP_K])
     # Primero el modelo que corresponde; si falla (límite de la capa gratuita, red),
     # el otro; si también falla, la respuesta extractiva.
     for intento in (extensa, not extensa):
         try:
-            hecho = _llm(pregunta, frags, rol, intento)
+            hecho = _llm(pregunta, frags if intento else frags[:TOP_K], rol, intento)
         except Exception:  # noqa: BLE001 -- sin red, sin saldo o error del proveedor: no se cae la consulta
             log.warning("El modelo (%s) no respondió", "completo" if intento else "lite", exc_info=True)
             continue

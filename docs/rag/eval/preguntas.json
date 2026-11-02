@@ -140,6 +140,136 @@
     "esperado": "G08"
   },
   {
+    "id": "Q29",
+    "pregunta": "¿Cuál es el tiempo máximo de atención para un paciente clasificado como triage II?",
+    "esperado": "G09"
+  },
+  {
+    "id": "Q30",
+    "pregunta": "¿Quién puede hacer el triage en un servicio de urgencias de baja complejidad?",
+    "esperado": "G09"
+  },
+  {
+    "id": "Q31",
+    "pregunta": "¿Se le puede negar la atención de urgencias a alguien por su clasificación de triage?",
+    "esperado": "G09"
+  },
+  {
+    "id": "Q32",
+    "pregunta": "¿Qué puntaje NEWS2 obliga a una respuesta de emergencia con equipo de cuidado crítico?",
+    "esperado": "G10"
+  },
+  {
+    "id": "Q33",
+    "pregunta": "¿Cuántos puntos suma en NEWS2 que el paciente reciba oxígeno suplementario?",
+    "esperado": "G10"
+  },
+  {
+    "id": "Q34",
+    "pregunta": "¿En qué pacientes no se debe usar la escala NEWS2?",
+    "esperado": "G10"
+  },
+  {
+    "id": "Q35",
+    "pregunta": "¿En cuánto tiempo hay que iniciar antibióticos si se sospecha choque séptico?",
+    "esperado": "G11"
+  },
+  {
+    "id": "Q36",
+    "pregunta": "¿Cuál es el vasopresor de primera línea en el choque séptico y la meta de presión arterial media?",
+    "esperado": "G11"
+  },
+  {
+    "id": "Q37",
+    "pregunta": "¿Cuántos mililitros por kilo de cristaloides se sugieren en la reanimación inicial de la sepsis?",
+    "esperado": "G11"
+  },
+  {
+    "id": "Q38",
+    "pregunta": "¿Cuántas horas antes de la cirugía puede tomar líquidos claros un adulto sano?",
+    "esperado": "G12"
+  },
+  {
+    "id": "Q39",
+    "pregunta": "¿Cuánto ayuno se necesita después de una comida frita o grasosa?",
+    "esperado": "G12"
+  },
+  {
+    "id": "Q40",
+    "pregunta": "¿Mascar chicle es motivo para cancelar la anestesia?",
+    "esperado": "G12"
+  },
+  {
+    "id": "Q41",
+    "pregunta": "¿Cuántos años se debe conservar la historia clínica?",
+    "esperado": "G13"
+  },
+  {
+    "id": "Q42",
+    "pregunta": "¿Quiénes pueden acceder a la historia clínica de un paciente?",
+    "esperado": "G13"
+  },
+  {
+    "id": "Q43",
+    "pregunta": "¿Cómo se corrige un error en la historia clínica?",
+    "esperado": "G13"
+  },
+  {
+    "id": "Q44",
+    "pregunta": "¿Me pueden exigir un pago antes de atenderme en urgencias?",
+    "esperado": "G14"
+  },
+  {
+    "id": "Q45",
+    "pregunta": "¿En cuántos días me deben entregar la copia de mi historia clínica?",
+    "esperado": "G14"
+  },
+  {
+    "id": "Q46",
+    "pregunta": "¿Qué cirugías cuentan en el indicador de cancelación de cirugía programada P.2.15?",
+    "esperado": "G15"
+  },
+  {
+    "id": "Q47",
+    "pregunta": "¿Cada cuánto se reportan los indicadores de calidad de la Resolución 256 de 2016?",
+    "esperado": "G15"
+  },
+  {
+    "id": "Q48",
+    "pregunta": "¿Cuáles son los siete estándares de habilitación de un servicio de salud?",
+    "esperado": "G16"
+  },
+  {
+    "id": "Q49",
+    "pregunta": "¿Cuánto dura la inscripción inicial de un prestador en el REPS?",
+    "esperado": "G16"
+  },
+  {
+    "id": "Q50",
+    "pregunta": "¿Cuánto es la cuota moderadora en 2026 para un afiliado que gana entre 2 y 5 salarios mínimos?",
+    "esperado": "G17"
+  },
+  {
+    "id": "Q51",
+    "pregunta": "¿Cuál es el tope anual de copagos en el régimen subsidiado en 2026?",
+    "esperado": "G17"
+  },
+  {
+    "id": "Q52",
+    "pregunta": "¿Cuánto vale la UVB en 2026?",
+    "esperado": "G17"
+  },
+  {
+    "id": "Q53",
+    "pregunta": "¿Con qué algoritmo se guardan las contraseñas en Pulso?",
+    "esperado": "G18"
+  },
+  {
+    "id": "Q54",
+    "pregunta": "¿Cuántos intentos fallidos bloquean una cuenta?",
+    "esperado": "G18"
+  },
+  {
     "id": "N01",
     "pregunta": "¿Cuál es el tratamiento de la malaria complicada?",
     "esperado": null
