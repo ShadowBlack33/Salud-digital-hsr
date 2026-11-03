@@ -128,9 +128,13 @@ OR (f.tipo = 'historia' AND f.estado = 'aprobado' AND f.paciente_id = ANY(:pacie
 ## 5. Endpoint `POST /rag/preguntar`
 
 ```json
-{ "pregunta": "¿Desde qué cifra de potasio la hiperpotasemia es grave?",
-  "paciente_id": null, "metodo": "hibrido" }
+{ "pregunta": "¿y en niños?",
+  "paciente_id": null, "metodo": "hibrido",
+  "historial": [{ "rol": "usuario", "texto": "¿Cuánto ayuno antes de la anestesia?" },
+                { "rol": "asistente", "texto": "Seis horas para sólidos [F1]…" }] }
 ```
+
+`historial` es opcional (hasta 12 mensajes) y lo arma el front con la conversación: ver "Conversación" en la sección 10.
 
 | Aspecto | Comportamiento |
 | --- | --- |
@@ -257,6 +261,18 @@ Un cross-encoder lee la pregunta y cada candidato juntos, a diferencia de los em
 - **Atributos escapados** en las etiquetas `<fuente>` (título y sección), no solo el texto.
 - **Parámetros de cada respuesta** en `rag_consultas.parametros`: modelo, temperatura, versión del prompt, firma de los embeddings, preguntas y reranker.
 
+### Conversación (noviembre de 2026)
+
+La asistente se llama **Lati** (de *latido*; Pulso es el nombre de la app) y habla en femenino. El prompt deja claro que es una asistente de IA, no una persona ni una profesional de la salud.
+
+La primera versión respondía como un buscador: cada pregunta iba sola, la respuesta llegaba como texto plano con las marcas `[F2]` a la vista y, si la búsqueda no encontraba nada, devolvía siempre el mismo mensaje fijo, incluso a "hola" o a "¿qué haces?". Ahora:
+
+- **Memoria de la conversación.** El front manda los últimos mensajes en `historial`. El modelo ve hasta 6 (sin las marcas `[F#]` de turnos anteriores, que apuntaban a otras fuentes). Para la búsqueda, una pregunta corta de seguimiento (10 palabras o menos, como "¿y en niños?") se busca junto con la pregunta anterior del usuario (`consulta_con_contexto()`). El historial solo da contexto: lo que cada perfil puede recuperar lo sigue decidiendo el filtro en SQL. Las respuestas con datos en vivo (nombres de pacientes, camas, alertas) no se mandan como historial: el front las reemplaza por "(Respondí con datos en vivo de Pulso.)", porque el historial llega al modelo externo y esos datos no deben salir de Pulso.
+- **Respuestas parciales.** El prompt (versión `2026-11-v5`) pide explicar con sus palabras, responder la parte que las fuentes sí cubren y decir con naturalidad qué no cubren, en lugar de abstenerse por completo. Sigue prohibido agregar cifras, dosis o datos clínicos que no estén en las fuentes, y si las fuentes tratan otra cosa (otra enfermedad, otro grupo, otro año) responde `NO_ENCONTRADO`.
+- **Sin evidencia, conversa.** Cuando la búsqueda no supera el umbral o el modelo responde `NO_ENCONTRADO`, `conversar()` le pasa al modelo lite el mensaje, el historial y la lista de documentos del perfil: saluda, explica qué puede hacer o dice que eso no está en sus documentos y sugiere temas cercanos. Sigue contando como abstención (sin citas) y el prompt le prohíbe responder contenido clínico con su propio conocimiento. Si no hay modelo o falla, queda el mensaje fijo. Las evaluaciones lo apagan (`conversacional=False`) para no gastar cuota; no cambia si hubo o no abstención.
+- **Interfaz.** La respuesta se muestra como Markdown (párrafos, listas, negrita) con un componente propio que no usa `dangerouslySetInnerHTML` (`front/src/components/Markdown.jsx`). Las marcas `[F3]` se ven como numeritos (1, 2…) en el orden en que se citan, y las fuentes con su extracto quedan plegadas bajo "Basado en N fuentes". Hay botón de nueva conversación y de ampliar el panel.
+- `rag_consultas.parametros` guarda además cuántos turnos previos hubo, si la búsqueda usó el contexto y si la respuesta fue conversacional.
+
 ### Para actualizar una base existente
 
 ```bash
@@ -286,9 +302,9 @@ Recuperación (`docs/rag/eval/RESULTADOS.md`): 122 preguntas con documento esper
 Abstención de punta a punta con Gemini (`docs/rag/eval/RESULTADOS_ABSTENCION.md`): compuerta abierta **denso ≥ 0,65 o BM25 ≥ 7,0**, que es la más cerrada que no deja fuera ninguna pregunta con respuesta. Regla estricta sin modelo: **denso ≥ 0,5 y BM25 ≥ 7,0**.
 
 - **30 de 30** sin respuesta terminan en abstención: 14 las frena la recuperación y 16 las rechaza el modelo con `NO_ENCONTRADO`. Entre ellas están todas las trampas cercanas al corpus.
-- **66 de 68** parafraseadas se responden citando la guía esperada (v1: 11 de 15). Los dos fallos:
+- **67 de 68** parafraseadas se responden citando la guía esperada (v1: 11 de 15), medido con el prompt conversacional (`2026-11-v5`, que pide respuestas parciales en vez de abstenerse). Con el prompt anterior eran 66: P45 se abstenía con los fragmentos correctos y ahora responde. El fallo que queda:
   - P07 ("¿cuánto pago de mi bolsillo por una consulta si cotizo en una EPS?") citó la guía de facturación (G08) en vez de la de cuotas y copagos (G17). Es un fallo discutible: G08 también trae una cuota moderadora, la de referencia interna.
-  - P45 se abstuvo con los fragmentos correctos.
+- Relajar el prompt no costó abstenciones: siguen siendo 30 de 30.
 - Con la cuota gratuita de Gemini, la corrida completa (unas 100 llamadas) agotó el límite. `probar_abstencion.py --repetir` vuelve a correr solo las que quedaron sin modelo.
 
 **Limitaciones de estos números.** Los umbrales y el peso se calibraron con estas mismas preguntas (salvo la columna de prueba, que no intervino en ninguna elección). Además, las preguntas indexadas y las de evaluación apuntan a los mismos hechos de cada guía. No son copias, pero parte de la mejora puede no repetirse con usuarios reales. El siguiente paso es medir con preguntas reales anonimizadas de la demo.

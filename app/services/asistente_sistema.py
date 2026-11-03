@@ -176,6 +176,18 @@ INTENCIONES: list[Intencion] = [
 ]
 
 
+# Preguntas que piden consejo, criterio o explicación ("¿qué me recomiendas hacer con mis
+# pacientes?", "¿cómo manejo las alertas?") no son consultas de datos: van al RAG, que responde
+# con las guías. Sin esto, "mis pacientes" las desviaba a un conteo.
+CONSEJO = re.compile(r"recomiend|recomendaci|aconsej|consejo|sugier|sugerenci|deberia|debo hacer|que hago|"
+                     r"que hacer|como (manejo|manejar|trato|tratar|atiendo|atender|prioriz|actuo|actuar|abordo)|"
+                     r"prioriz|por que|explic|conducta|protocolo|criterio")
+
+
+def es_consejo(norm: str) -> bool:
+    return bool(CONSEJO.search(norm))
+
+
 def _permitida(i: Intencion, ctx: ContextoAcceso) -> bool:
     if i.permiso is None:
         return True
@@ -192,7 +204,10 @@ def _permitida(i: Intencion, ctx: ContextoAcceso) -> bool:
 def responder(db: Session, ctx: ContextoAcceso, pregunta: str) -> dict | None:
     """{"intencion", "respuesta", "permitida"} o None si no es una consulta del sistema."""
     norm = " ".join(core.normalizar(pregunta).replace("¿", " ").replace("?", " ").split())
+    consejo = es_consejo(norm)
     for i in INTENCIONES:
+        if consejo and i.id != "ayuda":
+            continue                      # pide criterio, no datos: lo responde el RAG
         if i.patron.search(norm):
             if not _permitida(i, ctx):
                 return {"intencion": i.id, "permitida": False,

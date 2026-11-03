@@ -3,11 +3,11 @@
 Compuerta abierta (denso ≥ 0.65 o BM25 ≥ 7.0); decide el modelo. Preguntas por sección: sí; reranker: sí; temperatura: la del proveedor.
 
 - Preguntas sin respuesta que terminan en abstención: **30 de 30**.
-- Preguntas parafraseadas respondidas citando la guía esperada: **66 de 68**.
+- Preguntas parafraseadas respondidas citando la guía esperada: **67 de 68**.
 
-- Parafraseadas que decidió el modelo: 66 de 68 bien.
-- Preguntas que quedaron sin modelo (cuota agotada o tiempo agotado): 0.
-- Llamadas al modelo que fallaron en esta corrida (429, 503, tiempo agotado): 2.
+- Parafraseadas que decidió el modelo: 66 de 67 bien.
+- Preguntas que quedaron sin modelo (cuota agotada o tiempo agotado): 1 (P54; repetir con --repetir).
+- Llamadas al modelo que fallaron en esta corrida (429, 503, tiempo agotado): 11.
 
 | Pregunta | Esperado | Resultado | Quién decidió | Citó | ¿Bien? |
 | --- | --- | --- | --- | --- | --- |
@@ -18,11 +18,11 @@ Compuerta abierta (denso ≥ 0.65 o BM25 ≥ 7.0); decide el modelo. Preguntas p
 | P05 | G12 | responde | gemini:gemini-3.5-flash-lite | G12 | sí |
 | P06 | G14 | responde | gemini:gemini-3.5-flash-lite | G14 | sí |
 | P07 | G17 | responde | gemini:gemini-3.5-flash-lite | G08 | NO |
-| P08 | G13 | responde | gemini:gemini-3.5-flash-lite | G13 | sí |
+| P08 | G13 | responde | gemini:gemini-3.5-flash-lite | G13, G18 | sí |
 | P09 | G11 | responde | gemini:gemini-3.5-flash-lite | G11 | sí |
 | P10 | G09 | responde | gemini:gemini-3.5-flash-lite | G09 | sí |
 | P11 | G06 | responde | gemini:gemini-3.5-flash-lite | G06 | sí |
-| P12 | G07 | responde | gemini:gemini-3.5-flash-lite | G05, G07 | sí |
+| P12 | G07 | responde | gemini:gemini-3.5-flash-lite | G05, G07, G10 | sí |
 | P13 | G16 | responde | gemini:gemini-3.5-flash-lite | G16 | sí |
 | P14 | G18 | responde | gemini:gemini-3.5-flash-lite | G08, G18 | sí |
 | P15 | G07 | responde | gemini:gemini-3.5-flash-lite | G07 | sí |
@@ -47,15 +47,15 @@ Compuerta abierta (denso ≥ 0.65 o BM25 ≥ 7.0); decide el modelo. Preguntas p
 | P34 | G07 | responde | gemini:gemini-3.5-flash-lite | G07 | sí |
 | P35 | G07 | responde | gemini:gemini-3.5-flash-lite | G07 | sí |
 | P36 | G07 | responde | gemini:gemini-3.5-flash-lite | G07 | sí |
-| P37 | G07 | responde | gemini:gemini-3.5-flash-lite | G07 | sí |
+| P37 | G07 | responde | gemini:gemini-3.5-flash-lite | G05, G07 | sí |
 | P38 | G08 | responde | gemini:gemini-3.5-flash-lite | G08 | sí |
 | P39 | G08 | responde | gemini:gemini-3.5-flash-lite | G07, G08 | sí |
 | P40 | G08 | responde | gemini:gemini-3.5-flash-lite | G08 | sí |
 | P41 | G09 | responde | gemini:gemini-3.5-flash-lite | G09 | sí |
-| P42 | G09 | responde | gemini:gemini-3.5-flash-lite | G09 | sí |
+| P42 | G09 | responde | gemini:gemini-3.5-flash-lite | G09, G14 | sí |
 | P43 | G09 | responde | gemini:gemini-3.5-flash-lite | G09 | sí |
 | P44 | G10 | responde | gemini:gemini-3.5-flash-lite | G10 | sí |
-| P45 | G10 | abstiene | gemini:gemini-3.5-flash-lite | - | NO |
+| P45 | G10 | responde | gemini:gemini-3.5-flash-lite | G01, G02, G04, G05, G10, G11 | sí |
 | P46 | G10 | responde | gemini:gemini-3.5-flash-lite | G10 | sí |
 | P47 | G11 | responde | gemini:gemini-3.5-flash-lite | G11 | sí |
 | P48 | G11 | responde | gemini:gemini-3.5-flash-lite | G11 | sí |
@@ -63,8 +63,8 @@ Compuerta abierta (denso ≥ 0.65 o BM25 ≥ 7.0); decide el modelo. Preguntas p
 | P50 | G12 | responde | gemini:gemini-3.5-flash-lite | G12 | sí |
 | P51 | G12 | responde | gemini:gemini-3.5-flash-lite | G12 | sí |
 | P52 | G12 | responde | gemini:gemini-3.5-flash-lite | G12 | sí |
-| P53 | G13 | responde | gemini:gemini-3.5-flash-lite | G13 | sí |
-| P54 | G13 | responde | gemini:gemini-3.5-flash-lite | G13 | sí |
+| P53 | G13 | responde | gemini:gemini-3.5-flash-lite | G13, G18 | sí |
+| P54 | G13 | responde | extractivo | G13 | sí |
 | P55 | G14 | responde | gemini:gemini-3.5-flash-lite | G14 | sí |
 | P56 | G14 | responde | gemini:gemini-3.5-flash-lite | G14 | sí |
 | P57 | G14 | responde | gemini:gemini-3.5-flash-lite | G14 | sí |
@@ -73,7 +73,7 @@ Compuerta abierta (denso ≥ 0.65 o BM25 ≥ 7.0); decide el modelo. Preguntas p
 | P60 | G16 | responde | gemini:gemini-3.5-flash-lite | G16 | sí |
 | P61 | G16 | responde | gemini:gemini-3.5-flash-lite | G16 | sí |
 | P62 | G16 | responde | gemini:gemini-3.5-flash-lite | G16 | sí |
-| P63 | G17 | responde | gemini:gemini-3.5-flash-lite | G17 | sí |
+| P63 | G17 | responde | gemini:gemini-3.5-flash-lite | G08, G17 | sí |
 | P64 | G17 | responde | gemini:gemini-3.5-flash-lite | G08, G17 | sí |
 | P65 | G17 | responde | gemini:gemini-3.5-flash-lite | G17 | sí |
 | P66 | G18 | responde | gemini:gemini-3.5-flash-lite | G18 | sí |

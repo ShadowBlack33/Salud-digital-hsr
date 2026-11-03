@@ -178,6 +178,44 @@ check("El contexto escapa comillas y etiquetas en título, sección y texto",
 s = rag.seudonimo("a" * 64)
 check("El seudónimo tiene 8 caracteres y es estable", len(s) == 10 and s == rag.seudonimo("a" * 64), s)
 
+print("\n[5b] Conversación")
+hist = [{"rol": "usuario", "texto": "¿Cuánto ayuno antes de la anestesia?"},
+        {"rol": "asistente", "texto": "Seis horas para sólidos [F1][F2]."}]
+check("Un seguimiento corto se busca con la pregunta anterior",
+      rag.consulta_con_contexto("¿y en niños?", hist) == "¿Cuánto ayuno antes de la anestesia? ¿y en niños?")
+check("Una pregunta larga se busca tal cual",
+      rag.consulta_con_contexto("¿Con qué hemoglobina se transfunde a un adulto estable sin sangrado activo hoy?", hist)
+      .startswith("¿Con qué"))
+check("Sin historial se busca la pregunta", rag.consulta_con_contexto("¿y en niños?", []) == "¿y en niños?")
+turnos = rag._turnos(hist)
+check("El historial pasa al modelo con roles y sin marcas [F#]",
+      [t["role"] for t in turnos] == ["user", "assistant"] and "[F" not in turnos[1]["content"], turnos)
+check("El historial se recorta a los últimos turnos",
+      len(rag._turnos([{"rol": "usuario", "texto": str(i)} for i in range(20)])) == rag.HISTORIAL_MAX)
+capturado.clear()
+rag._llm("¿y en niños?", [{"titulo": "T", "seccion": "S", "texto": "x"}], historial=hist)
+check("El modelo recibe sistema, historial y la pregunta con fuentes, en ese orden",
+      [m["role"] for m in capturado["messages"]] == ["system", "user", "assistant", "user"])
+
+_respuesta = {"texto": "Respuesta [F1]"}
+_Resp.json = lambda self: {"choices": [{"message": {"content": _respuesta["texto"]}}]}
+_respuesta["texto"] = "Hola, puedo responder con las guías [F2]."
+r = rag.responder("hola", [], fuentes=["Guía de ayuno"])
+check("Sin evidencia el modelo conversa: abstención sin citas y sin marcas",
+      r["abstencion"] and r.get("conversacion") and not r["citas_usadas"] and "[F" not in r["respuesta"], r)
+check("La conversación recibe la lista de documentos del perfil", "Guía de ayuno" in capturado["messages"][0]["content"])
+r = rag.responder("hola", [], fuentes=[], conversacional=False)
+check("Sin conversación (evaluaciones) queda el mensaje fijo", r["respuesta"] == rag.SIN_EVIDENCIA and not r.get("conversacion"))
+_respuesta["texto"] = rag.NO_ENCONTRADO
+r = rag.responder("¿dosis de X?", [{"titulo": "T", "seccion": "S", "texto": "x"}], fuentes=["G"])
+check("Si el modelo dice NO_ENCONTRADO y conversar también, queda el mensaje fijo",
+      r["abstencion"] and r["respuesta"] == rag.SIN_EVIDENCIA, r)
+httpx.post = lambda *a, **k: (_ for _ in ()).throw(httpx.ConnectError("sin red"))
+r = rag.responder("hola", [], fuentes=["G"])
+check("Si el modelo falla al conversar, queda el mensaje fijo", r["respuesta"] == rag.SIN_EVIDENCIA and r["abstencion"])
+httpx.post = _post
+_respuesta["texto"] = "Respuesta [F1]"
+
 print("\n[6] Evaluación y guías")
 preg = json.loads((RAIZ / "docs/rag/eval/preguntas.json").read_text(encoding="utf-8"))
 ids_docs = {d.id for d in guias} | {core.leer_documento(p).id for p in (RAIZ / "docs/rag/eval/historias").glob("*.md")}

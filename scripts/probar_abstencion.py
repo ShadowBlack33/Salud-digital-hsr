@@ -121,7 +121,7 @@ def main() -> None:
         if not pasa:
             resultado, gen, citados = "abstiene", "recuperación", []
         else:
-            r = rag.responder(p["pregunta"], marco, None, estricto)
+            r = rag.responder(p["pregunta"], marco, None, estricto, conversacional=False)   # sin gastar cuota
             resultado = "abstiene" if r["abstencion"] else "responde"
             gen = r["generador"]
             citados = sorted({marco[n - 1]["documento_id"] for n in r["citas_usadas"]})
