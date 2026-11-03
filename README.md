@@ -20,7 +20,7 @@ Built for **Hospital San Rafael**, a hypothetical ~300-bed, 13-OR hospital sized
 - Field-level encryption, blind-index search and role-based access enforced by the API, not just the menu
 - HL7 FHIR R4 interoperability with a `Subscription` that makes the system react to external data
 - ICU-risk model trained on real surgical cases (VitalDB): sensitivity 0.80, AUC 0.71, always approved by a clinician
-- Clinical RAG: **97 %** of paraphrased questions (66 of 68) answered citing the right guideline, and **30 of 30** unanswerable questions rejected
+- Clinical RAG: **99 %** of paraphrased questions (67 of 68) answered citing the right guideline, and **30 of 30** unanswerable questions rejected
 
 > My role: **technical lead**. Architecture, security, infrastructure, frontend and the RAG assistant. Team credits are [below](#team).
 
@@ -89,7 +89,7 @@ Answer + citations ──► rag_consultas + audit log
 
   The dense weight in the fusion and the abstention thresholds were chosen on a tuning split; the held-out split never took part in any choice.
 
-- **Abstention measured end to end with Gemini.** **30 of 30** unanswerable questions end in abstention (14 stopped by the retrieval gate, 16 rejected by the model), including traps close to the corpus (hypokalaemia when the guideline covers hyperkalaemia, a 2024 fee when only 2025 and 2026 are documented). **66 of 68** paraphrased questions are answered citing the expected guideline (v1: 11 of 15).
+- **Abstention measured end to end with Gemini.** **30 of 30** unanswerable questions end in abstention (14 stopped by the retrieval gate, 16 rejected by the model), including traps close to the corpus (hypokalaemia when the guideline covers hyperkalaemia, a 2024 fee when only 2025 and 2026 are documented). **67 of 68** paraphrased questions are answered citing the expected guideline (v1: 11 of 15).
 - **Reproducible answers.** Each query stores the model, temperature, prompt version, embedding signature (model + library version) and reranker used. Temperature is configurable and left at the provider's default, as Google recommends for Gemini 3.
 - **Two models by question type.** A lite model for short factual questions and a stronger one for long or reasoning questions, with fallback between them and an extractive answer when no model is available, so the system and its tests work offline.
 - **Live operational answers stay inside.** "How many free beds are there?" or "do I have alerts?" are answered from the same functions and permissions as the screens, and that data is never sent to the external model.

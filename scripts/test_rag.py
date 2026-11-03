@@ -201,6 +201,12 @@ desviadas = [p["id"] for p in preg
              if any(i.patron.search(" ".join(rag_core.normalizar(p["pregunta"]).replace("¿", " ").replace("?", " ").split()))
                     for i in asistente_sistema.INTENCIONES)]
 check("Ninguna pregunta de la evaluación se desvía a los datos en vivo (siguen yendo al RAG)", not desviadas, desviadas)
+r = preguntar(tok_med, "¿Qué me recomiendas hacer con mis pacientes críticos?")
+check("Médico: pedir una recomendación sobre 'mis pacientes' va al RAG, no al conteo",
+      r.status_code == 200 and r.json()["metodo"] != "sistema", r.text[:200])
+r = preguntar(tok_med, "¿Cuáles son mis pacientes críticos?")
+check("... pero '¿cuáles son mis pacientes críticos?' sigue siendo dato en vivo",
+      r.status_code == 200 and r.json()["metodo"] == "sistema", r.text[:200])
 
 print("\n[RAG 6] Citas, abstención y auditoría")
 _prov = rag._proveedor

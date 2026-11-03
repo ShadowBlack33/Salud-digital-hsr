@@ -33,11 +33,19 @@ from app.services.auditoria import registrar
 router = APIRouter(prefix="/rag", tags=["RAG"])
 
 
+class Turno(BaseModel):
+    rol: Literal["usuario", "asistente"]
+    texto: str = Field(..., max_length=4000)
+
+
 class Pregunta(BaseModel):
-    pregunta: str = Field(..., min_length=5, max_length=500,
+    pregunta: str = Field(..., min_length=2, max_length=500,
                           examples=["¿Desde qué cifra de potasio la hiperpotasemia es grave?"])
     paciente_id: str | None = Field(None, description="Limita la historia a un paciente (debe ser suyo)")
     metodo: Literal["hibrido", "bm25", "denso"] = "hibrido"
+    # Conversación hasta ahora (lo manda el front). Solo da contexto: lo que el usuario puede
+    # ver lo sigue decidiendo el filtro en SQL, no lo que diga el historial.
+    historial: list[Turno] = Field(default_factory=list, max_length=12)
 
 
 def contexto_rag(request: Request, payload: dict = Depends(get_token_payload),
@@ -110,10 +118,13 @@ def preguntar(datos: Pregunta, request: Request,
                     "abstencion": not sistema["permitida"], "citas": [cita] if sistema["permitida"] else [],
                     "confianza": None, "metodo": "sistema", "generador": "sistema"}
 
-    hallazgo = svc.buscar(db, ctx, datos.pregunta, datos.paciente_id, datos.metodo)
+    historial = [t.model_dump() for t in datos.historial]
+    consulta = svc.consulta_con_contexto(datos.pregunta, historial)
+    hallazgo = svc.buscar(db, ctx, consulta, datos.paciente_id, datos.metodo)
     frags = hallazgo["fragmentos"]
     rol = ctx.payload.get("rol")
-    resp = svc.responder(datos.pregunta, frags, rol, estricto=hallazgo.get("estricto", True))
+    resp = svc.responder(datos.pregunta, frags, rol, estricto=hallazgo.get("estricto", True),
+                         historial=historial, fuentes=fuentes_del_perfil(db, ctx))
 
     citas = []
     for n in resp["citas_usadas"]:
@@ -134,15 +145,18 @@ def preguntar(datos: Pregunta, request: Request,
     """), {"u": ctx.usuario.id, "rol": rol, "q": datos.pregunta, "pid": datos.paciente_id,
            "m": hallazgo["metodo_usado"], "f": json.dumps([c["fragmento_id"] for c in citas]),
            "a": resp["abstencion"], "c": hallazgo["confianza"], "g": resp["generador"],
-           "par": json.dumps(svc.parametros(resp["generador"], hallazgo.get("reranker", False),
-                                            hallazgo.get("firma")))}).scalar()
+           "par": json.dumps({**svc.parametros(resp["generador"], hallazgo.get("reranker", False),
+                                               hallazgo.get("firma")),
+                              "turnos_previos": len(historial), "busqueda_con_contexto": consulta != datos.pregunta,
+                              "conversacion": bool(resp.get("conversacion"))})}).scalar()
     registrar(db, ctx.usuario, "rag_consulta", consulta_id, "rag_preguntar", request=request)
     db.commit()
 
     salida = {"consulta_id": consulta_id, "respuesta": resp["respuesta"], "abstencion": resp["abstencion"],
               "citas": citas, "confianza": hallazgo["confianza"], "metodo": hallazgo["metodo_usado"],
               "generador": resp["generador"]}
-    if resp["abstencion"]:
-        # Sin evidencia no se inventa nada, pero se dice qué sí se puede preguntar.
+    if resp["abstencion"] and not resp.get("conversacion"):
+        # Sin modelo no se inventa nada, pero se dice qué sí se puede preguntar (con modelo, ya
+        # lo dijo él en la respuesta).
         salida["fuentes_disponibles"] = fuentes_del_perfil(db, ctx)
     return salida
